@@ -1,16 +1,29 @@
 # LeanReact
 
-Compose your frontend. Share the rest.
+Write React components in Lean, a typed functional language. Your components compile to JavaScript and run in the browser using React.
 
-Write React components, reusable behavior, and shared application models in Lean. Ordinary functions, callbacks, and ontologies are the building blocks. LeanReact compiles real Lean declarations to JavaScript and renders them through React.
+The appeal is familiar if you use TypeScript across the stack: your frontend and backend can share types and validation rules. Props, state, hooks, and components you can pass into other components remain the core UI building blocks.
 
-![LeanReact showcase with a live Lean counter beside its source code](docs/images/showcase.png)
+[v0.1 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.1) · [Get started](#run-locally) · [How-to guide](docs/HOW_TO.md) · [Agent skill](SKILL.md)
 
-[Run locally](#run-locally) · [How-to guide](docs/HOW_TO.md) · [Agent skill](SKILL.md) · [Read the vision](VISION.md) · [Current scope](docs/IMPLEMENTED.md)
+![LeanReact playground with a live counter beside its Lean source](docs/images/showcase.png)
 
-LeanReact is experimental. Components, collection forms, shared contexts, and domain logic work in the demonstrated subset. APIs and the generated ABI can change; [the composition guide](docs/COMPOSABILITY.md) explains what works and the remaining boundaries.
+## Run locally
 
-## A component is a Lean value
+You’ll need Git, Node 22.13 or newer, and [elan, the Lean version manager](https://github.com/leanprover/elan#installation). Think of elan like nvm: it installs the Lean version selected by this project. Follow its installation instructions for your OS, then open a new terminal.
+
+```sh
+git clone --branch v0.1 https://github.com/theoriclabs/lean-react.git
+cd lean-react
+npm ci
+npm run dev
+```
+
+Open **http://localhost:4173**. The first build may download the Lean compiler. The examples run in browser memory, so you can try them immediately.
+
+Start by editing the [counter component](examples/lean/Examples/Showcase.lean). The dev server rebuilds when you save; refresh the browser to see the change.
+
+## A counter in Lean
 
 ```lean
 import LeanReact
@@ -21,103 +34,47 @@ structure CounterProps where
 
 def Counter : Component CounterProps := component fun props => do
   let count ← useState 0 "count"
-  pure <| DOM.button { onPress := some (count.modify (· + 1)) } #[
+  pure <| DOM.button {
+    onPress := some (count.modify (fun value => value + 1))
+  } #[
     text (props.label ++ ": " ++ toString count.value)
   ]
 ```
 
-The example's domain rules, event closures, custom hooks, and component render functions come from Lean source. Swap a layout by passing another component. Share a rule by importing the same domain module. Independently compiled libraries can import one shared context through an explicit ESM dependency.
+Read this as a React function component:
 
-## The playground
+- `structure CounterProps` defines the props, like a TypeScript interface.
+- `useState` gives you `count.value`, `count.set`, and `count.modify`. The last one works like `setCount(previous => previous + 1)`. `"count"` is a stable label for the hook.
+- `DOM.button` creates a button; `#[...]` contains its children. `onPress` runs the update when clicked.
 
-`npm run dev` serves the showcase at `http://localhost:4173`. It includes a live counter, syntax-highlighted excerpts from the actual Lean files, and three interactive examples:
+A few syntax hints: `fun value => ...` is an arrow function, `some` supplies an optional prop, and `++` joins strings. `←` reads the result of a hook; `pure <|` returns the rendered element.
 
-| Example | Try it | Lean source |
-| --- | --- | --- |
-| Composable workspace | Switch board/inbox layouts, swap field editors, and save a ticket | [Tickets components](examples/lean/Examples/Tickets/Components.lean) |
-| Collection forms | Add, edit, reorder, and remove keyed rows; inspect nested validation errors | [Collections](examples/lean/Examples/Collections.lean) |
-| Shared contexts | Change a provider value and watch a consumer from another compiled library update | [Library example](examples/lean/Examples/Libraries/App.lean) |
+The [first-form tutorial](docs/HOW_TO.md#build-your-first-form) walks through complete files, including compiling and mounting a component.
 
-The workspace reuses the same editor behavior across layouts:
+## Build by composing
 
-![Working Tickets workspace with a saved edit, reusable counters, and composition controls](docs/images/workspace.png)
+Pass an editor into a form. Pass a row component into a list. Share a custom hook between two layouts. These are ordinary values and functions, so you can change one piece without rewriting the whole screen.
 
-Collection validation follows the current row order while each row retains its own state:
+The playground includes:
 
-![Collection form after reordering, showing retained row state, nested validation errors, and its actual Lean source](docs/images/collections.png)
+- A ticket workspace with interchangeable layouts and field editors.
+- Collection forms that keep each row’s state when you reorder them and preserve invalid input while you edit.
+- A context provider and consumer built in separate libraries that share live updates.
 
-These are real browser captures. Run `npm run screenshots` to regenerate them with Playwright Chromium, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome executable. Screenshot capture also checks the mobile page for horizontal overflow.
+![Ticket workspace with a saved edit and replaceable layouts and editors](docs/images/workspace.png)
 
-## Engine and examples
+Shared domain definitions, called *ontologies* in this project, describe application data and its rules. For example, the same title validator can run in your form and on a Lean backend. Start with a type and a parsing function; add richer descriptions when your application needs them.
 
-The reusable [engine](engine/README.md) and [example applications](examples/README.md) have separate source roots:
+## CSS and existing React libraries
 
-```text
-engine/                  Lean libraries, compiler, runtime, and React bridge
-examples/lean/           Lean example components, domains, and generators
-examples/web/            Showcase website, browser entry point, and CSS
-examples/consumer/       Independent JavaScript/TypeScript consumers
-examples/adapters/       Example-specific foreign and service bindings
-examples/native/         Optional Tickets server using LeanDB and LeanHttp
-examples/generated/      Generated example modules (ignored)
-examples/dist/           Bundled browser example (ignored)
-```
+Use regular CSS files and `className` props. JavaScript and TypeScript can consume the generated components too.
 
-Run `npm run build:engine` (or `lake build`) to build only the engine. `npm run build` builds the browser example and its engine dependencies. Tests and workspace orchestration remain in root `tests/` and `scripts/`. Lean import names such as `LeanReact` and `Examples.Tickets.Domain` are preserved by the Lake source-root configuration.
+Existing React libraries need an explicit binding between their props and Lean. There’s a working foreign-component example in the [interop guide](docs/HOW_TO.md#existing-react-components-including-shadcn). shadcn and Tailwind aren’t configured out of the box.
 
-## Run locally
+## What to expect from v0.1
 
-Install the pinned Lean toolchain with [elan](https://github.com/leanprover/elan) and use Node 22.13 or newer (tested on Node 24). From this directory:
+This is an experimental release for trying Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. APIs can change. Only a subset of Lean compiles to JavaScript today; routing, React Server Components, and automatic JS/TS bindings are still ahead. See [current support and limits](docs/IMPLEMENTED.md).
 
-```sh
-npm ci
-npm run build
-npm run dev
-```
+To build your own screen, follow the [how-to guide](docs/HOW_TO.md). If you’re using a coding agent, ask it to read [SKILL.md](SKILL.md) first.
 
-Open `http://localhost:4173`. The development command watches sources and rebuilds; refresh the browser after a successful build. `npm test` runs Lean checks, compiler parity tests, mounted React tests, and generated-component integration tests. The compiler, native backend, and compiler/protocol test harnesses are Lean; browser/build tooling uses JavaScript/TypeScript. No Python installation is required. Native SQLite/HTTP integration has its own optional dependencies and commands.
-
-The showcase is a static site: `npm run build` writes its HTML, CSS, favicon, and bundled JavaScript to `examples/dist/`. Assets use relative URLs so the site can be served under a subdirectory. The default examples run locally in browser memory. The native service below is optional.
-
-The same compiled workspace can use the native service. Build the optional adapter with `bash examples/native/build-cached.sh`, then run these in two terminals:
-
-```sh
-examples/native/.lake/cached/bin/tickets_server 8081 /tmp/leanreact-tickets.sqlite
-```
-
-```sh
-LEANREACT_API=http://127.0.0.1:8081 npm run dev
-```
-
-Open `http://localhost:4173/?service=native`. This uses the sibling LeanDB and LeanHttp checkouts; see [native setup and tests](docs/NATIVE.md). `npm run example:consumer` exercises the generated domain module from Node, and `npx tsc --noEmit` checks the TypeScript consumer.
-
-Real-browser checks are `npm run test:browser` and `npm run test:native:browser` (build the optional native adapter first). Install a Playwright Chromium browser or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chromium/Chrome executable. On this Mac, the verified value is `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
-
-## Build your own frontend
-
-The [how-to guide](docs/HOW_TO.md) walks through a complete Lean form, from a shared domain parser to a mounted React page. It also covers replaceable editors, focused fields, keyed collections, shared library contexts, services, CSS, and JavaScript/TypeScript interop.
-
-For coding agents, [SKILL.md](SKILL.md) maps the implementation, composition patterns, compiler boundaries, and validation commands. Ask your agent to read it from this checkout before starting; it does not require a particular agent client.
-
-```text
-Read SKILL.md and docs/HOW_TO.md. Build a collection editor for our domain
-with replaceable row and layout components. Retain invalid drafts, verify
-add/edit/reorder/remove in the browser, and keep application code outside engine/.
-```
-
-## Library boundaries
-
-| Library | Purpose | Imports |
-| --- | --- | --- |
-| `LeanOntology` | Typed paths, lenses, identities, validation, descriptors, and codecs | Lean/Std |
-| `LeanContract` | Typed public operations, handlers, and transport interpreters | LeanOntology |
-| `LeanReact` | Components, elements, hooks, actions, and typed DOM constructors | Lean/Std; optional ontology helpers |
-| `LeanJS` | Compile portable Lean declarations to ESM | Lean compiler APIs |
-| `engine/adapters/` | Reusable LeanJS/React host representation bridge | LeanJS ABI and React runtime |
-| `examples/adapters/`, `examples/native/` | Tickets-specific host bindings and backend integration | Engine and optional sibling libraries |
-
-The neutral ontology and contract libraries do not import React, SQLite, or HTTP. The [Tickets domain](examples/lean/Examples/Tickets/Domain.lean) is shared source. The [components](examples/lean/Examples/Tickets/Components.lean) demonstrate a generic list, callback props, replaceable card footers, and one editor hook used in two layouts.
-
-Styling currently uses ordinary CSS and Lean `className` props. Foreign React components use explicit adapters; a typed Lean CSS API and shadcn integration are not implemented. See [styling and ecosystem boundaries](docs/IMPLEMENTED.md#styling-and-the-javascripttypescript-ecosystem).
-
-Read [the implemented scope and limits](docs/IMPLEMENTED.md), [qualification results](docs/QUALIFICATION.md), [implementation plan](IMPLEMENTATION_PLAN.md), [compiler ABI](engine/LeanJS/ABI.md), [ontology API](engine/LeanOntology/API.md), and [React API](engine/LeanReact/API.md). This repository is an experimental library workspace; APIs and the generated value ABI can change.
+Application code lives in [examples/](examples/README.md); reusable framework code lives in [engine/](engine/README.md). Contributor checks, optional backend setup, and architecture details are in the [development guide](docs/HOW_TO.md#check-and-debug-your-work), [backend guide](docs/NATIVE.md), and [vision](VISION.md).
