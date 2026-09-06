@@ -49,7 +49,7 @@ private def compiler : IO Unit := do
   IO.FS.createDirAll (build / "LeanJS")
   IO.FS.createDirAll (build / "tests/compiler")
   lean project #["--version"]
-  for module in #["LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus"] do
+  for module in #["LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Modules", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus"] do
     let sourceDir := sourceRoot project module
     lean project #["-R", sourceDir.toString, "-o", (build / s!"{module}.olean").toString,
       (sourceDir / s!"{module}.lean").toString]
@@ -62,6 +62,7 @@ private def compiler : IO Unit := do
     check ((← IO.FS.readBinFile (tests / name)) == bytes)
       s!"Non-deterministic {name} across Lean processes"
   lean project #["tests/compiler/Negative.lean"]
+  lean project #["tests/compiler/Modules.lean"]
   lean project #["tests/compiler/Hooks.lean"]
   let native ← checkedOutput (← leanCommand project #["--run", "tests/compiler/Native.lean"])
   IO.FS.writeFile (tests / "native.json") native

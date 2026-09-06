@@ -54,11 +54,20 @@ type LeanPartial<A extends unknown[], R, P extends unknown[] = []> =\n\
   A extends [infer H, ...infer T] ? ((...args: P) => LeanFunction<A, R>) & LeanPartial<T, R, [...P, H]> : unknown;\n\
 export type LeanFunction<A extends unknown[], R> = { readonly leanArity: A['length'] } &\n\
   LeanPartial<A, R> & ((...args: A) => R);\n\
+export interface LeanLibraryId { readonly packageName: string; readonly version: string; readonly moduleName: string }\n\
+export interface LeanExportSignature { readonly name: string; readonly arity: number; readonly typeHash: string }\n\
+export interface LeanLibraryInterface {\n\
+  readonly id: LeanLibraryId; readonly abi: 'leanjs-v0'; readonly lean: '4.33.0';\n\
+  readonly exports: readonly LeanExportSignature[];\n\
+}\n\
 export interface LeanManifest {\n\
   readonly abi: 'leanjs-v0';\n\
   readonly lean: '4.33.0';\n\
   readonly exports: readonly string[];\n\
-  readonly declarations: readonly { readonly name: string; readonly arity: number; readonly type: string; readonly intrinsic?: boolean; readonly builtin?: boolean; readonly constructor?: boolean; readonly parameters?: readonly string[] }[];\n\
+  readonly library: LeanLibraryInterface | null;\n\
+  readonly imports: readonly LeanLibraryInterface[];\n\
+  readonly initialized: readonly string[];\n\
+  readonly declarations: readonly { readonly name: string; readonly arity: number; readonly type: string; readonly intrinsic?: boolean; readonly builtin?: boolean; readonly constructor?: boolean; readonly parameters?: readonly string[]; readonly importedFrom?: LeanLibraryId }[];\n\
   readonly constructors: readonly { readonly name: string; readonly type: string; readonly parameters: number; readonly fields: number; readonly fieldInfo: readonly { readonly name: string; readonly type: string; readonly erased: boolean }[] }[];\n\
   readonly hookPlans: readonly { readonly name: string; readonly validation: 'fixed-hook-sequence-v1'; readonly sites: readonly { readonly primitive: string; readonly kind: string; readonly site: string }[] }[];\n\
 }\n\

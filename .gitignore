@@ -12,6 +12,10 @@ tests/compiler/.build/
 tests/runtime/lean-build/
 tests/compiler/generated.mjs
 tests/compiler/intrinsic-generated.mjs
+tests/compiler/iteration.mjs
+tests/compiler/iteration.d.ts
+tests/compiler/iteration.d.mts
+tests/compiler/iteration.manifest.json
 tests/compiler/native.json
 tests/compiler/generated.d.ts
 tests/compiler/generated.d.mts

@@ -2,6 +2,20 @@
 
 The first implementation was qualified on 2026-09-06 with Lean 4.33.0, Node 24.11.1, React 19.2.8, and macOS arm64. This records a working experimental subset, not completion of every API proposed in the [vision](../VISION.md). The [implemented scope](IMPLEMENTED.md) is the current support contract.
 
+## Composition follow-up
+
+The three concrete findings from the [frontend review](FRONTEND_READINESS.md) are resolved. `npm test` passed 57 JavaScript tests (8 compiler, 31 runtime, 18 generated integration) plus the Lean and TypeScript checks. New compiler checks cover monadic array iteration and library ownership/signature diagnostics. Generated tests cover nested collection validation, automatic context initialization through a record/factory, identical context objects across library imports, nested providers, live updates, and mismatched runtime interfaces.
+
+The new collection and library Playwright tests pass in isolated Chrome. They exercise adding, editing, reordering, removing, and validating rows; retained row DOM/state; error paths after reorder; empty collections; and context updates between separately compiled libraries. The existing two Tickets browser tests also passed. One initial library test assertion could not locate a bare text node; its locator was corrected and both new browser tests passed on rerun. `npm run build` and the independent engine build passed.
+
+The [composition guide](COMPOSABILITY.md) documents library identity, manifest-based imports, module-time initialization, and the current linking and recursion limits. The historical measurements and original qualification below predate these changes.
+
+## Showcase website
+
+The showcase adds a Lean-authored live counter, three selectable example flows, source excerpts loaded from the actual Lean files, and a shared-domain diagram. The website remains under `examples/web/`; its HTML/CSS shell and browser glue consume the Lean examples. It uses the existing toolchain and dependencies.
+
+After the website changes, `npm test` passed all 57 JavaScript tests and the Lean/TypeScript checks. All six regular Playwright tests passed, including example navigation, the live counter, source inspection, copying setup commands, and all three examples at a 390-pixel viewport. Visual inspection caught a mobile grid sizing issue; it was fixed before the final captures. `scripts/screenshots.mjs` captures the real counter, a saved ticket edit, and a reordered collection with validation errors. The three README PNGs total about 644 KB. A full mobile capture is retained under ignored `.verification/showcase/`.
+
 ## Checks performed
 
 | Command or check | Result and coverage |

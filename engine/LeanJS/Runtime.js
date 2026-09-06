@@ -28,6 +28,12 @@ const $lazy = body => {
     catch (e) { state = 0; throw e; }
   };
 };
+const $checkLibrary = (manifest, expected) => {
+  if (manifest?.abi !== expected.abi || manifest?.lean !== expected.lean ||
+      JSON.stringify(manifest.library) !== JSON.stringify(expected)) {
+    throw new Error(`LeanJS: library interface mismatch for ${expected.id.packageName}/${expected.id.moduleName}@${expected.id.version}`);
+  }
+};
 const $list = xs => {
   let out = $ctor('List.nil');
   for (let i = xs.length - 1; i >= 0; i--) out = $ctor('List.cons', [xs[i], out]);

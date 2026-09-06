@@ -76,6 +76,23 @@ def arrayFilter (xs : Array Nat) (minimum start stop : Nat) : Array Nat :=
 def arrayRead (xs : Array Nat) (i : Nat) := xs[i]?.getD 777
 def arraySet (xs : Array Nat) (i x : Nat) := xs.set! i x
 
+def scan [Monad m] (visit : Nat → m Nat) (xs : Array Nat) : m Nat := do
+  let mut result := 0
+  for x in xs do
+    if x == 0 then break
+    if x == 1 then continue
+    result := result + (← visit x)
+  return result
+
+def scanId (visit : Nat → Nat) (xs : Array Nat) : Nat := scan (m := Id) visit xs
+def scanExcept (xs : Array Nat) : Except String Nat :=
+  scan (fun x => if x > 8 then .error s!"too big: {x}" else .ok (x * 2)) xs
+
+def arrayFoldM (xs : Array Nat) (start stop : Nat) : Option Nat :=
+  xs.foldlM (fun acc x => if x == 0 then none else some (acc * 10 + x)) 7 start stop
+
+def arrayFind (visit : Nat → Bool) (xs : Array Nat) : Option Nat := xs.find? visit
+
 def nativeReference (offset : Nat) (f : Nat → Nat) (x : Nat) := f x + offset
 def viaIntrinsic (offset x : Nat) := nativeReference offset (fun y => y * 2) x
 

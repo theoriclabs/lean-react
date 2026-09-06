@@ -16,3 +16,5 @@ From the repository root, `npm run build:engine` or `lake build` builds the engi
 `import LeanReact.Compiler` exposes `LeanReact.Compiler.options runtimeModule` and `LeanReact.Compiler.intrinsics runtimeModule`. The caller supplies the JavaScript module path as it will appear in its generated ESM. This keeps application output locations out of the engine. The example supplies that path in its [compiler configuration](../examples/lean/Examples/ReactCompiler.lean).
 
 The root npm manifest supplies the shared JavaScript dependencies; this directory does not introduce a second toolchain or duplicate dependency installation. Workspace verification runs from root `tests/`. See the [implemented scope](../docs/IMPLEMENTED.md), [compiler ABI](LeanJS/ABI.md), and [React API](LeanReact/API.md).
+
+`LeanJS.Options.library` and `LeanJS.Options.libraries` define compiled library exports and imports. Shared values retain identity through ordinary ESM dependencies, and top-level values initialize before rendering. The [composition guide](../docs/COMPOSABILITY.md) describes these APIs and the collection form support.

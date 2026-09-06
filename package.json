@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "screenshots": "npm run build && node scripts/screenshots.mjs",
     "build:engine": "lake build",
     "test": "node scripts/test.mjs",
     "test:compiler": "lake env lean --run tests/Run.lean compiler",

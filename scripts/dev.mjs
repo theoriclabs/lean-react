@@ -6,7 +6,7 @@ import { buildExample, projectRoot } from './build.mjs';
 
 const port = Number(process.env.PORT ?? 4173);
 const dist = resolve(projectRoot, 'examples/dist');
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.map': 'application/json' };
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.map': 'application/json', '.svg': 'image/svg+xml' };
 if (!process.argv.includes('--no-build')) await buildExample();
 
 const server = createServer(async (req, res) => {
@@ -34,7 +34,7 @@ const server = createServer(async (req, res) => {
     res.end(error.code === 'ENOENT' ? 'Not found' : 'Development server error');
   }
 });
-server.listen(port, '127.0.0.1', () => console.log(`LeanReact example: http://127.0.0.1:${port}`));
+server.listen(port, '127.0.0.1', () => console.log(`LeanReact example: http://127.0.0.1:${server.address().port}`));
 
 if (process.argv.includes('--watch')) {
   let timer;
@@ -57,7 +57,7 @@ if (process.argv.includes('--watch')) {
       if (!filename) return;
       const parts = String(filename).split(/[\\/]/);
       if (parts.some(part => ['.lake', 'generated', 'dist'].includes(part))) return;
-      if (/\.(lean|js|mjs|css|html)$/.test(filename)) {
+      if (/\.(lean|js|mjs|css|html|svg)$/.test(filename)) {
         clearTimeout(timer);
         timer = setTimeout(() => void rebuild(), 200);
       }

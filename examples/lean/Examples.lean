@@ -4,3 +4,6 @@ import Examples.ReactCompiler
 import Examples.Composition
 import Examples.Tickets.Queries
 import Examples.Foreign
+import Examples.Collections
+import Examples.Showcase
+import Examples.Libraries.App

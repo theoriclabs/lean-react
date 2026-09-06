@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as p from './generated.mjs';
 import * as intrinsic from './intrinsic-generated.mjs';
+import * as iteration from './iteration.mjs';
+const iter = name => iteration[`Corpus.${name}`];
 const f = name => p[`Corpus.${name}`];
 const ctor = (tag, fields = []) => ({tag, fields});
 const list = xs => xs.reduceRight((tail, x) => ctor('List.cons', [x, tail]), ctor('List.nil'));
@@ -17,6 +19,16 @@ const natArray = xs => xs.map(str);
 
 test('native Lean / generated Node parity across composed functions', () => {
   const actual = {
+    iteration: [[], [1n], [2n,3n,0n,9n], [9n,0n], [1n,2n,3n]].map(xs => {
+      const result = iter('scanExcept')(xs);
+      return result.tag === 'Except.ok' ? {value: str(result.fields[0])} : {error: result.fields[0]};
+    }),
+    monadicRanges: [[], [1n,0n,3n], [2n,3n,4n]].flatMap(xs =>
+      [0n,1n,3n,5n,9007199254740993n].flatMap(start =>
+        [0n,1n,3n,5n,9007199254740993n].map(stop => {
+          const result = iter('arrayFoldM')(xs,start,stop);
+          return result.tag === 'Option.none' ? null : str(result.fields[0]);
+        }))),
     arrayRanges: arrays.flatMap(xs => [0n,1n,3n,5n,9007199254740993n].flatMap(start =>
       [0n,1n,3n,5n,9007199254740993n].map(stop => ({
         fold:str(f('arrayFold')(xs,start,stop)), filter:natArray(f('arrayFilter')(xs,2n,start,stop))
@@ -89,6 +101,19 @@ test('array contracts preserve range, callback order, and immutable inputs', () 
   assert.equal(f('arrayFold')(xs,999999999999999999999999n,1000000000000000000000000n),7n);
   assert.deepEqual(f('arrayFilter')(xs,0n,1n,2n),[2n]);
   assert.deepEqual(xs,[1n,2n,3n]);
+});
+
+test('generic array iteration preserves break, continue, and first-match evaluation', () => {
+  const visited = [];
+  const xs = Object.freeze([1n,2n,3n,0n,99n]);
+  assert.equal(iter('scanId')(x => { visited.push(x); return x * 10n; }, xs), 50n);
+  assert.deepEqual(visited, [2n,3n]);
+  visited.length = 0;
+  const found = iter('arrayFind')(x => {
+    visited.push(x); return ctor(x === 3n ? 'Bool.true' : 'Bool.false');
+  }, xs);
+  assert.deepEqual(found, ctor('Option.some', [3n]));
+  assert.deepEqual(visited, [1n,2n,3n]);
 });
 
 test('generated TypeScript declarations parse and expose retained ABI slots', async () => {

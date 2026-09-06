@@ -210,6 +210,11 @@ that dependency. No additional packages are needed.
 
 ## P04/P08: array ranges, static Hook validation, and declarations
 
+Top-level initialization and the compiled-library import API are documented in the
+[composition guide](../../docs/COMPOSABILITY.md). Generated manifests and TypeScript
+types include the library interface, imports, initialization roots, and per-declaration
+import ownership. ESM imports preserve the producer's exported value identity.
+
 `Array.foldl` is a seven-slot intrinsic:
 `(α, β, callback, initial, array, start, stop)`. `Array.filter` has five slots:
 `(α, predicate, array, start, stop)`. Both visit indices in increasing order in
@@ -219,8 +224,10 @@ array. Bounds remain bigint until an in-range array index is selected. Filter
 returns only accepted elements from that range, in original order, and expects
 tagged `Bool.true`/`Bool.false`. Input arrays are never mutated. The native/Node
 corpus compares 75 combinations of arrays and bounds, including bounds beyond
-2^53. Supporting these pure operations does **not** admit `Array.foldlM` or
-`Array.filterM`; their native/implemented_by dependencies still require contracts.
+2^53. The compiler also lowers the safe reference bodies of `Array.forIn'` and
+`Array.foldlM`, retaining generic Monad dictionaries, early exits, and failure
+semantics. It does not lower their unsafe native replacements. Other unregistered
+native/implemented_by dependencies still require contracts.
 
 `Options.hooks : HookConfig` enables a conservative abstract evaluation of the
 pure-LCNF Hook program, before emission. No React module is imported by LeanJS.

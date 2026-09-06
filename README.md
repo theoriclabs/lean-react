@@ -1,6 +1,16 @@
 # LeanReact
 
-Write React components, reusable behavior, and shared application models in Lean. LeanReact is an experimental implementation of the [vision](VISION.md): ordinary functions, callbacks, generic components, and reusable ontologies are its main building blocks.
+Compose your frontend. Share the rest.
+
+Write React components, reusable behavior, and shared application models in Lean. Ordinary functions, callbacks, and ontologies are the building blocks. LeanReact compiles real Lean declarations to JavaScript and renders them through React.
+
+![LeanReact showcase with a live Lean counter beside its source code](docs/images/showcase.png)
+
+[Run locally](#run-locally) · [Explore the examples](#the-playground) · [Read the vision](VISION.md) · [Current scope](docs/IMPLEMENTED.md)
+
+LeanReact is experimental. Components, collection forms, shared contexts, and domain logic work in the demonstrated subset. APIs and the generated ABI can change; [the composition guide](docs/COMPOSABILITY.md) explains what works and the remaining boundaries.
+
+## A component is a Lean value
 
 ```lean
 import LeanReact
@@ -16,14 +26,36 @@ def Counter : Component CounterProps := component fun props => do
   ]
 ```
 
-The browser build compiles Lean declarations into JavaScript modules and renders them through React. The example's domain rules, event closures, custom hooks, and component render functions come from Lean source.
+The example's domain rules, event closures, custom hooks, and component render functions come from Lean source. Swap a layout by passing another component. Share a rule by importing the same domain module. Independently compiled libraries can import one shared context through an explicit ESM dependency.
+
+## The playground
+
+`npm run dev` serves the showcase at `http://localhost:4173`. It includes a live counter, syntax-highlighted excerpts from the actual Lean files, and three interactive examples:
+
+| Example | Try it | Lean source |
+| --- | --- | --- |
+| Composable workspace | Switch board/inbox layouts, swap field editors, and save a ticket | [Tickets components](examples/lean/Examples/Tickets/Components.lean) |
+| Collection forms | Add, edit, reorder, and remove keyed rows; inspect nested validation errors | [Collections](examples/lean/Examples/Collections.lean) |
+| Shared contexts | Change a provider value and watch a consumer from another compiled library update | [Library example](examples/lean/Examples/Libraries/App.lean) |
+
+The workspace reuses the same editor behavior across layouts:
+
+![Working Tickets workspace with a saved edit, reusable counters, and composition controls](docs/images/workspace.png)
+
+Collection validation follows the current row order while each row retains its own state:
+
+![Collection form after reordering, showing retained row state, nested validation errors, and its actual Lean source](docs/images/collections.png)
+
+These are real browser captures. Run `npm run screenshots` to regenerate them with Playwright Chromium, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome executable. Screenshot capture also checks the mobile page for horizontal overflow.
+
+## Engine and examples
 
 The reusable [engine](engine/README.md) and [example applications](examples/README.md) have separate source roots:
 
 ```text
 engine/                  Lean libraries, compiler, runtime, and React bridge
 examples/lean/           Lean example components, domains, and generators
-examples/web/            Browser demo entry point and CSS
+examples/web/            Showcase website, browser entry point, and CSS
 examples/consumer/       Independent JavaScript/TypeScript consumers
 examples/adapters/       Example-specific foreign and service bindings
 examples/native/         Optional Tickets server using LeanDB and LeanHttp
@@ -44,6 +76,8 @@ npm run dev
 ```
 
 Open `http://localhost:4173`. The development command watches sources and rebuilds; refresh the browser after a successful build. `npm test` runs Lean checks, compiler parity tests, mounted React tests, and generated-component integration tests. The compiler, native backend, and compiler/protocol test harnesses are Lean; browser/build tooling uses JavaScript/TypeScript. No Python installation is required. Native SQLite/HTTP integration has its own optional dependencies and commands.
+
+The showcase is a static site: `npm run build` writes its HTML, CSS, favicon, and bundled JavaScript to `examples/dist/`. Assets use relative URLs so the site can be served under a subdirectory. The default examples run locally in browser memory. The native service below is optional.
 
 The same compiled workspace can use the native service. Build the optional adapter with `bash examples/native/build-cached.sh`, then run these in two terminals:
 

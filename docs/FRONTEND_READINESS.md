@@ -4,7 +4,9 @@ Reviewed the working tree on 2026-09-06. LeanReact can already support a small C
 
 This review assumes that React, the JavaScript runtime, and reusable host bindings remain part of the implementation. The target is for application authors to write their components, behavior, and shared domain modules in Lean without repeatedly adding application-specific JavaScript plumbing.
 
-## Reproduced issues
+## Reproduced issues — resolved
+
+The three findings below describe the original review. They are now fixed: collection APIs compile, top-level values initialize before rendering, and explicit library imports preserve shared declaration identity. The [composition guide](COMPOSABILITY.md) documents the implementation and current regression coverage. General frontend readiness still has the remaining limits listed below.
 
 ### P1: collection form APIs do not compile to JavaScript
 
@@ -54,9 +56,9 @@ The relevant interaction is between lazy declaration/export emission in [Compile
 
 | Area | Current capability | Work needed for ordinary frontend development |
 | --- | --- | --- |
-| Component composition | Generic components, callback props, element slots, keyed children, replaceable layouts, and reusable hooks work. | Reliable shared module identity; compile and mount the full public composition surface. |
+| Component composition | Generic components, callback props, element slots, keyed children, replaceable layouts, reusable hooks, and shared library imports work. | Automatic package/build configuration; broader composition with browser and foreign libraries. |
 | Shared domain logic | Typed identities, paths, validation, domain rules, and projections work independently of React. | Browser codecs and transport interpretation still require manually mirrored JavaScript structures. |
-| Forms and asynchronous work | Single-field drafts, functional updates, resources, stale-response suppression, and revisioned saves are exercised. | Fix collection compilation; exercise nested forms; add reusable mutation/cache policies as applications need them. |
+| Forms and asynchronous work | Single-field and collection drafts, nested field validation, keyed row edits, resources, stale-response suppression, and revisioned saves are exercised. | Broader nested application forms; reusable mutation/cache policies as applications need them. |
 | Browser interaction | Click/change/keydown snapshots and a small DOM prop surface. | Submit/focus/pointer/file events, synchronous default/propagation control, DOM refs, focus/measurement, and typed browser services. |
 | Styling | Ordinary CSS and `className` work. | Lean style values, style-object conversion, CSS extraction, and Tailwind integration are absent. Ordinary CSS remains a valid application path. |
 | React ecosystem | A small ordinary React component is bridged; a TypeScript consumer wraps generated Lean components. | Actual library integrations, compound components, ref forwarding, foreign hook contracts, and easier binding authoring. shadcn is untested. |
@@ -71,7 +73,7 @@ Some documentation still describes an earlier implementation stage. For example,
 
 ## Recommended sequence
 
-1. **Make the existing composition API work throughout the browser path.** Fix collection iteration coverage and context initialization/identity. Add a cross-module provider test and a generated nested collection form. Preserve ordinary functions and explicit service dictionaries as the main abstraction mechanisms.
+1. **Completed: collection iteration and context initialization/identity.** Generated collection forms and cross-library providers now have mounted and browser coverage. Continue preserving ordinary functions and explicit service dictionaries as the main abstraction mechanisms.
 2. **Make browser and foreign bindings reusable library values.** Build on the extracted `LeanReact.Compiler` configuration. Add event policies, refs, style objects, and a consistent way to bind modules, components, and hooks. Qualify an actual shadcn Button and controlled Dialog with a custom trigger, keyboard behavior, and focus restoration.
 3. **Build one routed application outside the example tree.** Give it list/detail/settings routes, URL state, a collection form, shared providers from another package, remote operations, and failure/retry behavior. Reuse ontology codecs through a general browser transport. The application should expose remaining needs without copying framework internals.
 4. **Make that application pleasant to develop and ship.** Add application build configuration, production bundling, source diagnostics, repeatable CI/browser checks, and the styling integration it uses. Expand performance and compatibility testing against this application. Hydration and RSC are separate requirements for applications that need them.
@@ -79,6 +81,8 @@ Some documentation still describes an earlier implementation stage. For example,
 The practical threshold is an independent application that can compose a second Lean library and a real React library without patching the framework for each screen. Small internal tools are already feasible with the current constraints. A comfortable general SPA toolkit is several focused milestones away. Broad production readiness requires further application experience and qualification; the current tests do not justify a percentage-complete or calendar estimate.
 
 ## Verification
+
+Current follow-up: `npm test` passes 57 JavaScript tests plus Lean checks and TypeScript. Browser checks pass for the new collection and library examples and the existing Tickets flows. The new tests live in `tests/compiler/Modules.lean`, `tests/integration/composability.test.mjs`, and `tests/browser/composability.spec.mjs`; iteration parity extends the existing compiler corpus. The commands below record the original review, before these fixes.
 
 - `npm test`: passed, including 52 JavaScript tests plus the Lean checks and TypeScript consumer.
 - `npm run build`: passed.

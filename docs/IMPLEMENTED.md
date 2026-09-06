@@ -13,6 +13,8 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Replace local storage with a remote service | The same compiled `Workspace`, an ordinary `TicketService Action` record | Native browser tests |
 | Reorder stateful children | `keyedEach`, stable component definitions, scoped keys | Generated-component integration tests |
 | Supply a function-bearing provider | `Context Formatter`, a nested component | Generated-component integration tests |
+| Share a context across compiled libraries | One shared ESM dependency, independently compiled provider and consumer | Mounted/SSR integration and browser tests |
+| Compose a collection form with nested field validation | `Editor.list`, `DraftParser.list/product`, focused fields, stateful keyed rows | Generated validation and browser tests |
 | Call a foreign React component | A named intrinsic with a typed Lean reference, callback, and child element | Generated-component integration tests |
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |
@@ -71,6 +73,10 @@ The neutral libraries provide typed paths, optional lenses, scoped nominal IDs, 
 
 Forms keep raw input separate from parsed values. Field bindings support representation mapping, lens focus, optional children, and keyed collection edits. Editors and layouts are caller-supplied components/functions. Derivation and a default widget registry are not required.
 
+The collection example exercises adding, editing, reversing, and removing rows, preserving local row state and DOM identity, and accumulating validation paths across nested fields. The compiler supports `Array.forIn'` and `Array.foldlM` through their safe Lean reference bodies, including ordinary `for` loops and `Array.find?`.
+
+Top-level values initialize automatically before rendering. `LeanJS.Options.libraries` imports public declarations from compiled libraries using their manifests; contexts and components keep their object identity across those imports. See [collections and library linking](COMPOSABILITY.md) for the build API, runnable examples, and dependency constraints.
+
 `Ontology.Query` is a typed description of local stages with a reference interpreter. It supports reusable filters, projections, limits, concatenation, and products. It preserves their written order. Its function fields are local executable values; this is not a serializable SQL language, and there is no SQL pushdown optimizer. The native adapter uses existing LeanDB persistence APIs. [Native adapter notes](NATIVE.md) propose upstream changes based on that integration.
 
 ## Wire and native integration
@@ -85,7 +91,7 @@ The browser wire adapter is explicit JavaScript glue tested against the native L
 
 - The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack.
 - The function-based DOM API is implemented. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
-- Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Export context declarations as initialization roots so their lazy constants initialize before rendering; `examples/lean/Examples/Smoke.lean` shows this convention.
+- Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Context export ordering is automatic; contexts created inside render still need to be hoisted.
 - There is no shared query cache, distributed subscription protocol, optimistic mutation framework, router, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.
 - The native server is a local fixture adapter. Authentication, authorization, deployment, and package publication are separate work. It binds loopback by default.
 

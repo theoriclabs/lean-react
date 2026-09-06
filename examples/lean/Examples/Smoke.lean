@@ -2,11 +2,12 @@ import Examples.ReactCompiler
 import Examples.Tickets.Components
 import Examples.Composition
 import Examples.Foreign
+import Examples.Showcase
 
 run_meta do
   IO.FS.createDirAll "examples/generated"
   LeanJS.writeModule "examples/generated/smoke.mjs" #[
-    `Examples.Composition.formatterContext,
+    `Examples.Showcase.Counter,
     `Examples.Tickets.CounterProps.mk,
     `Examples.Tickets.Counter, `Examples.Composition.Counters, `Examples.Composition.Formatted,
     `Examples.Foreign.Interop]

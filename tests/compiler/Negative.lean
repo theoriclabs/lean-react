@@ -38,14 +38,13 @@ run_meta do
   logInfo message
 end Rejected
 
--- Supporting Array.foldl does not globally admit its native monadic implementation.
-def rejectedNativeFold (xs : Array Nat) : Nat := Id.run (xs.foldlM (fun a b => pure (a+b)) 0)
+-- Reference-body support does not admit the unsafe native replacement itself.
 run_meta do
   let result ← try
-    let _ ← LeanJS.compile #[`rejectedNativeFold]
+    let _ ← LeanJS.compile #[`Array.foldlMUnsafe]
     pure (none : Option String)
   catch e => pure (some (← e.toMessageData.toString))
-  let some message := result | throwError "Expected unregistered foldlM to be rejected"
-  unless (message.splitOn "Array.foldlM").length > 1 && (message.splitOn "implemented_by").length > 1 do
+  let some message := result | throwError "Expected unsafe native fold to be rejected"
+  unless (message.splitOn "Array.foldlMUnsafe").length > 1 && (message.splitOn "unsafe declaration").length > 1 do
     throwError "Wrong native fold diagnostic: {message}"
   logInfo message

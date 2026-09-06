@@ -29,6 +29,13 @@ def main : IO Unit := do
     Json.mkObj [("fold", strNat (arrayFold xs start stop)),
       ("filter", natArray (arrayFilter xs 2 start stop))]
   let result := Json.mkObj [
+    ("iteration", Json.arr ((#[#[], #[1], #[2,3,0,9], #[9,0], #[1,2,3]] : Array (Array Nat)).map fun xs =>
+      match scanExcept xs with
+      | .ok n => Json.mkObj [("value", strNat n)]
+      | .error message => Json.mkObj [("error", toJson message)])),
+    ("monadicRanges", Json.arr ((#[#[], #[1,0,3], #[2,3,4]] : Array (Array Nat)).flatMap fun xs =>
+      bounds.flatMap fun start => bounds.map fun stop =>
+        match arrayFoldM xs start stop with | none => Json.null | some n => strNat n)),
     ("arrayRanges", Json.arr arrayRanges),
     ("observation", toJson observation),
     ("monadId", Json.arr (ns.map (strNat ∘ programId))),

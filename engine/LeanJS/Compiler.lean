@@ -2,6 +2,7 @@ import Lean
 import Lean.Compiler.LCNF.ToDecl
 import LeanJS.Hooks
 import LeanJS.Declarations
+import LeanJS.Modules
 
 open Lean Compiler LCNF
 
@@ -20,6 +21,10 @@ structure Options where
   hooks : HookConfig := {}
   /-- Host representations that must not be described using native-reference fields. -/
   opaqueTypes : Array Name := #[`LeanReact.Hook, `LeanReact.Action, `LeanReact.Element, `LeanReact.Context, `LeanReact.Cell]
+  /-- Set when publishing an importable library. Standalone output needs no identity. -/
+  library : Option LibraryId := none
+  /-- Shared declarations are imported by identity, without recompiling or rewrapping. -/
+  libraries : Array LibraryImport := #[]
   deriving Inhabited
 
 private def quote (s : String) : String := (Json.str s).compress
@@ -87,6 +92,8 @@ private structure State where
   constructors : Array Json := #[]
   constructorNames : NameSet := {}
   hookPlans : Array Json := #[]
+  initializers : Array Name := #[]
+  usedLibraries : Array Nat := #[]
 
 private structure Context where
   options : Options
@@ -154,11 +161,23 @@ mutual
     if let some plan ← HookCheck.validate n (← read).options.hooks ((← read).exports.contains n) then
       modify fun s => {s with hookPlans := s.hookPlans.push plan}
     let sourceType ← Meta.MetaM.run' do return (← Meta.ppExpr info.type).pretty
+    for i in [:((← read).options.libraries.size)] do
+      let dependency := (← read).options.libraries[i]!
+      if let some signature := dependency.interface.exports.find? (·.name == n) then
+        modify fun s => { s with
+          usedLibraries := if s.usedLibraries.contains i then s.usedLibraries else s.usedLibraries.push i
+          imports := s.imports.push s!"import \{ {quote n.toString} as i{name} } from {quote dependency.module};"
+          declarations := s.declarations.push s!"const {name} = $lazy(() => i{name});"
+          metadata := s.metadata.push (Json.mkObj [("name", toJson n.toString),
+            ("arity", toJson signature.arity), ("type", toJson sourceType),
+            ("importedFrom", toJson dependency.interface.id)]) }
+        return
     if let some ext := (← read).options.intrinsics.find? (·.leanName == n) then
       let arity ← Meta.MetaM.run' <| Meta.forallTelescopeReducing info.type fun xs _ => pure xs.size
       unless arity == ext.arity do
         fail path s!"intrinsic arity mismatch: registered {ext.arity}, Lean declaration has {arity} slots"
       modify fun s => { s with
+        initializers := if arity == 0 then s.initializers.push n else s.initializers
         imports := s.imports.push s!"import \{ {quote ext.exportName} as i{name} } from {quote ext.module};"
         declarations := s.declarations.push (if arity == 0 then s!"const {name} = $lazy(() => i{name});" else s!"const {name} = $lazy(() => $fn({arity}, i{name}));")
         metadata := s.metadata.push (Json.mkObj [("name", toJson n.toString), ("arity", toJson arity), ("intrinsic", toJson true), ("type", toJson sourceType)]) }
@@ -182,11 +201,17 @@ mutual
         else s!"$ctor({quote n.toString}, [{fields}])"
       let value := if ps.isEmpty then body else s!"$fn({ps.size}, ({joined ps}) => {body})"
       modify fun s => { s with
+        initializers := if ps.isEmpty then s.initializers.push n else s.initializers
         declarations := s.declarations.push s!"const {name} = $lazy(() => {value});"
         metadata := s.metadata.push (Json.mkObj [("name", toJson n.toString), ("arity", toJson ps.size), ("constructor", toJson true), ("type", toJson sourceType)]) }
       return
     if info.isUnsafe then fail path "unsafe declaration has no explicit intrinsic contract"
-    if (getImplementedBy? env n).isSome then fail path "implemented_by declaration has no explicit intrinsic contract"
+    -- These core definitions have portable, structurally recursive reference bodies.
+    -- Lower those bodies, never their native USize/unsafe replacements. In particular,
+    -- retain the caller's Monad dictionary and ForInStep early-exit behavior.
+    let portableReference := n == `Array.forIn' || n == `Array.foldlM
+    if (getImplementedBy? env n).isSome && !portableReference then
+      fail path "implemented_by declaration has no explicit intrinsic contract"
     if (getExternAttrData? env n).isSome then fail path "unsupported native extern operation"
     if hasInitAttr env n then fail path "native initialization is unsupported"
     let d ← try CompilerM.run (toDecl n) catch e => fail path s!"LCNF lowering failed: {← e.toMessageData.toString}"
@@ -198,6 +223,7 @@ mutual
     let ps := joined (d.params.map (varName ·.fvarId))
     let value := if d.params.isEmpty then s!"(() => \{\n{body}})()" else s!"$fn({d.params.size}, ({ps}) => \{\n{body}})"
     modify fun s => { s with
+      initializers := if d.params.isEmpty then s.initializers.push n else s.initializers
       declarations := s.declarations.push s!"const {name} = $lazy(() => {value});"
       metadata := s.metadata.push (Json.mkObj [("name", toJson n.toString), ("arity", toJson d.params.size), ("parameters", toJson (d.params.map fun p => p.binderName.toString)), ("type", toJson sourceType)]) }
 
@@ -264,9 +290,40 @@ structure Artifacts where
   javascript : String
   declarations : String
   manifest : Json
+  library : Option LibraryInterface
+
+/-- Reuse the exact public interface of a producer in the same build program. -/
+def Artifacts.asImport (artifacts : Artifacts) (module : String) : Except String LibraryImport :=
+  match artifacts.library with
+  | some interface => .ok { module, interface }
+  | none => .error "LeanJS: set Options.library before importing these artifacts"
+
+private def validateLibraries (options : Options) : CoreM Unit := do
+  let mut names : NameSet := {}
+  let mut ids : Array LibraryId := #[]
+  let mut modules : Array String := #[]
+  for dependency in options.libraries do
+    let interface := dependency.interface
+    unless interface.abi == "leanjs-v0" && interface.lean == "4.33.0" do
+      throwError "LeanJS: incompatible library ABI/toolchain: {dependency.module}"
+    if options.library == some interface.id then
+      throwError "LeanJS: a library cannot import its own identity: {dependency.module}"
+    if ids.contains interface.id || modules.contains dependency.module then
+      throwError "LeanJS: duplicate library identity or module: {dependency.module}"
+    ids := ids.push interface.id
+    modules := modules.push dependency.module
+    for signature in interface.exports do
+      if names.contains signature.name then
+        throwError "LeanJS: ambiguous library ownership of {signature.name}"
+      if options.intrinsics.any (·.leanName == signature.name) then
+        throwError "LeanJS: library/intrinsic overlap for {signature.name}"
+      names := names.insert signature.name
+      unless (← exportSignature signature.name) == signature do
+        throwError "LeanJS: library signature mismatch for {signature.name} in {dependency.module}; rebuild against the same Lean interface"
 
 /-- Compile actual declarations, validate Hook boundaries, and describe the public ABI. -/
 def compileArtifacts (exports : Array Name) (options : Options := {}) : CoreM Artifacts := do
+  validateLibraries options
   let mut seen : NameSet := {}
   for n in exports do
     if seen.contains n then throwError "LeanJS: duplicate export {n}"
@@ -277,15 +334,30 @@ def compileArtifacts (exports : Array Name) (options : Options := {}) : CoreM Ar
     if seen.contains i.leanName then throwError "LeanJS: duplicate intrinsic registration for {i.leanName}"
     seen := seen.insert i.leanName
   let (_, s) ← ((exports.forM (visit · #[])).run { options, exports }).run {}
+  let library ← options.library.mapM fun id => do
+    return ({ id, exports := ← exports.mapM exportSignature } : LibraryInterface)
   let mut out := "// Generated by LeanJS for Lean 4.33.0; ABI v0.\n" ++ String.intercalate "\n" s.imports.toList ++ "\n"
   out := out ++ include_str "Runtime.js"
+  for i in s.usedLibraries do
+    let dependency := options.libraries[i]!
+    out := out ++ s!"\nimport \{ __leanjs as l{i} } from {quote dependency.module};\n"
+    out := out ++ s!"$checkLibrary(l{i}, {(toJson dependency.interface).compress});\n"
   out := out ++ "\n" ++ String.intercalate "\n" s.declarations.toList ++ "\n"
+  -- All thunks exist before initialization, so forward references remain valid.
+  -- A top-level value has module lifetime, including when only used inside render.
+  for n in s.initializers do
+    out := out ++ s!"{ident n}();\n"
   for n in exports do
     out := out ++ s!"const e{ident n} = {ident n}();\nexport \{ e{ident n} as {quote n.toString} };\n"
-  let manifest := Json.mkObj [("abi", toJson "leanjs-v0"), ("lean", toJson "4.33.0"), ("exports", toJson (exports.map toString)), ("declarations", toJson s.metadata), ("constructors", toJson s.constructors), ("hookPlans", toJson s.hookPlans)]
+  let manifest := Json.mkObj [("abi", toJson "leanjs-v0"), ("lean", toJson "4.33.0"),
+    ("library", toJson library),
+    ("imports", toJson (s.usedLibraries.map fun i => toJson options.libraries[i]!.interface)),
+    ("initialized", toJson (s.initializers.map toString)),
+    ("exports", toJson (exports.map toString)), ("declarations", toJson s.metadata),
+    ("constructors", toJson s.constructors), ("hookPlans", toJson s.hookPlans)]
   out := out ++ "export { $fn as __leanjs_fn };\n"
   let declarations ← TypeScript.emit exports options.opaqueTypes
-  return ⟨out ++ s!"export const __leanjs = {manifest.compress};\n", declarations, manifest⟩
+  return ⟨out ++ s!"export const __leanjs = {manifest.compress};\n", declarations, manifest, library⟩
 
 /-- Backwards-compatible ESM-only entry point. -/
 def compile (exports : Array Name) (options : Options := {}) : CoreM String := do
