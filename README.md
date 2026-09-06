@@ -6,7 +6,7 @@ Write React components, reusable behavior, and shared application models in Lean
 
 ![LeanReact showcase with a live Lean counter beside its source code](docs/images/showcase.png)
 
-[Run locally](#run-locally) · [Explore the examples](#the-playground) · [Read the vision](VISION.md) · [Current scope](docs/IMPLEMENTED.md)
+[Run locally](#run-locally) · [How-to guide](docs/HOW_TO.md) · [Agent skill](SKILL.md) · [Read the vision](VISION.md) · [Current scope](docs/IMPLEMENTED.md)
 
 LeanReact is experimental. Components, collection forms, shared contexts, and domain logic work in the demonstrated subset. APIs and the generated ABI can change; [the composition guide](docs/COMPOSABILITY.md) explains what works and the remaining boundaries.
 
@@ -92,6 +92,18 @@ LEANREACT_API=http://127.0.0.1:8081 npm run dev
 Open `http://localhost:4173/?service=native`. This uses the sibling LeanDB and LeanHttp checkouts; see [native setup and tests](docs/NATIVE.md). `npm run example:consumer` exercises the generated domain module from Node, and `npx tsc --noEmit` checks the TypeScript consumer.
 
 Real-browser checks are `npm run test:browser` and `npm run test:native:browser` (build the optional native adapter first). Install a Playwright Chromium browser or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chromium/Chrome executable. On this Mac, the verified value is `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`.
+
+## Build your own frontend
+
+The [how-to guide](docs/HOW_TO.md) walks through a complete Lean form, from a shared domain parser to a mounted React page. It also covers replaceable editors, focused fields, keyed collections, shared library contexts, services, CSS, and JavaScript/TypeScript interop.
+
+For coding agents, [SKILL.md](SKILL.md) maps the implementation, composition patterns, compiler boundaries, and validation commands. Ask your agent to read it from this checkout before starting; it does not require a particular agent client.
+
+```text
+Read SKILL.md and docs/HOW_TO.md. Build a collection editor for our domain
+with replaceable row and layout components. Retain invalid drafts, verify
+add/edit/reorder/remove in the browser, and keep application code outside engine/.
+```
 
 ## Library boundaries
 
