@@ -1,0 +1,49 @@
+# LeanReact runtime
+
+This is an ESM library bridge. It does not start a server, render a static website, or depend on a generated compiler module. The parent supplies React and integrates the separate [intrinsic contract](INTRINSICS.md).
+
+Required host packages: matching `react` and `react-dom` versions (tested with 19.2.8). Tests additionally use `jsdom` (tested with 29.1.1) and Node's built-in test runner (tested with Node 24.11.1). No bundler, TypeScript transpiler, package manifest changes, or dependency installation are part of P03. The .mjs bridge is usable from JavaScript or TypeScript; standalone TypeScript declaration files are not supplied yet.
+
+```js
+import * as React from "react";
+import { createRoot } from "react-dom/client";
+import { createRuntime, hook } from "./runtime/react.mjs";
+
+const runtime = createRuntime(React);
+const Counter = runtime.component(() => hook(() => {
+  const state = runtime.runHook(runtime.useState(0n, "count"));
+  return runtime.dom("button", {
+    type: "button",
+    onClick: runtime.onPress(state.modify(n => n + 1n)),
+  }, [runtime.text(`Count: ${state.value}`)]);
+}), { name: "Counter", hookPlan: [{ kind: "state", site: "count" }] });
+
+// The host provides a DOM container.
+export function mount(container) {
+  const root = createRoot(container);
+  root.render(runtime.element(Counter, undefined));
+  return () => root.unmount();
+}
+```
+
+The example demonstrates the independent host API; it is not a substitute for compiler integration. Hook values are lazy synchronous computations; Action values are lazy event/effect computations which may return promises. `pureHook`, `bindHook`/`mapHook` (on the runtime), `pureAction`, `bindAction`, `mapAction`, and `catchAction` compose these values. Use an injected runtime's `runHook` only inside its component render or another Hook. `runAction` is the explicit host runner and is forbidden during render.
+
+`component` returns a stable React function. Create definitions outside rendering and reuse them. `element` carries arbitrary props, including closures and render props, inside one `leanProps` property; it never JSON-serializes or spreads application props. `foreignElement` is the explicit bridge for conventional React components. `keyedEach` uses keyed Fragments so multi-node rows preserve identity as a group and duplicate sibling keys produce errors.
+
+`onPress` accepts an already constructed Action. `onClick`, `onChange`, and `onKeyDown` accept payload-to-Action functions and snapshot primitive data synchronously. Callback construction may happen in render; callback actions run at the event boundary. Managed effects use `useEffect(dependencies, setupAction, site)`; setup must return a cleanup Action. Supply `onActionError` to `createRuntime` to report rejected asynchronous actions/effects. The default rethrows errors.
+
+Run focused checks from the repository root:
+
+```sh
+sh tests/runtime/check-lean.sh
+node --test tests/runtime/*.test.mjs
+```
+
+The Lean script compiles library modules into the owned `tests/runtime/lean-build/` directory, checks positive and negative types and the complete API examples, then executes native reference tests. JS tests mount actual React roots in jsdom; missing dependencies cause a visible failure, not a silently skipped suite. The action-only tests need no React or DOM: `node --test tests/runtime/actions.test.mjs`.
+
+See [LeanReact/API.md](../LeanReact/API.md) for the Lean authoring surface and native-reference limits. Real-browser rendering, hydration, performance, generated resource integration, and compiler static hook analysis require additional integration checks; jsdom is not a real-browser qualification.
+
+
+P06 adds `resources.mjs`: initialize `createResourceHooks(React, runtime)` once and execute its `useResource(key, loader, dependencies, enabled, site)` Hook inside a component. A loader returns an Action whose result is `{ok:true,value}` or `{ok:false,error}`; thrown/rejected host errors become separate exception failures. Requests provide a token, AbortSignal, cancellation Action, and cleanup registration. Refresh, dependency changes, disabling, and unmount invalidate prior generations. See [the P06 contract](INTRINSICS.md#p06-forms-and-resource-integration) for source signatures, exact erased slots, record layouts, and codec obligations.
+
+`node --test tests/runtime/resources.test.mjs` mounts resources in actual React with controlled promises. The full test command includes these tests and the existing P03 suite. The Lean check script additionally compiles the minimal ontology/domain dependencies into its own build directory, tests forms against the actual Tickets parser, runs the resource reference model, and checks the P06 examples and five additional expected type errors. No extra packages are needed for P06.

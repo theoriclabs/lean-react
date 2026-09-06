@@ -1,0 +1,29 @@
+name = "leanreact"
+version = "0.1.0"
+defaultTargets = ["LeanOntology", "LeanContract", "LeanReact", "LeanJS", "LeanReact.Compiler"]
+
+[[input_file]]
+name = "leanJsRuntime"
+path = "engine/LeanJS/Runtime.js"
+text = true
+
+[[lean_lib]]
+name = "LeanOntology"
+srcDir = "engine"
+
+[[lean_lib]]
+name = "LeanContract"
+srcDir = "engine"
+
+[[lean_lib]]
+name = "LeanReact"
+srcDir = "engine"
+
+[[lean_lib]]
+name = "LeanJS"
+srcDir = "engine"
+needs = ["leanJsRuntime"]
+
+[[lean_lib]]
+name = "Examples"
+srcDir = "examples/lean"

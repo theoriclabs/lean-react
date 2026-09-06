@@ -1,0 +1,38 @@
+name = "tickets_native"
+version = "0.1.0"
+defaultTargets = ["tickets_server", "tickets_protocol", "tickets_checks", "tickets_http_checks"]
+
+[[require]]
+name = "leanreact"
+path = "../.."
+
+[[require]]
+name = "leansqlite"
+path = "../../../leandb_v2/.lake/packages/leansqlite"
+
+[[require]]
+name = "leandb"
+path = "../../../leandb_v2"
+
+[[require]]
+name = "leanhttp"
+path = "../../../leanhttp"
+
+[[lean_lib]]
+name = "NativeTickets"
+
+[[lean_exe]]
+name = "tickets_server"
+root = "ServerMain"
+
+[[lean_exe]]
+name = "tickets_protocol"
+root = "ProtocolMain"
+
+[[lean_exe]]
+name = "tickets_checks"
+root = "CheckMain"
+
+[[lean_exe]]
+name = "tickets_http_checks"
+root = "HttpCheckMain"

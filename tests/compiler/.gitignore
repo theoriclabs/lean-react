@@ -1,0 +1,9 @@
+.build/
+generated.mjs
+intrinsic-generated.mjs
+native.json
+*.d.ts
+*.d.mts
+*.manifest.json
+integration/
+hook-inspect.txt

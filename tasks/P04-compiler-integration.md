@@ -1,0 +1,9 @@
+# P04/P08: Compiler integration and hook validation
+
+Continue after compiler receipt. Own only engine/LeanJS/, engine/LeanJS.lean, tests/compiler/. Parent owns Examples and adapters. Current `lake env lean examples/lean/Examples/Generate.lean` fails at Array.foldl -> Array.foldlM implemented_by. The real Tickets app is available to use as a compile probe; don't edit it. Add correct tested primitive contracts required to compile it (Array.foldl and likely Array.filter; inspect type arities and semantics such as start/stop). Make results match native Lean, don't bypass dependency diagnostics globally.
+
+Add a conservative source/LCNF hook placement validation for exported components/custom hooks. Trace-only runtime checking currently exists but first-render conditional hooks must produce a useful diagnostic. A rejected unsupported higher-order hook program is acceptable initially; ordinary fixed sequencing through reusable custom Hook functions, props-dependent values, and conditional *elements* must remain usable. Store static metadata if useful. At minimum verify direct Hook branch inconsistency and loops, with negative tests; document exact coverage rather than claiming global effect inference.
+
+Provide generated .d.ts support for public exports matching actual erased slots/tagged value ABI (no dishonest plain React prop types). Generic safe ABI declarations + machine manifest are a reasonable baseline; typed declarations for concrete supported structure/function exports improve reuse. Add commands/helpers only under owned paths and tell parent how to invoke.
+
+Run focused tests and compile examples/lean/Examples/Generate.lean through current bridge. Use isolated test build path first in LEAN_PATH to avoid concurrent lake build races. Do not edit parent files, runtime, ontology, sibling repos. No commits/push/deletion/secrets/network/spending/publishing/external messages or agents. Report changes and limitations precisely.

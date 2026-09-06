@@ -1,0 +1,17 @@
+{
+  "version": "1.2.0",
+  "packagesDir": ".lake/packages",
+  "packages": [
+    {"type": "path", "scope": "", "name": "leanreact", "manifestFile": "lake-manifest.json",
+     "inherited": false, "dir": "../..", "configFile": "lakefile.toml"},
+    {"type": "path", "scope": "", "name": "leansqlite", "manifestFile": "lake-manifest.json",
+     "inherited": false, "dir": "../../../leandb_v2/.lake/packages/leansqlite", "configFile": "lakefile.lean"},
+    {"type": "path", "scope": "", "name": "leandb", "manifestFile": "lake-manifest.json",
+     "inherited": false, "dir": "../../../leandb_v2", "configFile": "lakefile.toml"},
+    {"type": "path", "scope": "", "name": "leanhttp", "manifestFile": "lake-manifest.json",
+     "inherited": false, "dir": "../../../leanhttp", "configFile": "lakefile.lean"}
+  ],
+  "name": "tickets_native",
+  "lakeDir": ".lake",
+  "fixedToolchain": false
+}

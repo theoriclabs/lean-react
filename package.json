@@ -1,0 +1,37 @@
+{
+  "name": "leanreact-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:engine": "lake build",
+    "test": "node scripts/test.mjs",
+    "test:compiler": "lake env lean --run tests/Run.lean compiler",
+    "test:compiler:integration": "lake env lean --run tests/Run.lean integration",
+    "test:runtime": "node --test tests/runtime/*.test.mjs",
+    "test:browser": "npm run build && playwright test",
+    "test:native": "bash tests/native/check.sh",
+    "test:native:http": "bash tests/native/run-http.sh",
+    "test:native:browser": "npm run build && playwright test --config=playwright.native.config.mjs",
+    "example:consumer": "node examples/consumer/main.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "dev": "node scripts/dev.mjs --watch"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.4.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "esbuild": "0.28.2",
+    "jsdom": "29.1.1",
+    "typescript": "7.0.2"
+  }
+}
