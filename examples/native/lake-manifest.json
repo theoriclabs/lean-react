@@ -2,6 +2,8 @@
   "version": "1.2.0",
   "packagesDir": ".lake/packages",
   "packages": [
+    {"type": "path", "scope": "", "name": "leanapp_native", "manifestFile": "lake-manifest.json",
+     "inherited": false, "dir": "../../adapters/native", "configFile": "lakefile.lean"},
     {"type": "path", "scope": "", "name": "leanreact", "manifestFile": "lake-manifest.json",
      "inherited": false, "dir": "../..", "configFile": "lakefile.toml"},
     {"type": "path", "scope": "", "name": "leansqlite", "manifestFile": "lake-manifest.json",

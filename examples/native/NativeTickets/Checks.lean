@@ -28,17 +28,20 @@ def initializeFixture (path : System.FilePath) : IO Store := do
   store.insertFixture ⟨id, hugeRevision, ⟨⟨"Native integration fixture"⟩, .backlog, some user⟩⟩
   pure store
 
-def localTransport (ops : PublicOperations) (store : Store) : Transport IO where
-  send request := do
-    let path := if request.operation.name == "list" then "/api/tickets/list" else "/api/tickets/save"
-    let reply ← dispatch ops store "POST" path (encodeRequest ops request).compress
+def localTransport (ops : PublicOperations) (store : Store) : Transport IO :=
+  match makeClient ops "http://127.0.0.1" with
+  | .error errors => { send := fun _ => pure (.error (.decode errors)) }
+  | .ok client => client.transportWith fun http => do
+    let path := toString http.uri.path
+    let body := match http.body with | .json json => json.compress | _ => ""
+    let reply ← dispatch ops store (toString http.method) path body
     -- Exercise the actual LeanHttp success/status decoding paths without opening a socket.
     let response : LeanHttp.Response := {
       status := (Std.Http.Status.ofCode none reply.status.toUInt16).getD .internalServerError
       headers := .empty
       body := reply.body.compress.toUTF8
       effectiveUri := Std.Http.URI.parse! s!"http://127.0.0.1{path}" }
-    pure (decodeOutcome ops request (response.decodeAs (α := Lean.Json)))
+    pure (response.decodeAs (α := Lean.Json))
 
 /-- The same checks drive the real SQLite dispatcher and the real LeanHttp transport. -/
 def scenario (ops : PublicOperations) (transport : Transport IO) : IO Unit := do

@@ -1,6 +1,8 @@
 # Experimental interface agreement
 
-This file coordinates the first compiler/runtime implementation. It is an implementation contract, not a public stable API. Workers may propose a necessary change here through their report; the integrating agent resolves cross-module changes.
+This is the historical coordination agreement for the first compiler/runtime implementation, not a current contributor assignment or a stable public API. For the implemented representation contract, read the [LeanJS ABI](../engine/LeanJS/ABI.md). For application assembly, read [LeanApp interfaces](FULLSTACK_INTERFACES.md). Current contribution guidance lives in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+The original agreement follows.
 
 ## Ownership
 

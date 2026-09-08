@@ -1,8 +1,10 @@
 # LeanReact runtime
 
-This is an ESM library bridge. It does not start a server, render a static website, or depend on a generated compiler module. The parent supplies React and integrates the separate [intrinsic contract](INTRINSICS.md).
+[LeanApp documentation](../../docs/README.md) · [LeanReact guide](../../docs/LEANREACT.md)
 
-Required host packages: matching `react` and `react-dom` versions (tested with 19.2.8). Tests additionally use `jsdom` (tested with 29.1.1) and Node's built-in test runner (tested with Node 24.11.1). No bundler, TypeScript transpiler, package manifest changes, or dependency installation are part of P03. The .mjs bridge is usable from JavaScript or TypeScript; standalone TypeScript declaration files are not supplied yet.
+This is an ESM library bridge within LeanApp. It does not start a server, render a static website, or depend on a generated compiler module. The host supplies React; the compiler adapter integrates the separate [intrinsic contract](INTRINSICS.md).
+
+Required host packages: matching `react` and `react-dom` versions (tested with 19.2.8). Tests additionally use `jsdom` (tested with 29.1.1) and Node's built-in test runner (tested with Node 24.11.1). The runtime itself needs no bundler or TypeScript transpiler; this repository's root workspace supplies its development dependencies. The .mjs bridge is usable from JavaScript or TypeScript; standalone TypeScript declaration files are not supplied yet.
 
 ```js
 import * as React from "react";
@@ -41,7 +43,7 @@ node --test tests/runtime/*.test.mjs
 
 The Lean script compiles library modules into the owned `tests/runtime/lean-build/` directory, checks positive and negative types and the complete API examples, then executes native reference tests. JS tests mount actual React roots in jsdom; missing dependencies cause a visible failure, not a silently skipped suite. The action-only tests need no React or DOM: `node --test tests/runtime/actions.test.mjs`.
 
-See [LeanReact/API.md](../LeanReact/API.md) for the Lean authoring surface and native-reference limits. Real-browser rendering, hydration, performance, generated resource integration, and compiler static hook analysis require additional integration checks; jsdom is not a real-browser qualification.
+See [LeanReact/API.md](../LeanReact/API.md) for the Lean authoring surface and native-reference limits. `npm test` adds generated-component/resource integration and compiler static hook checks. `npm run test:browser` exercises real-browser rendering separately. These focused runtime tests do not establish browser compatibility, general hydration support or application performance.
 
 
 P06 adds `resources.mjs`: initialize `createResourceHooks(React, runtime)` once and execute its `useResource(key, loader, dependencies, enabled, site)` Hook inside a component. A loader returns an Action whose result is `{ok:true,value}` or `{ok:false,error}`; thrown/rejected host errors become separate exception failures. Requests provide a token, AbortSignal, cancellation Action, and cleanup registration. Refresh, dependency changes, disabling, and unmount invalidate prior generations. See [the P06 contract](INTRINSICS.md#p06-forms-and-resource-integration) for source signatures, exact erased slots, record layouts, and codec obligations.

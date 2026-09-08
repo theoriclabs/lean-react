@@ -1,4 +1,6 @@
-# LeanReact source API (P03/P06)
+# LeanReact source API
+
+[LeanApp documentation](../../docs/README.md) · [LeanReact guide](../../docs/LEANREACT.md)
 
 `import LeanReact` exposes buildable Lean 4.33 definitions for `Component Props`, `Hook α`, `Action α`, typed elements/events, state, context, forms, resources, and managed effects. Native reference implementations and the integrated engine/LeanJS/React adapter are tested. See [INTRINSICS.md](../runtime/INTRINSICS.md) and the [implemented scope](../../docs/IMPLEMENTED.md).
 
@@ -145,9 +147,11 @@ Effect dependencies are `Array Dependency`, with `.string`, `.nat`, `.int`, and 
 
 This native model is a **single-render reference interpreter**. `useState` allocates a fresh typed IO cell on each invocation; `Reference.render` does not reconcile mounted identities or schedule rerenders. Every explicit reference commit runs its queued effects; it does not compare dependencies across renders. React supplies persistent mounted state, batching, key reconciliation, and dependency-sensitive lifecycle behavior. Native `Action.ofIO` and `Action.catchError` are reference/host facilities, not portable browser IO imports.
 
-P03 did not include forms or resources; the additive P06 APIs below now supply them. There is still no source syntax macro, `@[react]` annotation, compiler static hook-placement checker, router, SSR/hydration qualification, or foreign-component source generator. Keep hook calls unconditional, label state/effect/context sites, and render stateful repeated rows through child components. The JS runtime compares committed traces and accepts a compiler-produced `hookPlan`; it cannot prove all control-flow paths safe. Hoist component definitions and stable generic factory results outside render; the parent must preserve their identity in compiled output.
+Forms and resources are included below. LeanJS also checks fixed primitive-hook sequences through reachable components and named custom hooks, rejecting inconsistent branches, unsupported repetition and dynamic site labels. See the [compiler hook checks](../../tests/compiler/Hooks.lean). Keep hook calls unconditional, label state/effect/context sites, and render stateful repeated rows through child components. The JS runtime compares committed traces and checks the compiler-produced `hookPlan` as an additional guard. Hoist component definitions and stable generic factory results outside render so their identities survive rerenders.
 
-Verification: `sh tests/runtime/check-lean.sh` compiles the library and this complete example, asserts five invalid programs do not type-check, and runs executable reference checks. `node --test tests/runtime/*.test.mjs` tests the independent ESM bridge with real React roots in jsdom. No generated-Lean React mounting is claimed until the parent connects the intrinsic ABI.
+There is no source view-syntax macro, `@[react]` annotation, router or foreign-component source generator. SSR has a tested example workload, not general SSR/hydration qualification. See the [implemented scope and limits](../../docs/IMPLEMENTED.md).
+
+Verification: `sh tests/runtime/check-lean.sh` compiles the library and this complete example, asserts five invalid programs do not type-check, and runs executable reference checks. `node --test tests/runtime/*.test.mjs` tests the independent ESM bridge with real React roots in jsdom. `npm test` additionally checks the compiler and mounts generated Lean components in the [integration suite](../../tests/integration/). `npm run test:browser` runs the separate real-browser suite; jsdom alone does not establish browser compatibility.
 
 
 ## P06: parser-driven drafts and composable editors

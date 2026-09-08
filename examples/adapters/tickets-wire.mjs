@@ -1,36 +1,15 @@
 // Explicit public-wire / LeanJS representation adapter. Domain validation stays in Lean.
 import * as domain from '../generated/domain.mjs';
+import { CallFailure, wireObject as object, encodeNat, decodeNat, defineHttpOperation, decodeHttpReply, createHttpClient } from '../../engine/LeanContract/Fetch.mjs';
+export { CallFailure, encodeNat, decodeNat };
 
 const ctor = (tag, fields = []) => ({ tag, fields });
 const ok = value => ctor('Except.ok', [value]);
 const err = value => ctor('Except.error', [value]);
 const identity = name => ({ namespace: 'leanreact.tickets', name, version: '1' });
 
-export class CallFailure extends Error {
-  constructor(kind, code, detail = null) {
-    super(code); this.name = 'CallFailure'; this.kind = kind; this.code = code; this.detail = detail;
-  }
-}
 function fail(code, value) { throw new CallFailure('decode', code, value); }
-function object(value, keys) {
-  if (!value || typeof value !== 'object' || Array.isArray(value) ||
-      Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) fail('decode.object', value);
-  return value;
-}
 function string(value) { if (typeof value !== 'string') fail('decode.string', value); return value; }
-function equalIdentity(left, right) {
-  object(left, ['namespace', 'name', 'version']);
-  return left.namespace === right.namespace && left.name === right.name && left.version === right.version;
-}
-export function encodeNat(value) {
-  if (typeof value !== 'bigint' || value < 0n) fail('encode.nat', value);
-  return { tag: 'nat', value: value.toString() };
-}
-export function decodeNat(value) {
-  object(value, ['tag', 'value']);
-  if (value.tag !== 'nat' || typeof value.value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value.value)) fail('decode.nat', value);
-  return BigInt(value.value);
-}
 export function encodeId(value, name = 'Ticket') {
   return { type: { package: 'leanreact.tickets', name }, scope: value.fields[0].fields[0], key: value.fields[1] };
 }
@@ -81,56 +60,37 @@ export function encodeSave(value) {
   return { id: encodeId(id), expectedRevision: encodeNat(expectedRevision), title: title.fields[0], status: encodeStatus(status) };
 }
 
-// Decode non-2xx bodies too: domain failures carry useful typed payloads.
+const listOperation = defineHttpOperation({
+  identity: identity("list"), kind: "query", path: "/api/tickets/list", encodeInput: () => null,
+  decodeOutput(value) {
+    if (!Array.isArray(value)) fail("decode.array", value);
+    return value.map(decodeSummary);
+  },
+});
+const saveOperation = defineHttpOperation({
+  identity: identity("save"), kind: "command", path: "/api/tickets/save", encodeInput: encodeSave,
+  decodeOutput: decodeSummary,
+  decodeError(value) {
+    object(value, ["tag", "value"]);
+    if (value.tag === "notFound" && value.value === null) return ctor("Examples.Tickets.SaveError.notFound");
+    if (value.tag === "conflict") return ctor("Examples.Tickets.SaveError.conflict", [decodeSummary(value.value)]);
+    throw new CallFailure("protocol", "response.invalid_domain_error", value);
+  },
+  errorStatus: error => error.tag === "Examples.Tickets.SaveError.notFound" ? 404 : 409,
+});
+const operations = [listOperation, saveOperation];
+const leanResult = result => result.ok ? ok(result.value) : err(result.error);
+
 export function decodeReply(name, status, body) {
-  const expected = identity(name);
-  if (body?.tag === 'success' || body?.tag === 'domainError') {
-    object(body, ['operation', 'tag', 'value']);
-    if (!equalIdentity(body.operation, expected)) throw new CallFailure('protocol', 'response.operation_mismatch', body);
-    if (body.tag === 'success') {
-      if (status !== 200) throw new CallFailure('protocol', 'response.status_mismatch', body);
-      if (name === 'list') {
-        if (!Array.isArray(body.value)) fail('decode.array', body.value);
-        return ok(body.value.map(decodeSummary));
-      }
-      return ok(decodeSummary(body.value));
-    }
-    if (name !== 'save') throw new CallFailure('protocol', 'response.unexpected_domain_error', body);
-    object(body.value, ['tag', 'value']);
-    if (body.value.tag === 'notFound' && body.value.value === null && status === 404)
-      return err(ctor('Examples.Tickets.SaveError.notFound'));
-    if (body.value.tag === 'conflict' && status === 409)
-      return err(ctor('Examples.Tickets.SaveError.conflict', [decodeSummary(body.value.value)]));
-    throw new CallFailure('protocol', 'response.invalid_domain_error', body);
-  }
-  if (body?.tag === 'incompatible' && status === 409) {
-    object(body, ['tag', 'expected', 'received']);
-    if (!equalIdentity(body.received, expected)) throw new CallFailure('protocol', 'response.operation_mismatch', body);
-    object(body.expected, ['namespace', 'name', 'version']);
-    throw new CallFailure('incompatible', 'contract.incompatible', body);
-  }
-  if (body?.tag === 'decode' && status === 400) throw new CallFailure('decode', 'server.decode', body.errors);
-  if (body?.tag === 'protocol' && status >= 400) throw new CallFailure('protocol', string(body.code), body);
-  throw new CallFailure('protocol', 'response.unknown_envelope', body);
+  const operation = operations.find(op => op.identity.name === name);
+  if (!operation) throw new CallFailure("protocol", "operation.not_found");
+  return leanResult(decodeHttpReply(operation, status, body));
 }
 
-export function createTicketsClient({ baseURL = '', fetch: fetchImpl = globalThis.fetch } = {}) {
-  async function call(name, input, signal) {
-    const request = { operation: identity(name), kind: name === 'list' ? 'query' : 'command', input };
-    let response;
-    try {
-      response = await fetchImpl(`${baseURL}/api/tickets/${name}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request), signal,
-      });
-    } catch (cause) {
-      throw new CallFailure(signal?.aborted ? 'cancelled' : 'transport', signal?.aborted ? 'request.cancelled' : 'request.failed', cause);
-    }
-    let body;
-    try { body = await response.json(); } catch (cause) { throw new CallFailure('decode', 'response.invalid_json', cause); }
-    return decodeReply(name, response.status, body);
-  }
+export function createTicketsClient(options = {}) {
+  const client = createHttpClient({ ...options, operations });
   return {
-    async list({ signal } = {}) { return (await call('list', null, signal)).fields[0]; },
-    save(input, { signal } = {}) { return call('save', encodeSave(input), signal); },
+    async list(options) { return (await client.call(listOperation.identity, null, options)).value; },
+    async save(input, options) { return leanResult(await client.call(saveOperation.identity, input, options)); },
   };
 }

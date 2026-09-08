@@ -43,8 +43,10 @@ private def storedSummary (stored : LeanDb.Stored TicketRow) : LeanDb.DbM Ticket
     .decode (LeanDb.Entity.tableName TicketRow) "public_value" (reprStr errors))
 
 private def findRow (id : TicketId) : LeanDb.DbM (Option (LeanDb.Stored TicketRow)) := do
-  let rows ← LeanDb.fetchAll TicketRow
-  pure (rows.find? fun row => row.val.publicScope == id.scope.value && row.val.publicKey == id.key)
+  let rows ← LeanDb.selectP [TicketRow] (.and
+    (.eq (.here TicketRow.Field.publicScope) .eq id.scope.value)
+    (.eq (.here TicketRow.Field.publicKey) .eq id.key))
+  pure rows[0]?
 
 private def saveCurrent (input : SaveTicket) : LeanDb.DbM (Except SaveError TicketSummary) := do
   let some old ← findRow input.id | return .error .notFound
@@ -63,24 +65,6 @@ private def saveCurrent (input : SaveTicket) : LeanDb.DbM (Except SaveError Tick
         return .error (.conflict (← storedSummary latest))
       | other => throw other
 
-/-- The sibling transaction helper is private. Flat records avoid nested child transactions.
-    BEGIN IMMEDIATE also serializes writers using other SQLite connections/processes. -/
-private def transaction (conn : LeanDb.Conn) (action : LeanDb.DbM α) : IO (Except LeanDb.DbError α) := do
-  try conn.raw.exec "BEGIN IMMEDIATE"
-  catch error => return .error (.sqlite (toString error))
-  let result ← try action.run conn catch error => pure (.error (.sqlite (toString error)))
-  match result with
-  | .error error =>
-    try conn.raw.exec "ROLLBACK" catch _ => pure ()
-    return .error error
-  | .ok value =>
-    try
-      conn.raw.exec "COMMIT"
-      return .ok value
-    catch error =>
-      try conn.raw.exec "ROLLBACK" catch _ => pure ()
-      return .error (.sqlite (toString error))
-
 private def requireDb (action : IO (Except LeanDb.DbError α)) : IO α := do
   match ← action with
   | .ok value => pure value
@@ -94,11 +78,11 @@ def Store.open (path : System.FilePath) : IO Store := do
   let conn ← requireDb (LeanDb.openDb path (LeanDb.Entity.specs TicketRow))
   conn.raw.exec "PRAGMA busy_timeout = 5000"
   conn.raw.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS tickets_public_identity ON {LeanDb.quoteIdent (LeanDb.Entity.tableName TicketRow)} (publicScope, publicKey)"
-  requireDb <| transaction conn do
+  requireDb <| (LeanDb.withTransaction do
     if (← LeanDb.fetchAll TicketRow).isEmpty then
       let tickets ← LeanDb.DbM.ofExcept (seed.mapError (fun errors =>
         LeanDb.DbError.decode "seed" "tickets" (reprStr errors)))
-      for ticket in tickets do discard <| LeanDb.insert TicketRow (TicketRow.ofSummary ticket)
+      for ticket in tickets do discard <| LeanDb.insert TicketRow (TicketRow.ofSummary ticket)).run conn
   pure ⟨← Std.Mutex.new conn⟩
 
 def Store.list (store : Store) : IO (Array TicketSummary) :=
@@ -111,14 +95,19 @@ def Store.save (store : Store) (input : SaveTicket) : IO (Except SaveError Ticke
     -- Direct native callers also use the domain validator. Wire callers already decoded it.
     if let .error error := Title.parse input.title.value then
       throw (IO.userError (TitleError.message error))
-    requireDb <| transaction (← ref.get) (saveCurrent input)
+    let conn ← ref.get
+    requireDb <| (LeanDb.transaction do
+      match ← saveCurrent input with
+      | .ok value => return .commit value
+      | .error error => return .abort error).run conn
 
 def Store.service (store : Store) : TicketService IO := ⟨store.list, store.save⟩
 
 /-- Test setup for a nonnumeric public key; never exposed by the HTTP router. -/
 def Store.insertFixture (store : Store) (ticket : TicketSummary) : IO Unit :=
   store.connection.atomically fun ref => do
-    requireDb <| transaction (← ref.get) do
-      discard <| LeanDb.insert TicketRow (TicketRow.ofSummary ticket)
+    let conn ← ref.get
+    requireDb <| (LeanDb.withTransaction do
+      discard <| LeanDb.insert TicketRow (TicketRow.ofSummary ticket)).run conn
 
 end NativeTickets

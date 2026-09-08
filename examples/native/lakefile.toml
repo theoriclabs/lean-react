@@ -18,6 +18,10 @@ path = "../../../leandb_v2"
 name = "leanhttp"
 path = "../../../leanhttp"
 
+[[require]]
+name = "leanapp_native"
+path = "../../adapters/native"
+
 [[lean_lib]]
 name = "NativeTickets"
 

@@ -1,6 +1,10 @@
 # LeanReact: expressive applications from composable Lean libraries
 
-Status: proposed ideal state. Written September 5, 2026, after inspecting the local `leandb_v2` and `leanhttp` working trees. LeanReact is currently an empty project. The APIs, syntax, package names, and commands below are design proposals; examples describe the intended developer experience and are not an implemented API.
+This is the frontend design within the [LeanApp framework](README.md). For the overall product and repository boundaries, read the [full-stack vision](FULLSTACK_VISION.md) and [current architecture](docs/ARCHITECTURE.md). LeanReact remains a reusable frontend library in this monorepo.
+
+Status: frontend design vision, originally written September 5, 2026, when LeanReact was an empty project. An experimental implementation now exists; see [current support](docs/IMPLEMENTED.md) for the implemented API. Sections below retain design proposals that extend beyond that implementation.
+
+The September 7 [full-stack framework vision](FULLSTACK_VISION.md) builds on a fresh review of LeanReact, LeanHttp, and LeanDB. It covers domain modeling, authoritative application operations, and deployment on Railway and Heroku.
 
 ## The goal
 

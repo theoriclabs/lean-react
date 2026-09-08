@@ -1,4 +1,12 @@
-# Native Tickets adapter (P07)
+# Native Tickets adapter
+
+[Documentation](README.md) · [LeanApp architecture](ARCHITECTURE.md) · [Hosted café setup](HOSTING.md)
+
+This guide is for the local Tickets compatibility fixture. For LeanApp's authenticated full-stack app, start with [getting started](GETTING_STARTED.md) and [authentication](AUTH.md). The Tickets protocol and its `leanreact.tickets` namespace remain unchanged by the LeanApp product name.
+
+Tickets now uses the reusable LeanApp registry and optional native HTTP adapter.
+The [implementation status](LEANAPP_STATUS.md) records the current qualification
+and remaining release gates. The local fixture still has no production authentication.
 
 The optional package in `examples/native` implements the shared
 [`Examples.Tickets.Domain`](../examples/lean/Examples/Tickets/Domain.lean) using real LeanDB
@@ -78,7 +86,7 @@ Inspected sibling versions/HEADs:
 
 | Dependency | Version / inspected HEAD |
 | --- | --- |
-| LeanDB | 0.3.0 / `ae877ee6e6224ee43d29d5ce9e0442545d94a4a9` |
+| LeanDB | 0.3.0 / `f01db4837a18f13bed8c22af5be831d42eafbcc8` plus local FS03 transaction and FS08 runtime callback patches |
 | LeanHttp | 0.3.1 / `9adb3d6535a5e3c46cb2dff8a1000db2449aa207` |
 | leansqlite | 0.1.0 / `0be4df908d1a8e75b58961041e2b4973692623df` |
 
@@ -259,16 +267,19 @@ representations. Reconstruction validates titles, statuses, scope/key pairs,
 canonical revision text, and paired nullable assignee columns.
 
 `Store.open` uses `LeanDb.openDb`/`Entity.specs`. Inserts, reads, and updates use
-`LeanDb.insert`, `fetchAll`, `get`, and the existing compare-and-swap `update`.
-The only adapter SQL is transaction control, a busy timeout, and the explicit
-public-identity unique index.
+`LeanDb.insert`, `fetchAll`, `get`, typed `selectP`, and compare-and-swap `update`.
+Public-ID lookup pushes both scope and key through a typed predicate against the
+composite unique index. The only adapter SQL sets a busy timeout and creates
+that index; transaction control belongs to the public LeanDB API.
 
 `Store.service : TicketService IO` interprets the shared ordinary dictionary.
 A save reads the current row under a `BEGIN IMMEDIATE` transaction, reconstructs
 its public summary, and calls the shared `applySave`. It returns `notFound` or
 `conflict current` when appropriate, otherwise updates through LeanDB's CAS
 verb and commits. A defensive CAS failure rereads current persisted data.
-Transactions roll back on database/IO failure.
+`LeanDb.transaction` rolls back on database/IO failure and on an explicit domain
+abort. Seeding and fixture insertion use `LeanDb.withTransaction`. Both APIs
+compose with child-row savepoints; there is no private adapter transaction wrapper.
 
 Every connection is protected by `Std.Mutex`; a connection is never accessed
 concurrently by multiple HTTP requests. SQLite work and lock waiting run in a
@@ -344,9 +355,9 @@ concurrent-save conflicts, draft preservation, and incompatible contracts.
 
 ## Limits and supported upstream proposals
 
-This is a local native example, with no authentication, TLS termination,
-authorization policy, graceful service drain, idempotency
-policy, or migration workflow. It binds loopback only. The HTTP server limits
+This is a local native example, with no production authentication or TLS termination.
+Its explicitly named fixture policy is not deployable authorization. Graceful service drain,
+idempotency and migration workflows are not implemented. It binds loopback only. The HTTP server limits
 request bodies to 1 MiB and connections to 64. Query/command identity is checked
 but does not statically restrict the capabilities of the host `IO` monad.
 Contract versions are explicit public versions, independent of LeanDB's
@@ -356,11 +367,10 @@ object-key limitation.
 
 Concrete extraction proposals supported by this implementation:
 
-1. **Public transaction combinator in LeanDB.** `LeanDb.Db.transaction` is
-   private, so this adapter supplies a small `BEGIN IMMEDIATE`/commit/rollback
-   wrapper around existing verbs. An exported combinator with transaction mode
-   and nesting behavior would remove that duplication. This adapter stays flat
-   because child-table verbs can start their own transactions.
+1. **Public transaction combinator in LeanDB.** Implemented in FS03 and used
+   here. Outer writes use `BEGIN IMMEDIATE`; nested work uses savepoints and
+   typed domain aborts roll back. Native connections enforce synchronous
+   ownership and reject reuse after failed cleanup.
 2. **Explicit lossless wire adapter.** LeanDB's storage integer codec is Int64
    and its existing JSON representation is not the browser protocol. Revisions
    are stored as validated decimal TEXT and use ontology codecs at public
@@ -371,11 +381,17 @@ Concrete extraction proposals supported by this implementation:
    bodies there. `decodeOutcome` and portable `decodeHttpResponse` demonstrate
    the seam without adding a competing blanket `FromBody` instance or changing
    LeanHttp's core semantics.
-4. **Typed public-key lookup.** The initial adapter uses `fetchAll` followed by
-   a scope/key match, preserving correctness but taking linear work per save.
-   A later mapping can use LeanDB's existing typed predicate/select APIs to push
-   this lookup. That is an adapter optimization; no query-planner redesign is
-   required for this example.
+4. **Typed public-key lookup.** Implemented with a `Pred [TicketRow]` and
+   `selectP`, using the existing composite scope/key index.
 
-All source changes are confined to `examples/lean/Examples/Tickets/Contracts.lean`,
-`examples/native/`, `tests/native/`, and this document.
+Generic registration lives in `engine/LeanApp`, shared HTTP codecs and browser
+transport in `engine/LeanContract`, and native serving/client bindings in
+`adapters/native`. `NativeTickets.Registration` contains the application-specific
+publication and fixture policy.
+
+`LeanAppNative.Managed` separately connects application dispatch to an owned
+LeanDB runtime. It rebuilds handlers from the current connection inside admission,
+checks their public manifest against frozen metadata, and keeps readiness outside
+the database queue. The native framework check includes 44 assertions for this
+adapter. Tickets' Store-based listener has not yet moved onto that lifecycle;
+see [implementation status](LEANAPP_STATUS.md) for the qualification boundary.

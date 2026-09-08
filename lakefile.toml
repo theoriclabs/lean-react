@@ -1,6 +1,7 @@
+# LeanApp portable workspace. Preserve the Lake package name for existing consumers.
 name = "leanreact"
 version = "0.1.0"
-defaultTargets = ["LeanOntology", "LeanContract", "LeanReact", "LeanJS", "LeanReact.Compiler"]
+defaultTargets = ["LeanOntology", "LeanContract", "LeanApp", "LeanReact", "LeanJS", "LeanReact.Compiler"]
 
 [[input_file]]
 name = "leanJsRuntime"
@@ -16,6 +17,10 @@ name = "LeanContract"
 srcDir = "engine"
 
 [[lean_lib]]
+name = "LeanApp"
+srcDir = "engine"
+
+[[lean_lib]]
 name = "LeanReact"
 srcDir = "engine"
 
@@ -27,3 +32,15 @@ needs = ["leanJsRuntime"]
 [[lean_lib]]
 name = "Examples"
 srcDir = "examples/lean"
+
+[[lean_lib]]
+name = "Ordering"
+srcDir = "examples/ordering"
+
+[[lean_lib]]
+name = "Cafe"
+srcDir = "examples/ordering"
+
+[[lean_lib]]
+name = "PrivateNotes"
+srcDir = "examples/security"

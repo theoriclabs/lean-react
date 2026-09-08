@@ -1,4 +1,8 @@
-# Experimental implementation
+# LeanReact implementation and limits
+
+[Documentation](README.md) · [LeanReact](LEANREACT.md) · [LeanApp framework status](LEANAPP_STATUS.md)
+
+This page covers the frontend library, compiler/runtime integrations and local Tickets fixture. Authentication and the hosted café are separate LeanApp integrations; their qualification is recorded in the framework status and [release evidence](RELEASE.md).
 
 The implementation compiles real Lean declarations to JavaScript and runs them through React. The public source API uses `Component Props`, `Hook α`, and `Action α`. The [vision](../VISION.md) describes the larger direction; this document describes the current boundary.
 

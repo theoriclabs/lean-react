@@ -1,5 +1,9 @@
 # LeanReact implementation plan
 
+This plan records the frontend foundation within the LeanApp monorepo. The current framework work is tracked by the [full-stack plan](FULLSTACK_IMPLEMENTATION_PLAN.md) and [implementation status](docs/LEANAPP_STATUS.md); this document is not the full-stack completion report.
+
+This document records the completed experimental P00–P09 work. The [LeanApp implementation plan](FULLSTACK_IMPLEMENTATION_PLAN.md) defines the next full-stack work packages from the [full-stack vision](FULLSTACK_VISION.md).
+
 This plan executes the [vision](VISION.md) in dependency order. Composable functions, components, and shared domain behavior are the primary acceptance criteria. The first deliverable is a working experimental library with a reproducible example and documented limits. Publishing packages, modifying production deployments, and formal compiler verification are separate release decisions.
 
 ## Implementation decisions

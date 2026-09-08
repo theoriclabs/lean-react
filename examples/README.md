@@ -1,9 +1,14 @@
-# LeanReact examples
+# LeanApp examples
 
-All application-specific source lives here and consumes the reusable [engine](../engine/README.md).
+These applications and portable domain models consume the reusable [LeanApp libraries](../engine/README.md). Start with the [café guide](../docs/GETTING_STARTED.md) for the full-stack path, or [LeanReact](../docs/LEANREACT.md) for Lean-authored components. The café's native integration currently lives in [LeanAppNative.Cafe](../adapters/native/LeanAppNative/Cafe.lean); it remains application-specific code, not a framework domain type.
 
 | Directory | Content |
 | --- | --- |
+| `ordering/` | Portable ordering domain and café rules; no React/SQLite imports in the domain. |
+| `cafe/` | Proof & Pour React/JavaScript UI, Lean preview bridge and private recipe client. |
+| `security/` | Pure Private Notes authorization policy, scoped reads and response proofs. |
+| `notes/` | Private Notes React UI and recorded agent-patch rejection evidence; [guide](../docs/PRIVATE_NOTES.md). |
+| `auth/` | Focused username/password auth UI; native adapter is in `adapters/native`. |
 | `lean/Examples/` | Tickets domain, contracts, components, queries, composition examples, and code generators |
 | `web/` | Showcase website, browser entry point, HTML, and ordinary CSS |
 | `consumer/` | Independent Node and TypeScript consumers of generated Lean modules |
@@ -12,7 +17,9 @@ All application-specific source lives here and consumes the reusable [engine](..
 | `generated/` | Generated ESM, TypeScript declarations, and manifests; ignored by version control |
 | `dist/` | Browser bundle and static assets; ignored by version control |
 
-Run commands from the repository root:
+Run commands from the repository root. For the café, use `npm run build:cafe`, build `leanapp_cafe` in the native package, then `npm run dev:cafe`; the [full instructions](../docs/GETTING_STARTED.md) cover dependencies and local persistence. For the focused auth UI, see [authentication](../docs/AUTH.md).
+
+The frontend playground uses the original commands:
 
 ```sh
 npm run build

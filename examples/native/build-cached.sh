@@ -5,6 +5,7 @@ native_dir="$(cd "$(dirname "$0")" && pwd)"
 project_dir="$(cd "$native_dir/../.." && pwd)"
 db_dir="$(cd "$project_dir/../leandb_v2" && pwd)"
 http_dir="$(cd "$project_dir/../leanhttp" && pwd)"
+adapter_dir="$project_dir/adapters/native"
 sqlite_dir="$db_dir/.lake/packages/leansqlite"
 build_dir="$native_dir/.lake/cached"
 mkdir -p "$build_dir/lib/lean" "$build_dir/ir" "$build_dir/bin"
@@ -25,6 +26,7 @@ compile_module() {
   local module="$1" source="$2" source_root="$3"
   local package="tickets_native"
   if [[ "$source_root" != "$native_dir" ]]; then package="leanreact"; fi
+  if [[ "$source_root" == "$adapter_dir" ]]; then package="leanapp_native"; fi
   mkdir -p "$(dirname "$build_dir/lib/lean/$module.olean")" "$(dirname "$build_dir/ir/$module.c")"
   # Preserve module identity independently of the engine/example source roots.
   printf '{"name":"%s","package":"%s","isModule":false,"importArts":{},"dynlibs":[],"plugins":[],"options":{}}\n' \
@@ -38,7 +40,8 @@ cd "$project_dir"
 lean --version
 shared_modules=(LeanOntology/Path LeanOntology/Validation LeanOntology/Identity LeanOntology/Schema
   LeanOntology/Codec LeanOntology/Descriptor LeanOntology/Query LeanOntology LeanContract/Operation LeanContract/Transport
-  LeanContract Examples/Tickets/Domain Examples/Tickets/Contracts)
+  LeanContract/Http LeanContract LeanApp/Context LeanApp/Capability LeanApp/Binding
+  LeanApp/Module LeanApp/Application LeanApp Examples/Tickets/Domain Examples/Tickets/Contracts)
 shared_objects=()
 for module in "${shared_modules[@]}"; do
   if [[ "$module" == Examples/* ]]; then
@@ -54,14 +57,19 @@ if [[ "${1:-}" == "--contracts-only" ]]; then
   exit 0
 fi
 
-native_modules=(NativeTickets/Storage NativeTickets/Http NativeTickets/Client NativeTickets NativeTickets/Checks)
+for module in LeanAppNative/Server LeanAppNative/Client; do
+  compile_module "$module" "$adapter_dir/$module.lean" "$adapter_dir"
+  shared_objects+=("$build_dir/ir/$module.o")
+done
+
+native_modules=(NativeTickets/Storage NativeTickets/Registration NativeTickets/Http NativeTickets/Client NativeTickets NativeTickets/Checks)
 for module in "${native_modules[@]}"; do
   compile_module "$module" "$native_dir/$module.lean" "$native_dir"
   shared_objects+=("$build_dir/ir/$module.o")
 done
 
 dependency_objects=()
-for module in Core Entity Json Derive Pred Select PlanElab Db; do
+for module in Core Entity Json Derive Pred Select PlanElab Transaction Db; do
   dependency_objects+=("$db_dir/.lake/build/ir/LeanDb/$module.c.o.export")
 done
 while IFS= read -r object; do dependency_objects+=("$object"); done < <(

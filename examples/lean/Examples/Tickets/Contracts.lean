@@ -1,5 +1,6 @@
 import Examples.Tickets.Domain
 import LeanContract
+import LeanContract.Http
 
 namespace Examples.Tickets.Contracts
 open Ontology Contract
@@ -34,56 +35,10 @@ def statusCodec : Codec Status :=
 def ticketIdCodec : Codec TicketId := Codec.entityId ticketType
 def userIdCodec : Codec (EntityId User) := Codec.entityId userType
 
-def operationIdCodec : Validation (Codec OperationId) :=
-  Codec.record ⟨"leancontract", "OperationId"⟩ <|
-    (RecordFields.pure OperationId.mk)
-      |>.apply (RecordFields.field "namespace" Codec.string OperationId.namespaceName)
-      |>.apply (RecordFields.field "name" Codec.string OperationId.name)
-      |>.apply (RecordFields.field "version" Codec.string OperationId.version)
-
-def operationKindCodec : Codec OperationKind :=
-  Codec.string.checked (fun value => match value with
-    | "query" => .ok .query
-    | "command" => .ok .command
-    | _ => Validation.fail "operation.unknown_kind")
-    (fun kind => match kind with | .query => "query" | .command => "command")
-
-/-- Error paths use explicit segment tags, including exact integer indices. -/
-def pathSegmentCodec : Codec PathSegment where
-  schema := .named ⟨"ontology", "PathSegment"⟩ "1" (.variant
-    [("key", .string), ("index", .natural), ("variant", .string),
-     ("field", .record [("package", .string), ("owner", .string), ("name", .string)])])
-  encode
-    | .key name => JsonWire.tagged "key" (.str name)
-    | .index value => JsonWire.tagged "index" (Codec.nat.encode value)
-    | .variant tag => JsonWire.tagged "variant" (.str tag)
-    | .field owner name => JsonWire.tagged "field" (.mkObj
-        [("package", .str owner.packageName), ("owner", .str owner.name), ("name", .str name)])
-  decode value := do
-    JsonWire.object ["tag", "value"] value
-    let tag ← JsonWire.stringField "tag" value
-    match tag with
-    | "key" => PathSegment.key <$> Codec.field "value" Codec.string value
-    | "index" => PathSegment.index <$> Codec.field "value" Codec.nat value
-    | "variant" => PathSegment.variant <$> Codec.field "value" Codec.string value
-    | "field" => do
-      let payload ← JsonWire.get "value" value
-      JsonWire.object ["package", "owner", "name"] payload
-      let packageName ← JsonWire.stringField "package" payload
-      let owner ← JsonWire.stringField "owner" payload
-      let name ← JsonWire.stringField "name" payload
-      pure (.field ⟨packageName, owner⟩ name)
-    | _ => Validation.fail "decode.unknown_path_segment"
-
-def validationErrorsCodec : Validation (Codec ValidationErrors) := do
-  let error ← Codec.record ⟨"ontology", "ValidationError"⟩ <|
-    (RecordFields.pure ValidationError.mk)
-      |>.apply (RecordFields.field "code" Codec.string ValidationError.code)
-      |>.apply (RecordFields.field "path" (Codec.list pathSegmentCodec) ValidationError.path)
-      |>.apply (RecordFields.field "params" (Codec.list (Codec.product Codec.string Codec.string)) ValidationError.params)
-  pure <| (Codec.list error).checked (fun errors => match errors with
-    | [] => Validation.fail "decode.empty_errors"
-    | first :: rest => .ok ⟨first, rest⟩) ValidationErrors.toList
+def operationIdCodec := Contract.Http.operationIdCodec
+def operationKindCodec := Contract.Http.operationKindCodec
+def pathSegmentCodec := Contract.Http.pathSegmentCodec
+def validationErrorsCodec := Contract.Http.validationErrorsCodec
 
 structure PublicCodecs where
   ticket : Codec Ticket
@@ -141,68 +96,29 @@ def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
     ("operations", .arr #[ops.list.describe.toJson, ops.save.describe.toJson]),
     ("routes", .mkObj [("list", .str "/api/tickets/list"), ("save", .str "/api/tickets/save")])]
 
-def encodeRequest (ops : PublicOperations) (request : WireRequest) : Lean.Json :=
-  .mkObj [("operation", ops.codecs.operationId.encode request.operation),
-    ("kind", operationKindCodec.encode request.kind), ("input", request.input)]
+def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
+  ⟨ops.codecs.operationId, ops.codecs.errors⟩
 
-def decodeRequest (ops : PublicOperations) (value : Lean.Json) : Validation WireRequest := do
-  JsonWire.object ["operation", "kind", "input"] value
-  let operation ← Codec.field "operation" ops.codecs.operationId value
-  Validation.prependPath [.key "operation"] operation.validate
-  let kind ← Codec.field "kind" operationKindCodec value
-  let input ← JsonWire.get "input" value
-  pure ⟨operation, kind, input⟩
+def PublicOperations.errorStatuses (ops : PublicOperations) : List Contract.Http.ErrorStatus :=
+  [Contract.Http.ErrorStatus.ofOperation ops.save fun error => match error with
+    | .notFound => 404 | .conflict _ => 409]
 
-def successResponse (ops : PublicOperations) (operation : OperationId) (value : Lean.Json) : Lean.Json :=
-  .mkObj [("operation", ops.codecs.operationId.encode operation), ("tag", .str "success"), ("value", value)]
+def encodeRequest (ops : PublicOperations) := Contract.Http.encodeRequest ops.httpCodecs
+
+def decodeRequest (ops : PublicOperations) := Contract.Http.decodeRequest ops.httpCodecs
+
+def successResponse (ops : PublicOperations) := Contract.Http.successResponse ops.httpCodecs
 
 def domainResponse (ops : PublicOperations) (operation : OperationId) (error : SaveError) : Lean.Json :=
-  .mkObj [("operation", ops.codecs.operationId.encode operation), ("tag", .str "domainError"),
-    ("value", ops.codecs.saveError.encode error)]
+  Contract.Http.domainResponse ops.httpCodecs operation (ops.codecs.saveError.encode error)
 
-def decodeErrorResponse (ops : PublicOperations) (errors : ValidationErrors) : Lean.Json :=
-  .mkObj [("tag", .str "decode"), ("errors", ops.codecs.errors.encode errors)]
+def decodeErrorResponse (ops : PublicOperations) := Contract.Http.decodeErrorResponse ops.httpCodecs
 
-def incompatibleResponse (ops : PublicOperations) (expected received : OperationId) : Lean.Json :=
-  .mkObj [("tag", .str "incompatible"), ("expected", ops.codecs.operationId.encode expected),
-    ("received", ops.codecs.operationId.encode received)]
+def incompatibleResponse (ops : PublicOperations) := Contract.Http.incompatibleResponse ops.httpCodecs
 
-def protocolResponse (code : String) : Lean.Json :=
-  .mkObj [("tag", .str "protocol"), ("code", .str code)]
+def protocolResponse := Contract.Http.protocolResponse
 
-/-- Shared status policy: a non-2xx body is deliberately decoded, never discarded. -/
-def decodeHttpResponse (ops : PublicOperations) (request : WireRequest)
-    (status : Nat) (body : Lean.Json) : Except (CallError Empty) WireResponse := do
-  let tag ← (JsonWire.stringField "tag" body).mapError CallError.decode
-  let protocol := fun code => CallError.protocol ⟨code, some status, ""⟩
-  match tag with
-  | "success" | "domainError" =>
-    let _ ← (JsonWire.object ["operation", "tag", "value"] body).mapError CallError.decode
-    let identity ← (Codec.field "operation" ops.codecs.operationId body).mapError CallError.decode
-    if identity != request.operation then throw (protocol "response.operation_mismatch")
-    let value ← (JsonWire.get "value" body).mapError CallError.decode
-    if tag == "success" then
-      if status == 200 then pure (.success value) else throw (protocol "response.status_mismatch")
-    else
-      if request.operation != ops.save.identity then throw (protocol "response.unexpected_domain_error")
-      let error ← (ops.codecs.saveError.decode value).mapError CallError.decode
-      let expectedStatus := match error with | .notFound => 404 | .conflict _ => 409
-      if status != expectedStatus then throw (protocol "response.status_mismatch")
-      pure (.domainError value)
-  | "decode" =>
-    if status != 400 then throw (protocol "response.status_mismatch")
-    let errors ← (Codec.field "errors" ops.codecs.errors body).mapError CallError.decode
-    throw (.decode errors)
-  | "incompatible" =>
-    if status != 409 then throw (protocol "response.status_mismatch")
-    let expected ← (Codec.field "expected" ops.codecs.operationId body).mapError CallError.decode
-    let received ← (Codec.field "received" ops.codecs.operationId body).mapError CallError.decode
-    if received != request.operation then throw (protocol "response.operation_mismatch")
-    throw (.incompatible ⟨expected, received⟩)
-  | "protocol" =>
-    if status < 400 then throw (protocol "response.status_mismatch")
-    let code ← (JsonWire.stringField "code" body).mapError CallError.decode
-    throw (protocol code)
-  | _ => throw (protocol "response.unknown_tag")
+def decodeHttpResponse (ops : PublicOperations) :=
+  Contract.Http.decodeResponse ops.httpCodecs ops.errorStatuses
 
 end Examples.Tickets.Contracts
