@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Let people finish typing. · LeanReact</title><meta name="description" content="Clear the title and try to save. Then type a new title and save again.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css">
+</head><body class="forms-page"><a class="skip-link" href="#main">Skip to example</a><div class="shell">
+<header class="masthead"><a class="wordmark" href="index.html"><span class="mark" aria-hidden="true">λ</span>LeanReact</a><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
+<nav class="section-nav" aria-label="Examples"><a href="counter.html">Counter</a><a href="states.html">Loading states</a><a href="editors.html">Swap editors</a><a href="forms.html" aria-current="page">Form validation</a></nav><main id="main">
+<p class="eyebrow">Example 04 / Try it</p>
+<h1>Let people finish typing.</h1><p class="lede">Clear the title and try to save. Then type a new title and save again.</p>
+<div class="stage"><section class="panel" aria-label="Live example"><div class="panel-bar"><span>Live component</span><span class="badge">LEAN + REACT</span></div><div class="live-body"><div id="demo" data-demo="forms"></div><noscript>Enable JavaScript to try this example. The Lean source is shown alongside it.</noscript></div><p class="live-note">This is a local demo. Nothing is sent to a server.</p></section>
+<section class="panel source" aria-label="Lean source"><div class="panel-bar"><span>FormDemo</span><span class="badge">.lean</span></div><pre><code><span class="kw">def</span> FormDemo : Component Unit := component <span class="kw">fun</span> _ =&gt; <span class="kw">do</span>
+  <span class="kw">let</span> form ← useForm Tickets.titleParser <span class="str">&quot;Fix the login page&quot;</span> <span class="str">&quot;draft-title&quot;</span>
+  <span class="kw">let</span> notice ← useState <span class="str">&quot;&quot;</span> <span class="str">&quot;save-notice&quot;</span>
+  <span class="kw">let</span> save : Action Unit := <span class="kw">do</span>
+    <span class="kw">let</span> result ← form.submit <span class="kw">fun</span> title =&gt; notice.set (<span class="str">&quot;Saved: &quot;</span> ++ title.value)
+    <span class="kw">match</span> result <span class="kw">with</span>
+    | .ok _ =&gt; <span class="kw">pure</span> ()
+    | .error errors =&gt; notice.set (Tickets.titleValidationMessage errors)
+  <span class="kw">pure</span> &lt;| DOM.div { className := some <span class="str">&quot;form-demo&quot;</span> } #[
+    DOM.label { htmlFor := <span class="str">&quot;draft-title&quot;</span> } #[text <span class="str">&quot;Ticket title&quot;</span>],
+    DOM.input {
+      id := some <span class="str">&quot;draft-title&quot;</span>, value := some form.binding.value,
+      onChange := some (<span class="kw">fun</span> event =&gt; <span class="kw">do</span> form.binding.set event.value; notice.set <span class="str">&quot;&quot;</span>)
+    },
+    DOM.p { className := some <span class="str">&quot;field-hint&quot;</span> } #[text <span class="str">&quot;Use between 1 and 200 characters.&quot;</span>],
+    DOM.button { className := some <span class="str">&quot;primary&quot;</span>, onPress := some save } #[text <span class="str">&quot;Save title&quot;</span>],
+    DOM.p { role := some <span class="str">&quot;status&quot;</span> } #[text notice.value]
+  ]</code></pre></section></div>
+<p class="after">The form keeps invalid text while you edit. The save callback runs only after the title passes validation.</p><nav class="next" aria-label="More examples"><a href="index.html">← All examples</a><a href="counter.html">Next: Counter →</a></nav></main>
+<footer class="page-footer"><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
+</div><script defer src="assets/demo.js"></script></body></html>

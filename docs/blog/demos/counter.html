@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A little Lean. A real button. · LeanReact</title><meta name="description" content="Click the button. Each click updates state in a Lean component, rendered by React.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css">
+</head><body class="counter-page"><a class="skip-link" href="#main">Skip to example</a><div class="shell">
+<header class="masthead"><a class="wordmark" href="index.html"><span class="mark" aria-hidden="true">λ</span>LeanReact</a><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
+<nav class="section-nav" aria-label="Examples"><a href="counter.html" aria-current="page">Counter</a><a href="states.html">Loading states</a><a href="editors.html">Swap editors</a><a href="forms.html">Form validation</a></nav><main id="main">
+<p class="eyebrow">Example 01 / Try it</p>
+<h1>A little Lean. A real button.</h1><p class="lede">Click the button. Each click updates state in a Lean component, rendered by React.</p>
+<div class="stage"><section class="panel" aria-label="Live example"><div class="panel-bar"><span>Live component</span><span class="badge">LEAN + REACT</span></div><div class="live-body"><div id="demo" data-demo="counter"></div><noscript>Enable JavaScript to try this example. The Lean source is shown alongside it.</noscript></div><p class="live-note">Try a few clicks. Reload the page to start again.</p></section>
+<section class="panel source" aria-label="Lean source"><div class="panel-bar"><span>From the blog post</span><span class="badge">.lean</span></div><pre><code><span class="kw">import</span> LeanReact
+<span class="kw">open</span> LeanReact
+
+<span class="kw">structure</span> CounterProps <span class="kw">where</span>
+  label : String
+
+<span class="kw">def</span> Counter : Component CounterProps := component <span class="kw">fun</span> props =&gt; <span class="kw">do</span>
+  <span class="kw">let</span> count ← useState 0 <span class="str">&quot;count&quot;</span>
+  <span class="kw">pure</span> &lt;| DOM.button {
+    onPress := some (count.modify (<span class="kw">fun</span> value =&gt; value + 1))
+  } #[
+    text (props.label ++ <span class="str">&quot;: &quot;</span> ++ toString count.value)
+  ]</code></pre></section></div>
+<p class="after">The button is the Counter component from the post. Its click handler adds one to the current count.</p><nav class="next" aria-label="More examples"><a href="index.html">← All examples</a><a href="states.html">Next: Loading states →</a></nav></main>
+<footer class="page-footer"><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
+</div><script defer src="assets/demo.js"></script></body></html>

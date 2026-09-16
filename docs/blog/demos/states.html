@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Every state gets a place. · LeanReact</title><meta name="description" content="Choose a state to see what the ticket list shows. Try Empty and Failure: they tell two different stories.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css">
+</head><body class="states-page"><a class="skip-link" href="#main">Skip to example</a><div class="shell">
+<header class="masthead"><a class="wordmark" href="index.html"><span class="mark" aria-hidden="true">λ</span>LeanReact</a><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
+<nav class="section-nav" aria-label="Examples"><a href="counter.html">Counter</a><a href="states.html" aria-current="page">Loading states</a><a href="editors.html">Swap editors</a><a href="forms.html">Form validation</a></nav><main id="main">
+<p class="eyebrow">Example 02 / Try it</p>
+<h1>Every state gets a place.</h1><p class="lede">Choose a state to see what the ticket list shows. Try Empty and Failure: they tell two different stories.</p>
+<div class="stage"><section class="panel" aria-label="Live example"><div class="panel-bar"><span>Live component</span><span class="badge">LEAN + REACT</span></div><div class="live-body"><div id="demo" data-demo="states"></div><noscript>Enable JavaScript to try this example. The Lean source is shown alongside it.</noscript></div><p class="live-note">These controls select example states. They do not make network requests.</p></section>
+<section class="panel source" aria-label="Lean source"><div class="panel-bar"><span>From the blog post</span><span class="badge">.lean</span></div><pre><code><span class="kw">import</span> LeanReact
+<span class="kw">open</span> LeanReact
+
+<span class="kw">def</span> ticketList (state : ResourceState (Array String) String) : Element :=
+  <span class="kw">match</span> state <span class="kw">with</span>
+  | .idle =&gt; DOM.p {} #[text <span class="str">&quot;Loading tickets…&quot;</span>]
+  | .loading _ =&gt; DOM.p {} #[text <span class="str">&quot;Loading tickets…&quot;</span>]
+  | .failure _ (.loader message) =&gt;
+      DOM.p { role := some <span class="str">&quot;alert&quot;</span> } #[text message]
+  | .failure _ (.exception _) =&gt;
+      DOM.p { role := some <span class="str">&quot;alert&quot;</span> } #[text <span class="str">&quot;Could not load tickets. Try again.&quot;</span>]
+  | .success _ titles =&gt;
+      <span class="kw">if</span> titles.isEmpty <span class="kw">then</span>
+        DOM.p {} #[text <span class="str">&quot;No <span class="kw">open</span> tickets. You're all caught up.&quot;</span>]
+      <span class="kw">else</span>
+        DOM.ul {} (titles.map <span class="kw">fun</span> title =&gt; DOM.li {} #[text title])</code></pre></section></div>
+<p class="after">Empty is a successful request with no tickets. Failure means we could not load them. The same match handles both.</p><nav class="next" aria-label="More examples"><a href="index.html">← All examples</a><a href="editors.html">Next: Swap editors →</a></nav></main>
+<footer class="page-footer"><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
+</div><script defer src="assets/demo.js"></script></body></html>

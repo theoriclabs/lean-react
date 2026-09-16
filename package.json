@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:blog": "node scripts/build-blog.mjs",
     "screenshots": "npm run build && node scripts/screenshots.mjs",
     "build:engine": "lake build",
     "test": "node scripts/test.mjs",
