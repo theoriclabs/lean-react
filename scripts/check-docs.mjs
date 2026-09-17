@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { readFile, stat, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { run } from './process.mjs';
+import { run, capture } from './process.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const documents = [
-  'README.md', 'CONTRIBUTING.md', 'engine/README.md', 'examples/README.md',
+  'README.md', 'engine/README.md', 'examples/README.md',
   'engine/LeanReact/API.md', 'engine/runtime/README.md', 'docs/ABI.md',
   'docs/README.md', 'docs/GETTING_STARTED.md', 'docs/DOMAIN_MODELING.md',
   'docs/ARCHITECTURE.md', 'docs/LEANREACT.md', 'docs/HOW_TO.md',
@@ -16,7 +16,12 @@ const documents = [
   'docs/AUTH.md', 'docs/HOSTING.md', 'docs/RELEASE.md', 'docs/LEANAPP_STATUS.md',
   'docs/AUTHORIZATION_DEMO.md', 'docs/AUTHORIZATION_DESIGN.md',
   'docs/PRIVATE_NOTES.md', 'deploy/notes/README.md',
+  'docs/whatbugs_can_we_prevent/checkout_state_explosion.md',
 ];
+// `<!-- lean-check: name -->` snippets must compile.
+// `<!-- lean-reject: name | needle -->` snippets must fail, and the output must contain the needle when given.
+const checkMarker = /^<!-- lean-check: ([a-z0-9-]+) -->\s*```lean\r?\n([\s\S]*?)\r?\n```/gm;
+const rejectMarker = /^<!-- lean-reject: ([a-z0-9-]+)(?: \| ([^>\n]+?))? -->\s*```lean\r?\n([\s\S]*?)\r?\n```/gm;
 const withoutFences = text => text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\s*$/gm, '');
 function anchors(text) {
   const ids = new Set(), counts = new Map();
@@ -36,6 +41,10 @@ async function markdown(path) {
 }
 let links = 0;
 const examples = new Map();
+const rejections = new Map();
+const claim = (name, kind) => {
+  assert.ok(!examples.has(name) && !rejections.has(name), `Duplicate Lean documentation ${kind}: ${name}`);
+};
 for (const name of documents) {
   const path = resolve(root, name), text = await markdown(path);
   for (const match of withoutFences(text).matchAll(/!?\[[^\]\n]*\]\(([^)\n]+)\)/g)) {
@@ -51,13 +60,20 @@ for (const name of documents) {
       assert.ok(anchors(await markdown(destination)).has(fragment), `${name}: missing anchor ${target}`);
     ++links;
   }
-  for (const match of text.matchAll(/^<!-- lean-check: ([a-z0-9-]+) -->\s*```lean\r?\n([\s\S]*?)\r?\n```/gm)) {
-    assert.ok(!examples.has(match[1]), `Duplicate Lean documentation example: ${match[1]}`);
+  for (const match of text.matchAll(checkMarker)) {
+    claim(match[1], 'example');
     examples.set(match[1], match[2]);
   }
+  for (const match of text.matchAll(rejectMarker)) {
+    claim(match[1], 'rejection');
+    rejections.set(match[1], { source: match[3], needle: match[2]?.trim() });
+  }
   const markerCount = [...text.matchAll(/^<!-- lean-check:/gm)].length;
-  const snippetCount = [...text.matchAll(/^<!-- lean-check: ([a-z0-9-]+) -->\s*```lean\r?\n([\s\S]*?)\r?\n```/gm)].length;
+  const snippetCount = [...text.matchAll(checkMarker)].length;
   assert.equal(snippetCount, markerCount, `${name}: malformed Lean example marker/fence`);
+  const rejectMarkerCount = [...text.matchAll(/^<!-- lean-reject:/gm)].length;
+  const rejectSnippetCount = [...text.matchAll(rejectMarker)].length;
+  assert.equal(rejectSnippetCount, rejectMarkerCount, `${name}: malformed Lean rejection marker/fence`);
 }
 assert.ok(examples.size > 0, 'No executable Lean documentation examples found');
 console.log(`Checked ${links} local links/anchors across ${documents.length} developer documents.`);
@@ -79,4 +95,12 @@ for (const [name, source] of examples) {
   await run('lake', ['env', 'lean', file], { cwd: root });
   console.log(`PASS: ${name}`);
 }
-console.log(`${examples.size} Lean documentation examples passed; compatible library/package names retained. Fixtures: ${out}`);
+for (const [name, { source, needle }] of rejections) {
+  const file = resolve(out, `${name}.lean`);
+  await writeFile(file, source + '\n', { flag: 'wx' });
+  const { code, output } = await capture('lake', ['env', 'lean', file], { cwd: root });
+  assert.notEqual(code, 0, `${name}: documented as a compile error but it compiled`);
+  if (needle) assert.ok(output.includes(needle), `${name}: rejected, but the output lacks "${needle}":\n${output}`);
+  console.log(`PASS (rejected): ${name}`);
+}
+console.log(`${examples.size} Lean documentation examples passed and ${rejections.size} documented rejections failed as claimed; compatible library/package names retained. Fixtures: ${out}`);

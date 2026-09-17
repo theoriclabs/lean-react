@@ -110,4 +110,4 @@ The host supplies typed read/write interpreters. It authenticates the request be
 
 Read the [small in-memory application fixture](../tests/app/Main.lean) for the assembly API, then [the café's native adapter](../adapters/native/LeanAppNative/Cafe.lean) for real auth and SQLite. The fixture deliberately uses a local policy; copying it does not create production authentication.
 
-Test both the domain and its interpretations. The ordering suite checks proofs and expected compiler rejections; café tests compare all 180 native/browser configurations against independent expected prices. HTTP and browser tests check the boundaries those pure tests cannot cover. See [contributing](../CONTRIBUTING.md#choose-the-relevant-checks) for the commands.
+Test both the domain and its interpretations. The ordering suite checks proofs and expected compiler rejections; café tests compare all 180 native/browser configurations against independent expected prices. HTTP and browser tests check the boundaries those pure tests cannot cover. See [check and debug your work](HOW_TO.md#check-and-debug-your-work) for the commands.

@@ -1,6 +1,6 @@
 # LeanApp documentation
 
-[LeanApp](../README.md) · [Live café](https://proof-and-pour-production.up.railway.app) · [Private Notes](https://private-notes-production.up.railway.app) · [Release evidence](RELEASE.md)
+[LeanReact](../README.md) · [Live café](https://proof-and-pour-production.up.railway.app) · [Private Notes](https://private-notes-production.up.railway.app) · [Release evidence](RELEASE.md)
 
 Start with the task you want to do. The café runs a shared Lean domain model on a native server and in the browser; LeanReact is the optional library for writing the React components themselves in Lean.
 
@@ -13,7 +13,8 @@ Start with the task you want to do. The café runs a shared Lean domain model on
 | Write React components in Lean | [LeanReact overview](LEANREACT.md), then the [first-form tutorial](HOW_TO.md#build-your-first-form) |
 | Add signup and cookie sessions | [Authentication](AUTH.md) |
 | Host the café with persistent SQLite | [Hosting](HOSTING.md) |
-| Change the framework or run its checks | [Contributing](../CONTRIBUTING.md) |
+| Understand which frontend bugs the types rule out | [Checkout state explosion](whatbugs_can_we_prevent/checkout_state_explosion.md), then the README's [bugs that don't compile](../README.md#bugs-that-dont-compile) |
+| Change the framework or run its checks | [Check and debug your work](HOW_TO.md#check-and-debug-your-work) |
 
 ## API and implementation references
 

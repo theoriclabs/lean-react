@@ -151,9 +151,13 @@ contracts; the compiler cannot prove they agree with the native reference.
   higher-order functions, generic functions, record updates and payload variants.
 - Typeclass dictionaries, records of functions, generic monadic orchestration
   with `Id` and `Option`, proof erasure without erasing computational witnesses.
-- Nested matches (including `Option (Option Nat)`), recursive list traversal,
-  `List.map`/reverse compiled from library declarations, Fibonacci and a
+- Nested matches (including `Option (Option Nat)`), Fibonacci and a
   well-founded decreasing-Nat recursion compiled from actual Lean definitions.
+- Iterative List host builtins for `length`, `foldl`, `map`, `flatMap`, `append`,
+  `filter` and `reverse` (including the `*TR` / auxiliary names Lean's LCNF
+  actually calls). These walk cons cells in a JavaScript loop, so a 12,000-element
+  list does not overflow the JS stack. User-written recursive List functions
+  still use the JavaScript stack.
 - Exact Nat addition/subtraction/multiplication/division/modulus/power and
   comparisons; subtraction saturates, division by zero returns zero and modulus
   by zero returns its dividend.
@@ -182,7 +186,7 @@ recursors/quotients are not admitted. Raw String construction and raw matches or
 projections on String/Array are rejected; use supported operations instead.
 Advanced dependent eliminations beyond Lean's successful pure-LCNF lowering are
 not claimed. No async scheduler, stack-safe trampoline, tail-call optimization,
-source maps, incremental compiler cache or bundler is included. Recursive programs use the JavaScript stack and can exhaust resources.
+source maps, incremental compiler cache or bundler is included. Recursive programs use the JavaScript stack and can exhaust resources, except the iterative List host builtins above.
 
 Unsupported native operations fail **before output is written**, with an
 executable dependency path and guidance to register an adapter, for example:

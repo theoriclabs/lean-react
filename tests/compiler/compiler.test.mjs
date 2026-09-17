@@ -53,6 +53,8 @@ test('native Lean / generated Node parity across composed functions', () => {
     recursive: Array.from({length:16}, (_,n) => str(f('fibonacci')(BigInt(n)))),
     wellFounded: str(f('countdown')(150n)),
     mappedList: natArray(array(f('mapCaptured')(9n,list(ns)))),
+    listSmall: str(f('listLarge')([1n,2n,3n])),
+    listLarge: str(f('listLarge')(Array.from({length:12000}, (_,i) => BigInt(i)))),
     arrayWork: arrays.map(xs => natArray(f('arrayWork')(xs,4n))),
     arrayRead: arrays.map(xs => [0n,1n,50n].map(i => str(f('arrayRead')(xs,i)))),
     arraySet: natArray(f('arraySet')([1n,2n,3n],1n,99n))
@@ -93,6 +95,11 @@ test('export and constructor metadata describe the adapter boundary', () => {
   assert.deepEqual(ticket.fieldInfo.map(f => f.name), ['title','priority','approved']);
   assert.equal(ticket.fieldInfo[2].erased,true);
   assert.equal(p.__leanjs.constructors.find(d => d.name === 'Corpus.Status.active').fields,2);
+});
+
+test('iterative List builtins do not overflow the JS stack at 12k elements', () => {
+  const xs = Array.from({length: 12000}, (_, i) => BigInt(i));
+  assert.equal(f('listLarge')(xs), 144066000n);
 });
 
 test('array contracts preserve range, callback order, and immutable inputs', () => {

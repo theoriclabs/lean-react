@@ -51,6 +51,20 @@ def sum : List Nat → Nat
   | x :: xs => x + sum xs
 
 def mapCaptured (bias : Nat) (xs : List Nat) : List Nat := xs.map (fun x => x + bias)
+
+/-- Build a List from a host Array, then exercise the iterative List builtins. -/
+def listLarge (xs : Array Nat) : Nat :=
+  let ys := xs.toList
+  let len := ys.length
+  let summed := ys.foldl (fun acc x => acc + x) 0
+  let mapped := (ys.map (fun x => x + 1)).foldl (fun acc x => acc + x) 0
+  let flat := (ys.flatMap (fun x => [x, x])).length
+  let appended := (ys ++ [0]).length
+  let filtered := (ys.filter (fun x => x % 2 == 0)).length
+  let rev := match ys.reverse with
+    | [] => 0
+    | x :: _ => x
+  len + summed + mapped + flat + appended + filtered + rev
 def fibonacci : Nat → Nat
   | 0 => 0
   | 1 => 1

@@ -84,6 +84,8 @@ Choose checks that exercise the requested behavior; do not treat successful elab
 | Full regular checks | `npm test`. Native server checks remain optional unless that path changed. |
 | Website appearance | Inspect desktop/mobile rendering; `npm run screenshots` regenerates README captures. |
 
-For unsupported native declarations, inspect the full dependency path. `Array.forIn'` and `Array.foldlM` safe reference bodies are supported, but arbitrary IO/FFI is not portable and recursive code uses the JavaScript stack. Keep the compiler's rejection behavior intact when adding a narrowly defined capability.
+For unsupported native declarations, inspect the full dependency path. `Array.forIn'` and `Array.foldlM` safe reference bodies are supported, but arbitrary IO/FFI is not portable. Keep the compiler's rejection behavior intact when adding a narrowly defined capability.
+
+`List.length`, `foldl`, `map`, `flatMap`, `append`, `filter` and `reverse` (including the `*TR` names Lean's LCNF actually calls) are iterative host builtins; a 12,000-element list is in the compiler suite. User-written recursive List functions, `List.range`, and `Repr`/`reprStr` still use the JavaScript stack or hit native Format/`String.Internal` externs. `toString` on `Nat` is portable (`Nat.repr`). For errors and enums, write an explicit `code`/`label : α → String` as `Cafe.Model` does.
 
 Report what changed, which generated/runtime behavior was verified, and material remaining limitations. Preserve the user's requested scope and existing authorization.

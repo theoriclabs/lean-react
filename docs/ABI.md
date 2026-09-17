@@ -1,6 +1,6 @@
 # Experimental interface agreement
 
-This is the historical coordination agreement for the first compiler/runtime implementation, not a current contributor assignment or a stable public API. For the implemented representation contract, read the [LeanJS ABI](../engine/LeanJS/ABI.md). For application assembly, read [LeanApp interfaces](FULLSTACK_INTERFACES.md). Current contribution guidance lives in [CONTRIBUTING.md](../CONTRIBUTING.md).
+This is the historical coordination agreement for the first compiler/runtime implementation, not a current contributor assignment or a stable public API. For the implemented representation contract, read the [LeanJS ABI](../engine/LeanJS/ABI.md). For application assembly, read [LeanApp interfaces](FULLSTACK_INTERFACES.md). Current contribution guidance lives in the [frontend guide](HOW_TO.md#check-and-debug-your-work).
 
 The original agreement follows.
 

@@ -80,7 +80,23 @@ private def builtin (n : Name) : Option Builtin := do
     (`Array.filter, 5, "(_,p,xs,start,stop)=>$filter(p,xs,start,stop)"),
     (`Array.map, 4, "(_,__,f,xs)=>xs.map(x=>$app(f,[x]))"),
     (`Array.pop, 2, "(_,xs)=>xs.slice(0,-1)"),
-    (`Array.append, 3, "(_,xs,ys)=>xs.concat(ys)")
+    (`Array.append, 3, "(_,xs,ys)=>xs.concat(ys)"),
+    (`List.length, 2, "(_,xs)=>$listLength(xs)"),
+    (`List.lengthTR, 2, "(_,xs)=>$listLength(xs)"),
+    (`List.lengthTRAux, 3, "(_,xs,n)=>n+$listLength(xs)"),
+    (`List.foldl, 5, "(_,__,f,z,xs)=>$listFoldl(f,z,xs)"),
+    (`List.map, 4, "(_,__,f,xs)=>$listMap(f,xs)"),
+    (`List.mapTR, 4, "(_,__,f,xs)=>$listMap(f,xs)"),
+    (`List.mapTR.loop, 5, "(_,__,f,xs,acc)=>$listAppend($listReverse(acc),$listMap(f,xs))"),
+    (`List.flatMap, 4, "(_,__,f,xs)=>$listFlatMap(f,xs)"),
+    (`List.flatMapTR, 4, "(_,__,f,xs)=>$listFlatMap(f,xs)"),
+    (`List.append, 3, "(_,xs,ys)=>$listAppend(xs,ys)"),
+    (`List.appendTR, 3, "(_,xs,ys)=>$listAppend(xs,ys)"),
+    (`List.filter, 3, "(_,p,xs)=>$listFilter(p,xs)"),
+    (`List.filterTR, 3, "(_,p,xs)=>$listFilter(p,xs)"),
+    (`List.filterTR.loop, 4, "(_,p,xs,acc)=>$listAppend($listReverse(acc),$listFilter(p,xs))"),
+    (`List.reverse, 2, "(_,xs)=>$listReverse(xs)"),
+    (`List.reverseAux, 3, "(_,xs,acc)=>$listReverseAux(xs,acc)")
   ] : Array (Name × Nat × String)).find? (·.1 == n)
   return ⟨n, arity, body⟩
 

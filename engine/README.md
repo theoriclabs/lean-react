@@ -18,6 +18,6 @@ From the repository root, `npm run build:engine` or `lake build` builds the engi
 
 The private root npm workspace, `leanapp-workspace`, supplies shared JavaScript dependencies; this directory does not introduce a second toolchain or duplicate dependency installation. The compatible Lake package name remains `leanreact`; `import LeanApp`, `import LeanReact` and `import LeanJS` are separate module entry points. The optional [native package](../adapters/native/lakefile.lean) integrates the independent LeanDB/LeanHttp dependencies without adding them to portable builds.
 
-Workspace verification runs from root `tests/`. See the [framework status](../docs/LEANAPP_STATUS.md), [frontend support](../docs/IMPLEMENTED.md), [compiler ABI](LeanJS/ABI.md), and [React API](LeanReact/API.md). The [contributor guide](../CONTRIBUTING.md) maps changes to test commands.
+Workspace verification runs from root `tests/`. See the [framework status](../docs/LEANAPP_STATUS.md), [frontend support](../docs/IMPLEMENTED.md), [compiler ABI](LeanJS/ABI.md), and [React API](LeanReact/API.md). The [check-and-debug guide](../docs/HOW_TO.md#check-and-debug-your-work) maps changes to test commands.
 
 `LeanJS.Options.library` and `LeanJS.Options.libraries` define compiled library exports and imports. Shared values retain identity through ordinary ESM dependencies, and top-level values initialize before rendering. The [composition guide](../docs/COMPOSABILITY.md) describes these APIs and the collection form support.

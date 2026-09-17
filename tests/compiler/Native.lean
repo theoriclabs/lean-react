@@ -52,6 +52,8 @@ def main : IO Unit := do
     ("recursive", Json.arr ((Array.range 16).map fun n => strNat (fibonacci n))),
     ("wellFounded", strNat (countdown 150)),
     ("mappedList", natArray (mapCaptured 9 ns.toList).toArray),
+    ("listSmall", strNat (listLarge #[1, 2, 3])),
+    ("listLarge", strNat (listLarge (Array.range 12000))),
     ("arrayWork", Json.arr (arrays.map fun xs => natArray (arrayWork xs 4))),
     ("arrayRead", Json.arr (arrays.map fun xs => Json.arr ((#[0, 1, 50] : Array Nat).map fun i => strNat (arrayRead xs i)))),
     ("arraySet", natArray (arraySet #[1,2,3] 1 99))]

@@ -93,7 +93,7 @@ The browser wire adapter is explicit JavaScript glue tested against the native L
 
 ## Current limits
 
-- The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack.
+- The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack, except the iterative List host builtins (`length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, including `*TR` names). `Repr`/`reprStr` are not portable (`Std.Format.pretty` is partial and reaches `String.Internal.*`); `toString` on `Nat` is.
 - The function-based DOM API is implemented. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
 - Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Context export ordering is automatic; contexts created inside render still need to be hoisted.
 - There is no shared query cache, distributed subscription protocol, optimistic mutation framework, router, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.

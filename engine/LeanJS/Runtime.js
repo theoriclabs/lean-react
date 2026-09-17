@@ -84,3 +84,45 @@ const $filter = (predicate, xs, start, stop) =>
     else if (decision.tag !== 'Bool.false') throw new TypeError('LeanJS: filter predicate must return an ABI Bool');
     return out;
   }, [], xs, start, stop);
+const $listLength = xs => BigInt($array(xs).length);
+const $listFoldl = (f, init, xs) => {
+  let result = init;
+  for (const x of $array(xs)) result = $app(f, [result, x]);
+  return result;
+};
+const $listMap = (f, xs) => $list($array(xs).map(x => $app(f, [x])));
+const $listFlatMap = (f, xs) => {
+  const out = [];
+  for (const x of $array(xs)) {
+    const inner = $array($app(f, [x]));
+    for (let i = 0; i < inner.length; i++) out.push(inner[i]);
+  }
+  return $list(out);
+};
+const $listAppend = (xs, ys) => {
+  const acc = $array(xs);
+  let out = ys;
+  for (let i = acc.length - 1; i >= 0; i--) out = $ctor('List.cons', [acc[i], out]);
+  return out;
+};
+const $listFilter = (p, xs) => {
+  const out = [];
+  for (const x of $array(xs)) {
+    const decision = $app(p, [x]);
+    if (decision.tag === 'Bool.true') out.push(x);
+    else if (decision.tag !== 'Bool.false') throw new TypeError('LeanJS: filter predicate must return an ABI Bool');
+  }
+  return $list(out);
+};
+const $listReverse = xs => {
+  const acc = $array(xs);
+  let out = $ctor('List.nil');
+  for (let i = 0; i < acc.length; i++) out = $ctor('List.cons', [acc[i], out]);
+  return out;
+};
+const $listReverseAux = (xs, acc) => {
+  const items = $array(xs);
+  let out = acc;
+  for (let i = 0; i < items.length; i++) out = $ctor('List.cons', [items[i], out]);
+  return out;
+};

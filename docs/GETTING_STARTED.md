@@ -107,7 +107,7 @@ npm run test:cafe
 npm run test:cafe:browser
 ```
 
-Build the café first. The café API tests use disposable local databases; the browser tests start their own server on ports 4182/4183. They do not touch the hosted app or your `.lake/cafe.sqlite` database. Use an installed Chrome with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` if Playwright's browser is absent; see [contributing](../CONTRIBUTING.md).
+Build the café first. The café API tests use disposable local databases; the browser tests start their own server on ports 4182/4183. They do not touch the hosted app or your `.lake/cafe.sqlite` database. Use an installed Chrome with `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` if Playwright's browser is absent; see [check and debug your work](HOW_TO.md#check-and-debug-your-work).
 
 ## Troubleshooting
 

@@ -1,6 +1,6 @@
 # LeanReact
 
-[Documentation](README.md) · [LeanApp](../README.md) · [Frontend tutorial](HOW_TO.md)
+[Documentation](README.md) · [LeanReact](../README.md) · [Frontend tutorial](HOW_TO.md)
 
 LeanReact is LeanApp's frontend library. Use it on its own to author React components in Lean; the native server and database adapters are optional. This page describes the frontend path, including the published v0.1 examples.
 
@@ -69,6 +69,8 @@ The playground includes:
 - A context provider and consumer built in separate libraries that share live updates.
 
 ![Ticket workspace with a saved edit and replaceable layouts and editors](images/workspace.png)
+
+![Collection form with keyed rows, validation errors, and the Lean source that composes the editor](images/collections.png)
 
 Shared domain definitions, called *ontologies* in this project, describe application data and its rules. For example, the same title validator can run in your form and on a Lean backend. Start with a type and a parsing function; add richer descriptions when your application needs them.
 
