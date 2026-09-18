@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { mkdtemp } from 'node:fs/promises';
@@ -97,6 +98,70 @@ test('real Lean HTTP signup, session isolation, restart and logout', { timeout: 
     assert.equal(stored.status, 0); assert.equal(stored.stdout.trim(), '3');
     assert(!logs().includes(credentials.password)); assert(!logs().includes(token)); assert(!logs().includes(alice.body.csrf));
     console.log(`Auth HTTP fixture retained: ${directory}`);
+  } finally { await stop(); }
+});
+
+test('concurrent sessions: eviction, listing, targeted revoke, password change and logout everywhere', { timeout: 90000 }, async () => {
+  const { start, stop, request, logs } = await fixture({ LEANAPP_MAX_SESSIONS: '3' });
+  const password = 'a multi device passphrase 🔐', renewed = 'a renewed multi device passphrase';
+  const cookieOf = reply => reply.setCookie.split(';')[0];
+  const device = (reply, label) => ({ cookie: cookieOf(reply), csrf: reply.body.csrf, token: cookieOf(reply).split('=')[1], label });
+  const session = d => request('/auth/session', { method: 'GET', cookie: d.cookie });
+  try {
+    await start();
+    const one = device(await request('/auth/signup', { body: { username: 'multi_http', password, label: 'Laptop' } }), 'Laptop');
+    const two = device(await request('/auth/login', { body: { username: 'multi_http', password, label: 'Phone' } }), 'Phone');
+    const three = device(await request('/auth/login', { body: { username: 'multi_http', password } }));
+    assert.equal((await session(one)).status, 200); assert.equal((await session(two)).status, 200);
+    assert.equal((await request('/auth/login', { body: { username: 'multi_http', password, label: 1 } })).status, 401);
+    const four = device(await request('/auth/login', { body: { username: 'multi_http', password, label: 'Desk' } }), 'Desk');
+    assert.equal((await session(one)).status, 401);
+    for (const d of [two, three, four]) assert.equal((await session(d)).status, 200);
+    assert.equal((await request('/auth/sessions', { cookie: four.cookie })).status, 403);
+    const listed = await request('/auth/sessions', { cookie: four.cookie, csrf: four.csrf });
+    assert.equal(listed.status, 200); assert.equal(listed.body.sessions.length, 3);
+    assert.deepEqual(listed.body.sessions.map(s => s.current), [true, false, false]);
+    assert.deepEqual(listed.body.sessions.map(s => s.label).sort(), ['Desk', 'Phone', null].sort());
+    const digests = [two, three, four].map(d => createHash('sha256').update(d.token).digest('hex'));
+    for (const s of listed.body.sessions) {
+      assert.match(s.id, /^[0-9a-f]{64}$/); assert.match(s.createdAt, /^[0-9]+$/); assert.match(s.lastSeenAt, /^[0-9]+$/);
+      assert(!digests.includes(s.id)); assert(![two, three, four].some(d => d.token === s.id));
+    }
+    const phone = listed.body.sessions.find(s => s.label === 'Phone');
+    assert.equal((await request('/auth/sessions/revoke', { cookie: two.cookie, csrf: two.csrf, body: { id: 'x'.repeat(64) } })).status, 404);
+    assert.equal((await request('/auth/sessions/revoke', { cookie: two.cookie, csrf: two.csrf, body: { id: phone.id, extra: 1 } })).status, 404);
+    const revoked = await request('/auth/sessions/revoke', { cookie: four.cookie, csrf: four.csrf, body: { id: phone.id } });
+    assert.equal(revoked.status, 200); assert.deepEqual(revoked.body, { ok: true, current: false }); assert.equal(revoked.setCookie, null);
+    assert.equal((await session(two)).status, 401); assert.equal((await session(four)).status, 200);
+    const stranger = device(await request('/auth/signup', { body: { username: 'stranger_http', password } }));
+    const mine = listed.body.sessions.find(s => s.current);
+    assert.equal((await request('/auth/sessions/revoke', { cookie: stranger.cookie, csrf: stranger.csrf, body: { id: mine.id } })).status, 404);
+    assert.equal((await session(four)).status, 200);
+    const self = await request('/auth/sessions/revoke', { cookie: three.cookie, csrf: three.csrf, body: { id:
+      (await request('/auth/sessions', { cookie: three.cookie, csrf: three.csrf })).body.sessions.find(s => s.current).id } });
+    assert.deepEqual(self.body, { ok: true, current: true }); assert.match(self.setCookie, /Max-Age=0/);
+    assert.equal((await session(three)).status, 401);
+    const wrong = await request('/auth/password', { cookie: four.cookie, csrf: four.csrf, body: { currentPassword: 'not the password at all', newPassword: renewed } });
+    assert.equal(wrong.status, 401); assert.equal(wrong.body.error, 'auth.invalid_credentials');
+    assert.equal((await request('/auth/password', { cookie: four.cookie, csrf: four.csrf, body: { currentPassword: password, newPassword: 'short' } })).status, 400);
+    assert.equal((await request('/auth/password', { cookie: four.cookie, body: { currentPassword: password, newPassword: renewed } })).status, 403);
+    const five = device(await request('/auth/login', { body: { username: 'multi_http', password } }));
+    const changed = await request('/auth/password', { cookie: four.cookie, csrf: four.csrf, body: { currentPassword: password, newPassword: renewed } });
+    assert.equal(changed.status, 200); assert.equal(changed.body.user.username, 'multi_http');
+    const reissued = device(changed);
+    assert.notEqual(reissued.cookie, four.cookie); assert.notEqual(reissued.csrf, four.csrf);
+    assert.equal((await session(four)).status, 401); assert.equal((await session(five)).status, 401);
+    assert.equal((await session(reissued)).status, 200);
+    assert.equal((await request('/api/whoami', { body: wire, cookie: reissued.cookie, csrf: reissued.csrf })).body.value, 'multi_http');
+    assert.deepEqual((await request('/auth/sessions', { cookie: reissued.cookie, csrf: reissued.csrf })).body.sessions.map(s => s.label), ['Desk']);
+    assert.equal((await request('/auth/login', { body: { username: 'multi_http', password } })).status, 401);
+    const six = device(await request('/auth/login', { body: { username: 'multi_http', password: renewed } }));
+    assert.equal(six.cookie.length > 0, true);
+    const everywhere = await request('/auth/logout-all', { cookie: reissued.cookie, csrf: reissued.csrf });
+    assert.equal(everywhere.status, 200); assert.match(everywhere.setCookie, /Max-Age=0/);
+    assert.equal((await session(reissued)).status, 401); assert.equal((await session(six)).status, 401);
+    for (const d of [one, two, three, four, five, six, reissued]) assert(!logs().includes(d.token));
+    assert(!logs().includes(password) && !logs().includes(renewed));
   } finally { await stop(); }
 });
 

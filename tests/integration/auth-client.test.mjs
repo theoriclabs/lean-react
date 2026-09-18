@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAuthClient } from '../../engine/LeanApp/AuthClient.mjs';
+import { createAuthClient, deviceLabel } from '../../engine/LeanApp/AuthClient.mjs';
 
 const csrf = 'a'.repeat(64);
 const user = (name = 'alice') => ({ username: name, actor: `actor:${name}`, tenant: 'demo', generation: '9007199254740993' });
@@ -27,8 +27,10 @@ test('signup/login/restore/logout use cookie credentials and exact headers/bodie
     assert.equal(call.headers['X-LeanApp-Request'], '1'); assert.equal(call.cache, 'no-store');
     assert.equal(call.headers.Authorization, undefined); assert.equal(call.headers.Origin, undefined);
   }
-  assert.deepEqual(JSON.parse(calls[0].body), { username: 'Alice', password });
-  assert.deepEqual(JSON.parse(calls[1].body), { username: 'Alice', password });
+  const label = deviceLabel();
+  assert.equal(label, 'Node.js');
+  assert.deepEqual(JSON.parse(calls[0].body), { username: 'Alice', password, label });
+  assert.deepEqual(JSON.parse(calls[1].body), { username: 'Alice', password, label });
   assert.equal(calls[2].method, 'GET'); assert.equal(calls[2].body, undefined);
   assert.equal(calls[3].headers['X-CSRF-Token'], csrf); assert.equal(calls[3].body, '{}');
   assert.equal(calls[0].headers['Content-Type'], 'application/json');
@@ -36,6 +38,65 @@ test('signup/login/restore/logout use cookie credentials and exact headers/bodie
   assert.equal(notifications, 8); unsubscribe();
   assert.equal(JSON.stringify(c.getSnapshot()).includes(password), false);
   assert.equal(JSON.stringify(c.getSnapshot()).includes(csrf), false);
+});
+
+test('labels are coarse, optional and bounded; invite is sent only when given', async () => {
+  assert.equal(deviceLabel('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36'), 'Chrome on macOS');
+  assert.equal(deviceLabel('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'), 'Safari on iOS');
+  assert.equal(deviceLabel('Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0'), 'Firefox on Linux');
+  assert.equal(deviceLabel(''), undefined);
+  const calls = [];
+  const c = createAuthClient({ fetch: async (path, init) => { calls.push({ path, ...init }); return response(session()); }, label: null });
+  await c.signup('Alice', 'a long enough password', { invite: 'b'.repeat(64) });
+  await c.login('Alice', 'a long enough password', { label: ' Kitchen tablet ' + 'x'.repeat(100) });
+  await c.login('Alice', 'a long enough password', { label: '' });
+  assert.deepEqual(JSON.parse(calls[0].body), { username: 'Alice', password: 'a long enough password', invite: 'b'.repeat(64) });
+  assert.equal(JSON.parse(calls[1].body).label.length, 64);
+  assert.deepEqual(JSON.parse(calls[2].body), { username: 'Alice', password: 'a long enough password' });
+});
+
+test('session list, targeted revoke, logout everywhere and password change', async () => {
+  const id = 'c'.repeat(64), other = 'd'.repeat(64), calls = [];
+  const list = { sessions: [{ id, label: 'Chrome on macOS', createdAt: '1000', lastSeenAt: '1300', current: true },
+    { id: other, label: null, createdAt: null, lastSeenAt: null, current: false }] };
+  let revokedCurrent = false;
+  const c = createAuthClient({ fetch: async (path, init) => {
+    calls.push({ path, ...init });
+    if (path === '/auth/sessions') return response(list);
+    if (path === '/auth/sessions/revoke') return response({ ok: true, current: revokedCurrent });
+    if (path === '/auth/logout-all') return response({ ok: true });
+    if (path === '/auth/password') return response({ ...session(), csrf: 'e'.repeat(64) });
+    return response(session());
+  } });
+  await assert.rejects(c.sessions(), code('auth.required'));
+  await c.restore();
+  const sessions = await c.sessions();
+  assert.equal(sessions.length, 2); assert.equal(sessions[0].current, true); assert.equal(sessions[1].label, null);
+  assert.equal(calls.at(-1).headers['X-CSRF-Token'], csrf); assert.equal(calls.at(-1).body, '{}');
+  await assert.rejects(c.revokeSession('not-an-id'), code('auth.invalid_request'));
+  assert.equal(await c.revokeSession(other), false);
+  assert.deepEqual(JSON.parse(calls.at(-1).body), { id: other });
+  assert.equal(c.getSnapshot().user.username, 'alice');
+  revokedCurrent = true;
+  assert.equal(await c.revokeSession(id), true);
+  assert.equal(c.getSnapshot().user, null);
+  await assert.rejects(c.sessions(), code('auth.required'));
+  await c.restore();
+  await c.changePassword('the current password!', 'the next password!!');
+  assert.deepEqual(JSON.parse(calls.at(-1).body), { currentPassword: 'the current password!', newPassword: 'the next password!!' });
+  assert.equal(calls.at(-1).headers['X-CSRF-Token'], csrf);
+  assert.equal(c.getSnapshot().user.username, 'alice');
+  await c.request('/api/whoami');
+  assert.equal(calls.at(-1).headers['X-CSRF-Token'], 'e'.repeat(64));
+  await c.logoutAll();
+  assert.equal(calls.at(-1).path, '/auth/logout-all'); assert.equal(calls.at(-1).headers['X-CSRF-Token'], 'e'.repeat(64));
+  assert.equal(c.getSnapshot().user, null);
+  await assert.rejects(c.changePassword('a', 'b'), code('auth.required'));
+  for (const bad of [{ sessions: [{ id: 'short', label: null, createdAt: null, lastSeenAt: null, current: true }] },
+    { sessions: [{ id, label: 'x'.repeat(65), createdAt: null, lastSeenAt: null, current: true }] }, { sessions: {} }, {}]) {
+    const strict = createAuthClient({ fetch: async path => response(path === '/auth/sessions' ? bad : session()) });
+    await strict.restore(); await assert.rejects(strict.sessions(), code('auth.protocol'));
+  }
 });
 
 test('protected requests carry CSRF and call validates the Contract envelope', async () => {

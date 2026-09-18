@@ -1,6 +1,20 @@
 import LeanAppNative.Auth.Demo
+import LeanDb.Migrate
 
 open LeanAppNative LeanAppNative.Auth LeanApp
+
+/-! The session table before LA-02, under the same table name, for the migration check. -/
+namespace Legacy
+structure Session where
+  tokenDigest : String
+  csrf : String
+  actor : String
+  generation : Int64
+  expiresAt : Int64
+  deriving LeanDb.Entity
+
+def base : LeanDb.Base := { Auth.Demo.base with tables := [.of Auth.Account, .of Session, .of Auth.Invite] }
+end Legacy
 
 private def Except.isError (value : Except ε α) : Bool := !value.isOk
 private instance [BEq ε] [BEq α] : BEq (Except ε α) where
@@ -99,6 +113,116 @@ private def tenantPolicies : IO Unit := do
     check "HTTP login refuses the invite field"
       ((← host.dispatch (post "/auth/login" (signupBody "inv_http" [("invite", .str http)]) "" "")).reply.status == 401)
 
+private def resolves (service : Auth.Service) (issued : Auth.Issued) : IO Bool :=
+  return (← service.session issued.token).isOk
+
+private def sessions : IO Unit := do
+  withService { maxSessions := 3 } fun service runtime now => do
+    check "zero concurrent sessions is refused" ((← Auth.Service.new runtime (config := { maxSessions := 0 })).isError)
+    let a ← ok (← service.signup "multi" password (label := some "Laptop"))
+    let b ← ok (← service.login "multi" password (label := some " \tPhone 📱 (home)\x01  "))
+    check "login beyond one session keeps the generation and earlier sessions"
+      (b.user.generation == a.user.generation && (← resolves service a) && (← resolves service b))
+    now.modify (· + 1)
+    let c ← ok (← service.login "multi" password)
+    now.modify (· + 1)
+    let d ← ok (← service.login "multi" password)
+    check "four logins keep the three newest and evict the oldest"
+      (!(← resolves service a) && (← resolves service b) && (← resolves service c) && (← resolves service d))
+    let listed ← ok (← service.sessions d.token d.csrf)
+    let digests ← [b, c, d].mapM fun s => Auth.Crypto.digestToken s.token
+    check "session list is newest first with one current entry and opaque ids"
+      (listed.length == 3 && (listed.filter (·.current)).length == 1 && (listed.head?.map (·.current)) == some true &&
+        listed.all (fun s => tokenShape s.id && !digests.contains s.id && ![b.token, c.token, d.token].contains s.id))
+    check "labels are sanitized to printable ASCII and stamps are recorded"
+      (listed.any (fun s => s.label == some "Phone  (home)") &&
+        listed.all (fun s => s.createdAt.isSome && s.lastSeenAt == s.createdAt))
+    check "session listing needs the CSRF token" ((← service.sessions d.token c.csrf) == .error .forbidden)
+    let phone := (listed.find? (·.label == some "Phone  (home)")).get!.id
+    check "revoking another device from the current one"
+      ((← service.revokeSession d.token d.csrf phone) == .ok false && !(← resolves service b) && (← resolves service d))
+    check "unknown or malformed session ids are not found"
+      (failure (← service.revokeSession d.token d.csrf zeros) .sessionNotFound &&
+        failure (← service.revokeSession d.token d.csrf "short") .sessionNotFound)
+    let other ← ok (← service.signup "other" password)
+    let current := (listed.find? (·.current)).get!.id
+    check "another account cannot revoke a guessed id"
+      (failure (← service.revokeSession other.token other.csrf current) .sessionNotFound && (← resolves service d))
+    let own := ((← ok (← service.sessions c.token c.csrf)).find? (·.current)).get!.id
+    check "revoking the current session behaves like logout"
+      ((← service.revokeSession c.token c.csrf own) == .ok true && !(← resolves service c) && (← resolves service d))
+    let e ← ok (← service.login "multi" password (label := some "Tablet"))
+    let renewed := "a brand new password that is long"
+    check "password change refuses weak passwords and wrong CSRF"
+      (failure (← service.changePassword e.token e.csrf password "short") .invalidPassword &&
+        failure (← service.changePassword e.token d.csrf password renewed) .forbidden && (← resolves service d))
+    let f ← ok (← service.changePassword e.token e.csrf password renewed)
+    check "password change re-issues the caller and revokes every other session"
+      (f.token != e.token && f.csrf != e.csrf && (← resolves service f) && !(← resolves service e) &&
+        !(← resolves service d) && f.user.generation > e.user.generation)
+    check "re-issued session keeps its label"
+      (((← ok (← service.sessions f.token f.csrf)).map (·.label)) == [some "Tablet"])
+    check "old password no longer logs in" (failure (← service.login "multi" password) .invalidCredentials)
+    let g ← ok (← service.login "multi" renewed)
+    let mut throttled := false
+    for _ in [:12] do
+      match ← service.changePassword f.token f.csrf "not the current password" renewed with
+      | .error .throttled => throttled := true; break
+      | .error .invalidCredentials => pure ()
+      | other => throw (IO.userError s!"unexpected password change outcome {repr (other.map (·.user))}")
+    check "wrong current password counts against the credential throttle" (throttled && (← resolves service f))
+    discard <| ok (← service.logoutAll f.token f.csrf)
+    check "logout-all revokes every session" (!(← resolves service f) && !(← resolves service g))
+  withService { maxSessions := 2 } fun service _ now => do
+    let a ← ok (← service.signup "seen" password)
+    let stamp := fun (list : List Auth.SessionInfo) => list.head!.lastSeenAt
+    check "lastSeenAt starts at creation" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1000)
+    now.set 1299
+    discard <| ok (← service.session a.token)
+    check "lastSeenAt is not rewritten within five minutes" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1000)
+    now.set 1300
+    discard <| ok (← service.session a.token)
+    check "lastSeenAt refreshes after five minutes" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1300)
+    let quiet ← ok (← service.login "seen" password (label := some "\x01\x02"))
+    check "labels reduced to nothing are stored as none"
+      ((← ok (← service.sessions quiet.token quiet.csrf)).all (·.label.isNone))
+  withService { maxSessions := 2, sessionLabel := false } fun service _ _ => do
+    let a ← ok (← service.signup "unlabeled" password (label := some "Laptop"))
+    check "labels are dropped when disabled" ((← ok (← service.sessions a.token a.csrf)).all (·.label.isNone))
+  IO.FS.withTempDir fun dir => do
+    let inst := LeanDb.Instance.ofPath (dir / "legacy.sqlite")
+    let hash ← Auth.Crypto.hashPassword password
+    let token ← Auth.Crypto.randomToken
+    let csrf ← Auth.Crypto.randomToken
+    let digest ← Auth.Crypto.digestToken token
+    let .ok legacy ← LeanDb.Cli.Session.open Legacy.base inst | throw (IO.userError "legacy session")
+    let conn ← legacy.conn.get
+    let .ok _ ← LeanDb.DbM.run conn (do
+        discard <| LeanDb.insert Auth.Account ⟨"legacy", hash, "legacy-actor", "legacy-actor", 1, true⟩
+        LeanDb.insert Legacy.Session ⟨digest, csrf, "legacy-actor", 1, 4000⟩)
+      | throw (IO.userError "legacy rows")
+    legacy.close
+    let .ok drifted ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "drifted session")
+    check "old schema is gated until migrated" ((← drifted.gate.get).isSome)
+    drifted.close
+    let .ok (some plan, some report) ← LeanDb.migrate inst.path Auth.Demo.base.specs (apply := true)
+      | throw (IO.userError "migration failed")
+    check "session columns migrate additively"
+      (!plan.isDestructive && report.applied == ["add column \"session\".\"createdAt\"",
+        "add column \"session\".\"lastSeenAt\"", "add column \"session\".\"label\""])
+    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "migrated session")
+    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    try
+      check "migrated instance is admitted" ((← session.gate.get).isNone)
+      let service ← ok (← Auth.Service.new runtime (pure 1000) { maxSessions := 3 })
+      let (user, _) ← ok (← service.session token)
+      check "legacy session still resolves" (user.username == "legacy")
+      let listed ← ok (← service.sessions token csrf)
+      check "legacy session lists with an opaque id and absent stamps"
+        (listed.length == 1 && tokenShape listed.head!.id && listed.head!.createdAt.isNone && listed.head!.lastSeenAt == some 1000)
+      check "legacy session can be revoked" ((← service.revokeSession token csrf listed.head!.id) == .ok true)
+    finally runtime.close
+
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
   let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
@@ -193,3 +317,4 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
 def main : IO Unit := do
   run
   tenantPolicies
+  sessions

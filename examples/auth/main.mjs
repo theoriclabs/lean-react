@@ -12,6 +12,7 @@ const messages = {
   'auth.forbidden': 'This request is not permitted. Please log in again.',
   'auth.throttled': 'Too many attempts. Please wait before trying again.',
   'auth.unavailable': 'The service is unavailable. Please try again later.',
+  'auth.session_not_found': 'That session is already gone.',
 };
 const message = error => messages[error.code] ?? 'The request could not be completed. Please try again.';
 
@@ -21,8 +22,18 @@ function App() {
   const [notice, setNotice] = useState('');
   const [result, setResult] = useState(null);
   const [checking, setChecking] = useState(false);
+  const [sessions, setSessions] = useState(null);
   const form = useRef(null);
   useEffect(() => { client.restore().catch(e => { if (e.code !== 'auth.required' && e.code !== 'auth.stale') setNotice(message(e)); }); }, []);
+  useEffect(() => { if (!auth.user) setSessions(null); }, [auth.user]);
+  async function guarded(action) {
+    const owner = auth.epoch;
+    try { await action(); }
+    catch (e) { if (client.getSnapshot().epoch === owner && e.code !== 'auth.stale') setNotice(message(e)); }
+  }
+  const refreshSessions = () => guarded(async () => setSessions(await client.sessions()));
+  const revoke = id => guarded(async () => { if (!await client.revokeSession(id)) await refreshSessions(); });
+  const logoutAll = () => guarded(async () => { await client.logoutAll(); setNotice('You are signed out everywhere.'); });
   async function submit(event) {
     event.preventDefault();
     const username = form.current.elements.username.value;
@@ -65,6 +76,14 @@ function App() {
       <h2>Protected request</h2>
       <button onClick={whoami} disabled={checking}>{checking ? 'Checking…' : 'Check who I am'}</button>
       {result?.owner === auth.epoch && <p role="status">Server confirmed: {result.value}</p>}
+      <h2>Sessions</h2>
+      <p className="hint">Other devices signed in to this account. Revoking one signs it out immediately.</p>
+      <button onClick={refreshSessions}>Refresh sessions</button>
+      <button onClick={logoutAll}>Sign out everywhere</button>
+      {sessions && <ul aria-label="Sessions">{sessions.map(s => <li key={s.id}>
+        {s.label ?? 'Unnamed device'}{s.current ? ' (this device)' : ''}
+        {' '}<button onClick={() => revoke(s.id)} aria-label={`Revoke ${s.label ?? 'unnamed device'}${s.current ? ' (this device)' : ''}`}>Revoke</button>
+      </li>)}</ul>}
     </section> : <section aria-labelledby="form-heading">
       <div className="modes" aria-label="Account action">
         {['login', 'signup'].map(value => <button key={value} type="button" aria-pressed={mode === value} disabled={auth.transitioning}
