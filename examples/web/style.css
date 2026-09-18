@@ -130,6 +130,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px
 .feedback { display: grid; gap: 8px; max-width: 580px; }
 .feedback kbd { font: inherit; font-size: 11px; padding: 1px 5px; border: 1px solid #ccd7c2; border-bottom-width: 2px; border-radius: 4px; background: #fff; }
 .feedback select { width: max-content; }
+.sparkline { display: block; max-width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 5px; }
 .counter { display: inline-flex; align-items: center; gap: 14px; margin: 2px 34px 0 0; font-size: 12px; color: #748068; }
 .counter strong { font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink); }
 .counter button { margin-left: 8px; }

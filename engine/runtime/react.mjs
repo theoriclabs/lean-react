@@ -1,4 +1,4 @@
-import { action, isAction, runAction, duringRender, isRendering } from "./actions.mjs";
+import { action, isAction, pureAction, runAction, duringRender, isRendering } from "./actions.mjs";
 export { action, pureAction, bindAction, mapAction, catchAction, runAction } from "./actions.mjs";
 
 const hookTag = Symbol("LeanReact.Hook");
@@ -75,6 +75,43 @@ export function createRuntime(React, { onActionError = error => { throw error; }
     return React.createElement(Component, { leanProps: props, ...(key === undefined ? {} : { key: keyString(key) }) });
   }
   const foreignElement = (Component, props, children = []) => React.createElement(Component, props, ...children);
+  const execute = work => {
+    try {
+      const result = runAction(work);
+      if (result != null && typeof result.then === "function") Promise.resolve(result).catch(report);
+    } catch (error) { report(error); }
+  };
+  /** Owns the React ref of an imperative foreign component and its handle lifecycle. Effects run once per
+   * mount, so a keyed remount fires `onGone` for the old instance before `onReady` for the new one. */
+  function HandleHost({ Component, props, children, lifecycle }) {
+    const ref = React.useRef(null);
+    const latest = React.useRef(lifecycle);
+    latest.current = lifecycle;
+    React.useEffect(() => {
+      let mounted = true;
+      const { onReady, adapt } = latest.current;
+      const invoke = (method, args = []) => action(() => {
+        if (!mounted) return { ok: false };
+        const target = ref.current;
+        if (!target || typeof target[method] !== "function") throw new TypeError(`Foreign handle has no method "${method}"`);
+        const result = target[method](...args);
+        return result != null && typeof result.then === "function" ? result.then(value => ({ ok: true, value })) : { ok: true, value: result };
+      });
+      execute(onReady(adapt(invoke, action(() => mounted))));
+      return () => { mounted = false; execute(latest.current.onGone); };
+    }, []);
+    return React.createElement(Component, { ...props, ref }, ...children);
+  }
+  HandleHost.displayName = "LeanReact.HandleHost";
+  /** A foreign component exposing an imperative API through `React.useImperativeHandle(ref, ...)`.
+   * `adapt(invoke, alive)` builds the handle passed to `onReady(handle)` once per mount, after the first commit:
+   * `invoke(method, args)` is an Action resolving to `{ok:true, value}` while mounted and `{ok:false}` after
+   * unmount (the stale ref is never touched); `alive` is an Action returning the mount flag. `onGone` is an
+   * Action run on unmount. Handle actions are ordinary Actions: they cannot run during render. */
+  function handleElement(Component, props, { onReady, onGone = pureAction(undefined), adapt = invoke => invoke }, children = []) {
+    if (typeof onReady !== "function") throw new TypeError("handleElement requires onReady(handle) returning an Action");
+    return React.createElement(HandleHost, { Component, props, children, lifecycle: { onReady, onGone, adapt } });
+  }
   const text = value => {
     if (typeof value !== "string") throw new TypeError("text expects a string");
     return value;
@@ -211,7 +248,7 @@ export function createRuntime(React, { onActionError = error => { throw error; }
       return undefined;
     });
   }
-  return Object.freeze({ component, nameComponent, element, foreignElement, text, fragment, empty: null, keyed, keyedEach,
+  return Object.freeze({ component, nameComponent, element, foreignElement, handleElement, text, fragment, empty: null, keyed, keyedEach,
     dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
     onScroll, onSubmit, useState, createContext, provide, provider, useContext, useEffect,
     runHook, bindHook, mapHook, namedHook, primitiveHook });

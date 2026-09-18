@@ -4,3 +4,4 @@ import LeanReact.DOM
 import LeanReact.Reference
 import LeanReact.Forms
 import LeanReact.Resources
+import LeanReact.Handle

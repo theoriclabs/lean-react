@@ -187,6 +187,28 @@ Accessibility: roles alone are not enough. Pair inputs with `label`/`htmlFor` or
 
 Native tests can inspect and drive a rendered form: `Reference.RenderedTree.byId?`, `byTag?`, `byTestId?` and `findNode?` return a node's recorded attributes, `Reference.attribute?` reads a string attribute, and `Reference.dispatchPress/Change/Input/Paste/Focus/Blur/KeyUp/Submit` run the matching handlers; `dispatchKeyDown` returns the recorded `KeyOutcome`.
 
+## Foreign components with imperative handles
+
+`foreign (name : String) (props : ForeignProps P H) : Element` mounts a host React component registered under `name` and gives Lean a typed imperative handle:
+
+```lean
+structure Handle (ops : Type) where
+  ops : ops                      -- a record of Actions, each returning HandleResult α
+  alive : Action Bool
+
+structure ForeignProps (P H : Type) where
+  props : P
+  onReady : Handle H → Action Unit          -- once per mount, after the first commit
+  onGone : Action Unit := pure ()           -- on unmount, before a remount's onReady
+  reference : ForeignReference P H := {}    -- native stand-in: render and stub ops
+
+inductive HandleResult (α : Type) | ok (value : α) | unmounted
+```
+
+The **typed result** is the chosen unmount policy: in the browser every operation checks the mount flag before touching the React ref and resolves to `.unmounted` afterwards, so a handle retained in a `Cell` never reaches a stale node and React logs no warning; no host error is thrown and `Action.catchError` is not involved. `alive` reports the same flag. A keyed remount fires the old instance's `onGone`, then `onReady` with a fresh handle. Store handles in `useCell`, not `useState`, and match on `HandleResult` at the call site. Handle operations are Actions and therefore cannot run during render.
+
+The host side registers `registerForeign(name, { component, props, ops })` once (see [INTRINSICS.md](../runtime/INTRINSICS.md#imperative-handles)). The native reference renders `reference.render props` under a `.child name` boundary and, on `commit`, calls `onReady` with a handle over the caller-supplied `reference.ops` stubs; disposing flips `alive` and runs `onGone`. Stubs run as given, so `.unmounted` is enforced only by the browser runtime. Without stubs the reference never calls `onReady`. The worked example is the canvas sparkline in `examples/lean/Examples/Sparkline.lean` with `examples/adapters/example-sparkline.mjs`.
+
 ## Reference execution and limits
 
 `Reference.runHook` prepares a Hook, yielding its value, primitive trace, and queued effects. `Reference.render` expands an Element into a `RenderedTree` for inspection and event lookup. Each child has its own recorded trace. Native context providers correctly scope typed values around descendant rendering. `Reference.runAction` explicitly executes an Action. Calling `prepared.commit` runs pending setups and returns an idempotent cleanup Action; partially failed setup cleans up already acquired resources. See [Reference.lean tests](../../tests/runtime/Reference.lean).

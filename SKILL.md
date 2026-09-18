@@ -31,7 +31,7 @@ Read only the example and reference relevant to the task:
 - Raw drafts, focused fields, keyed collection rows and accumulated errors: [Collections](examples/lean/Examples/Collections.lean), [Forms API source](engine/LeanReact/Forms.lean).
 - Shared contexts and separate compiled libraries: [library generator](examples/lean/Examples/GenerateComposability.lean), [linking guide](docs/COMPOSABILITY.md).
 - Shared domain rules, IDs, and operations: [Tickets domain](examples/lean/Examples/Tickets/Domain.lean), [contracts](examples/lean/Examples/Tickets/Contracts.lean), [ontology source](engine/LeanOntology.lean).
-- A foreign React component or a TS consumer: [Lean binding](examples/lean/Examples/Foreign.lean), [host adapter](examples/adapters/example-foreign.mjs), [TS consumer](examples/consumer/typescript.tsx).
+- A foreign React component or a TS consumer: [Lean binding](examples/lean/Examples/Foreign.lean), [host adapter](examples/adapters/example-foreign.mjs), [TS consumer](examples/consumer/typescript.tsx). An imperative widget with a typed handle: [Sparkline.lean](examples/lean/Examples/Sparkline.lean), [example-sparkline.mjs](examples/adapters/example-sparkline.mjs).
 - Runtime/ABI or unsupported compiler dependencies: [compiler](engine/LeanJS/Compiler.lean), [ABI](engine/LeanJS/ABI.md), [implemented scope](docs/IMPLEMENTED.md).
 - Optional LeanDB/LeanHttp integration: [native guide](docs/NATIVE.md). This path depends on sibling checkouts.
 

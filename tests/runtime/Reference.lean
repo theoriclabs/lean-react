@@ -15,6 +15,9 @@ def ThemeText : Component Unit := component fun _ => do
   let value ← useContext theme (site := "theme")
   pure <| text value.name
 
+structure WidgetOps where
+  draw : Array Nat → Action (HandleResult Nat)
+
 partial def firstPress : RenderedTree → Option (Action Unit)
   | .text _ => none
   | .node _ attributes children =>
@@ -127,4 +130,31 @@ def main : IO Unit := do
   let some legacyAttributes := Reference.RenderedTree.byId? formTree.value "legacy" | throw <| IO.userError "missing legacy node"
   assertTrue ((← Reference.dispatchKeyDown legacyAttributes { key := "a" }) == .continue) "Action Unit key handler continues"
   assertTrue ((← legacyPresses.get) == 1) "Action Unit key handler ran"
-  IO.println "LeanReact reference checks passed (state/actions, hooks, effects, context, callbacks, slots, keys, forms)."
+
+  -- Foreign handles: commit hands `onReady` a Handle over caller-supplied stubs; dispose runs `onGone`.
+  let draws ← IO.mkRef (#[] : Array (Array Nat))
+  let lifecycle ← IO.mkRef (#[] : Array String)
+  let received ← IO.mkRef (none : Option (Handle WidgetOps))
+  let stubs : WidgetOps := {
+    draw := fun points => Action.ofIO do draws.modify (·.push points); pure (.ok points.size)
+  }
+  let widget := foreign "widget" {
+    props := "chart"
+    onReady := fun handle => Action.ofIO do received.set (some handle); lifecycle.modify (·.push "ready")
+    onGone := Action.ofIO (lifecycle.modify (·.push "gone"))
+    reference := { render := fun title => text s!"[{title}]", ops := some fun _ => stubs }
+  }
+  let prepared ← Reference.render widget
+  assertTrue (Reference.RenderedTree.textContent prepared.value == "[chart]") "foreign reference render"
+  assertTrue (← received.get).isNone "onReady ran before commit"
+  let dispose ← prepared.commit
+  let some handle := ← received.get | throw <| IO.userError "onReady did not deliver a handle"
+  assertTrue (← Reference.runAction handle.alive) "handle alive after commit"
+  assertTrue ((← Reference.runAction (handle.ops.draw #[1, 2, 3])) == .ok 3) "stub op result"
+  assertTrue ((← draws.get) == #[#[1, 2, 3]]) "stub op recorded"
+  Reference.runAction dispose
+  assertTrue (!(← Reference.runAction handle.alive)) "handle dead after dispose"
+  assertTrue ((← lifecycle.get) == #["ready", "gone"]) "foreign lifecycle order"
+  let silent ← Reference.render (foreign "widget" { props := (), onReady := fun (_ : Handle WidgetOps) => pure () })
+  assertTrue silent.effects.isEmpty "foreign without stubs queued an effect"
+  IO.println "LeanReact reference checks passed (state/actions, hooks, effects, context, callbacks, slots, keys, forms, handles)."

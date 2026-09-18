@@ -271,6 +271,38 @@ test("foreign components have an explicit bridge and receive live callbacks and 
   finally { await f.close(); }
 });
 
+test("imperative handles fire onReady once per mount, resolve to unmounted results, and remount under a new key", async () => {
+  const log = [];
+  let handle;
+  function Widget({ label, ref }) {
+    React.useImperativeHandle(ref, () => ({ shout: word => `${label}:${word.toUpperCase()}`, later: async () => "later" }), [label]);
+    return React.createElement("output", null, label);
+  }
+  const lifecycle = {
+    onReady: received => action(() => { handle = received; log.push("ready"); }),
+    onGone: action(() => log.push("gone")),
+    adapt: (invoke, alive) => ({ shout: word => invoke("shout", [word]), later: invoke("later"), alive }),
+  };
+  const view = key => React.createElement(React.Fragment, { key }, rt.handleElement(Widget, { label: key }, lifecycle));
+  assert.throws(() => rt.handleElement(Widget, {}, {}), /onReady/);
+  const f = await fixture(view("a"));
+  try {
+    assert.deepEqual(log, ["ready"]);
+    assert.equal(runAction(handle.alive), true);
+    assert.deepEqual(runAction(handle.shout("hi")), { ok: true, value: "a:HI" });
+    assert.deepEqual(await runAction(handle.later), { ok: true, value: "later" });
+    const first = handle;
+    await f.render(view("b"));
+    assert.deepEqual(log, ["ready", "gone", "ready"]);
+    assert.notEqual(handle, first);
+    assert.equal(runAction(first.alive), false);
+    assert.deepEqual(runAction(first.shout("stale")), { ok: false });
+    assert.deepEqual(runAction(handle.shout("fresh")), { ok: true, value: "b:FRESH" });
+  } finally { await f.close(); }
+  assert.deepEqual(log, ["ready", "gone", "ready", "gone"]);
+  assert.deepEqual(runAction(handle.later), { ok: false });
+});
+
 test("hook trace diagnostics reject conditional removal and a supplied plan rejects the first render", async () => {
   const Conditional = component(props => hook(() => {
     if (props.enabled) runHook(useState(0, "conditional"));

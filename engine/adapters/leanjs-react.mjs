@@ -8,7 +8,8 @@ export const runtime = createRuntime(React);
 const resources = createResourceHooks(React, runtime);
 const cells = createCellHooks(React, runtime);
 const ctor = (tag, fields = []) => ({ tag, fields });
-const unit = ctor('Unit.unit');
+// `Unit.unit` is a definition; the constructor Lean matches on is `PUnit.unit`.
+const unit = ctor('PUnit.unit');
 export const erased = null;
 const bool = value => ctor(value ? 'Bool.true' : 'Bool.false');
 const fromBool = value => value?.tag === 'Bool.true';
@@ -146,6 +147,30 @@ function hostContext(descriptor) {
 }
 export const useContext = (_type, descriptor, site) => runtime.useContext(hostContext(descriptor), site);
 export const provide = (_type, descriptor, value, child) => runtime.provide(hostContext(descriptor), value, child);
+
+// LR-03 imperative handles: `LeanReact.foreign {P H} name props` resolves `name` in this registry.
+const foreignAdapters = new Map();
+const handleResult = result => result.ok ? ctor('LeanReact.HandleResult.ok', [result.value]) : ctor('LeanReact.HandleResult.unmounted');
+/** Register the host side of `LeanReact.foreign name`. `component` is an ordinary React component that
+ * exposes its API through `React.useImperativeHandle(ref, ...)`; `props(leanProps)` decodes the Lean props
+ * record into React props; `ops(invoke)` builds the Lean ops record, where `invoke(method, args, encode)` is an
+ * Action resolving to `HandleResult` with `encode(result)` as the `.ok` payload (default: Lean Unit).
+ * Registration must happen before the first render that reaches the element; re-registering replaces. */
+export function registerForeign(name, { component, props: decodeProps = value => value, ops: buildOps, children = () => [] }) {
+  if (typeof name !== 'string' || !name) throw new TypeError('registerForeign requires a stable non-empty name');
+  if (typeof component !== 'function' || typeof buildOps !== 'function') throw new TypeError(`registerForeign("${name}") requires component and ops`);
+  foreignAdapters.set(name, { component, decodeProps, buildOps, children });
+}
+export function foreign(_propsType, _opsType, name, foreignProps) {
+  const adapter = foreignAdapters.get(name);
+  if (!adapter) throw new TypeError(`No host adapter registered for LeanReact.foreign "${name}"; call registerForeign before rendering`);
+  const [props, onReady, onGone] = foreignProps.fields;
+  return runtime.handleElement(adapter.component, adapter.decodeProps(props), {
+    onReady, onGone,
+    adapt: (invoke, alive) => ctor('LeanReact.Handle.mk', [adapter.buildOps((method, args = [], encode = () => unit) =>
+      mapAction(result => handleResult(result.ok ? { ok: true, value: encode(result.value) } : result), invoke(method, args))), mapAction(bool, alive)]),
+  }, adapter.children(props));
+}
 
 export function mountElement(descriptor, props = unit) { return element(null, descriptor, props); }
 export function asReactComponent(descriptor, decodeProps = value => value) {

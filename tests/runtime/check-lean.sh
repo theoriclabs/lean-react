@@ -14,6 +14,7 @@ lean -R engine -o "$build_dir/LeanReact/DOM.olean" engine/LeanReact/DOM.lean
 lean -R engine -o "$build_dir/LeanReact/Reference.olean" engine/LeanReact/Reference.lean
 lean -R engine -o "$build_dir/LeanReact/Forms.olean" engine/LeanReact/Forms.lean
 lean -R engine -o "$build_dir/LeanReact/Resources.olean" engine/LeanReact/Resources.lean
+lean -R engine -o "$build_dir/LeanReact/Handle.olean" engine/LeanReact/Handle.lean
 lean -R engine -o "$build_dir/LeanReact.olean" engine/LeanReact.lean
 if ! lean tests/runtime/Probe.lean > "$build_dir/typechecks.log" 2>&1; then
   cat "$build_dir/typechecks.log"

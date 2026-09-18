@@ -79,12 +79,35 @@ The integrated adapter (`leanjs-react.mjs`) maps the Lean `Attribute` constructo
 | `LeanReact.useContext` | `context, site` | Hook reading the nearest matching provider or default. |
 | `LeanReact.provide` | `context, value, child` | Scoped React provider element. |
 | `LeanReact.provider` | `context` | Stable component consuming encoded ProviderProps. |
+| `LeanReact.foreign` | `name, foreignProps` | Host component with a typed imperative handle; see [Imperative handles](#imperative-handles). |
 
 The source instances are `LeanReact.Action.instMonad` and `LeanReact.Hook.instMonad`. Ensure their generated dictionaries reference the intrinsic pure/bind functions, including derived Applicative/Functor methods. If compiler inlining occurs before intrinsic recognition, register the appropriate lowered definitions or prevent native reference code from being inlined across this boundary. Document the actual decision in the integrating adapter.
 
 DOM helpers, props-to-attribute functions, Key constructors, application components, custom hooks, and ordinary domain functions should compile normally until reaching the listed boundaries. Default `site` arguments arrive as Lean strings (usually `""`); they are not optional arguments in the logical intrinsic handlers.
 
 `Action.ofIO`, `Action.runIO`, `Hook.ofRender`, `Hook.runRender`, `Hook.mark`, Context packing functions, Element's native renderer, and the `Reference` namespace are **native reference operations**. They are not browser capabilities. Source `Action.catchError` currently handles native `IO.Error`; it has no binding until the parent supplies an explicit error conversion. Portable services can return typed `Except` values inside Action. The host runtime separately exports `catchAction` for JavaScript errors.
+
+## Imperative handles
+
+`LeanReact.foreign {P H : Type} (name : String) (props : ForeignProps P H) : Element` is registered with **arity 4**: `foreign(null, null, nameString, encodedForeignProps)`. `LeanReact.ForeignProps.mk` has fields `[props, onReady, onGone, reference]` (the two type parameters are omitted); the host ignores `reference`, which is the native stand-in. `LeanReact.Handle.mk` has fields `[ops, alive]`; `LeanReact.HandleResult.ok` has `[value]` and `LeanReact.HandleResult.unmounted` has `[]`.
+
+The integrated adapter resolves `name` through a registry filled by the application before the first render:
+
+```js
+import { registerForeign, ctor } from '../../engine/adapters/leanjs-react.mjs';
+registerForeign('sparkline', {
+  component: SparklineCanvas,                 // React component using React.useImperativeHandle(ref, ...)
+  props: value => ({ width: Number(value.fields[0]), ... }),   // Lean props record → React props
+  ops: invoke => ctor('Examples.Sparkline.SparklineOps.mk', [  // Lean ops record of Actions
+    points => invoke('draw', [points.map(Number)], count => BigInt(count)),
+    invoke('clear'),                          // encode defaults to Lean Unit
+  ]),
+});
+```
+
+`invoke(method, args, encode)` returns an Action resolving to `HandleResult`: `.ok (encode result)` while mounted, `.unmounted` afterwards without touching the ref; a method returning a Promise resolves the Action asynchronously. Unknown methods throw a `TypeError` through the ordinary action error path. An unregistered name throws at first render with the name in the message.
+
+The runtime building block is `runtime.handleElement(Component, props, { onReady, onGone, adapt }, children)`: a `HandleHost` owns the React ref and a mount flag, calls `onReady(adapt(invoke, alive))` from a once-per-mount effect after the first commit, and `onGone` from its cleanup, so a keyed remount fires `onGone` before the new `onReady`. Under Strict Mode's development double-invocation the pairs stay balanced.
 
 ## Identity, hooks, and lifecycle integration
 

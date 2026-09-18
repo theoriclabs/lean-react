@@ -33,7 +33,9 @@ def intrinsics (moduleName : String) : Array LeanJS.Intrinsic := #[
   bridge moduleName `LeanReact.keyedEach "keyedEach" 4,
   bridge moduleName `LeanReact.createContext "createContext" 4,
   bridge moduleName `LeanReact.useContext "useContext" 3,
-  bridge moduleName `LeanReact.provide "provide" 4
+  bridge moduleName `LeanReact.provide "provide" 4,
+  -- LR-03 imperative handles: `foreign {P H} name props`; the host resolves `name` through `registerForeign`.
+  bridge moduleName `LeanReact.foreign "foreign" 4
 ]
 
 def options (moduleName : String) : LeanJS.Options := {
