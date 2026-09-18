@@ -12,6 +12,7 @@ await run('node', ['--test', 'tests/runtime/*.test.mjs'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/Smoke.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateDomain.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/Generate.lean'], { cwd });
+await run('lake', ['env', 'lean', '--run', 'examples/lean/Examples/GenerateClient.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateComposability.lean'], { cwd });
 await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
 await run('node', ['--test', 'tests/gateway/*.test.mjs'], { cwd });

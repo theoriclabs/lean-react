@@ -71,6 +71,16 @@ def ErrorStatus.ofOperation (operation : Operation kind Input Output Error)
     (status : Error → Nat) : ErrorStatus :=
   ⟨operation.identity, fun value => status <$> operation.errorCodec.decode value⟩
 
+/-- A status decided by the variant tag alone. Generated clients mirror this table exactly;
+the payload is still checked by the error codec before an application sees it. -/
+def ErrorStatus.ofTags (operation : Operation kind Input Output Error)
+    (table : List (String × Nat)) : ErrorStatus :=
+  ⟨operation.identity, fun value => do
+    let tag ← JsonWire.stringField "tag" value
+    match table.lookup tag with
+    | some status => pure status
+    | none => Validation.fail "response.unknown_domain_error" [.key "tag"] [("actual", tag)]⟩
+
 def domainStatus (policies : List ErrorStatus) (identity : OperationId)
     (value : Lean.Json) : Validation Nat := do
   let some policy := policies.find? (·.identity == identity)

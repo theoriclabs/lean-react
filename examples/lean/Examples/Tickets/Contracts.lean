@@ -107,9 +107,9 @@ def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
 def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
   ⟨ops.codecs.operationId, ops.codecs.errors⟩
 
+/-- Tag-determined, so the generated client carries the same table. -/
 def PublicOperations.errorStatuses (ops : PublicOperations) : List Contract.Http.ErrorStatus :=
-  [Contract.Http.ErrorStatus.ofOperation ops.save fun error => match error with
-    | .notFound => 404 | .conflict _ => 409]
+  [Contract.Http.ErrorStatus.ofTags ops.save [("notFound", 404), ("conflict", 409)]]
 
 def encodeRequest (ops : PublicOperations) := Contract.Http.encodeRequest ops.httpCodecs
 

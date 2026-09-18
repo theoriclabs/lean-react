@@ -13,6 +13,7 @@ export async function buildExample({ compile = true } = {}) {
     await run('lake', ['build', 'Examples'], { cwd: projectRoot });
     await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateDomain.lean'], { cwd: projectRoot });
     await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/Generate.lean'], { cwd: projectRoot });
+    await run('lake', ['env', 'lean', '--run', 'examples/lean/Examples/GenerateClient.lean'], { cwd: projectRoot });
     await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/Smoke.lean'], { cwd: projectRoot });
     await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateComposability.lean'], { cwd: projectRoot });
   }
