@@ -8,16 +8,19 @@ structure Prepared (α : Type) where
   trace : Array HookSite
   effects : Array (Action (Action Unit))
 
-private def environment : IO RenderEnv := do
-  pure { trace := ← IO.mkRef #[], effects := ← IO.mkRef #[] }
+private def environment (history : Option History) : IO RenderEnv := do
+  pure { trace := ← IO.mkRef #[], effects := ← IO.mkRef #[], history := ← match history with
+    | some history => pure history
+    | none => History.create }
 
-def runHook (work : Hook α) : IO (Prepared α) := do
-  let env ← environment
+/-- Pass a `History` to share in-memory navigation across renders; otherwise each render starts at `/`. -/
+def runHook (work : Hook α) (history : Option History := none) : IO (Prepared α) := do
+  let env ← environment history
   let value ← work.runRender env
   pure ⟨value, ← env.trace.get, ← env.effects.get⟩
 
-def render (value : Element) : IO (Prepared RenderedTree) := do
-  let env ← environment
+def render (value : Element) (history : Option History := none) : IO (Prepared RenderedTree) := do
+  let env ← environment history
   let tree ← value.renderTree env
   pure ⟨tree, ← env.trace.get, ← env.effects.get⟩
 
@@ -89,6 +92,9 @@ def dispatchKeyUp (attributes : Array Attribute) (event : KeyEvent) : IO Unit :=
   for attr in attributes do if let .keyUp handler := attr then (handler event).runIO
 def dispatchSubmit (attributes : Array Attribute) : IO Unit := do
   for attr in attributes do if let .submit handler := attr then handler.runIO
+/-- Stands for an unmodified primary click on a router link. -/
+def dispatchNavigate (attributes : Array Attribute) : IO Unit := do
+  for attr in attributes do if let .navigate handler := attr then handler.runIO
 /-- The recorded outcome: any handler asking to prevent the default wins, as in the browser. -/
 def dispatchKeyDown (attributes : Array Attribute) (event : KeyEvent) : IO KeyOutcome := do
   let mut outcome := KeyOutcome.continue

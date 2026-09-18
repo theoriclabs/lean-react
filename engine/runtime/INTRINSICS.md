@@ -44,6 +44,7 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 { kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll", handler: encodedLeanClosure }
 { kind: "submit", action: encodedAction }               // Action Unit; the runtime always prevents the default first
 { kind: "style", entries: [["backgroundColor", "red"], ...] }  // React camelCase names, string values
+{ kind: "navigate", action: encodedAction }             // router link click; see Router below
 ```
 
 `keyDown` handlers return `Action KeyOutcome`. The adapter additionally requires `keyOutcome(encoded)`, decoding `LeanReact.KeyOutcome` to the host string `"preventDefault"` or `"continue"`; the runtime calls `preventDefault()` only for a **synchronous** `"preventDefault"` result and reports an asynchronous one through `onActionError`, because the browser default cannot be prevented after the event has dispatched. `mouseEnter`/`mouseLeave` receive `PressEvent` modifier payloads.
@@ -80,6 +81,8 @@ The integrated adapter (`leanjs-react.mjs`) maps the Lean `Attribute` constructo
 | `LeanReact.provide` | `context, value, child` | Scoped React provider element. |
 | `LeanReact.provider` | `context` | Stable component consuming encoded ProviderProps. |
 | `LeanReact.foreign` | `name, foreignProps` | Host component with a typed imperative handle; see [Imperative handles](#imperative-handles). |
+| `LeanReact.useLocation` | `site` | Hook subscribing to the history; see [Router](#router). |
+| `LeanReact.Route.split/segments/nat?`, `LeanReact.Query.parse/encode` | `string` / `pairs` | URL helpers; see [Router](#router). |
 
 The source instances are `LeanReact.Action.instMonad` and `LeanReact.Hook.instMonad`. Ensure their generated dictionaries reference the intrinsic pure/bind functions, including derived Applicative/Functor methods. If compiler inlining occurs before intrinsic recognition, register the appropriate lowered definitions or prevent native reference code from being inlined across this boundary. Document the actual decision in the integrating adapter.
 
@@ -108,6 +111,16 @@ registerForeign('sparkline', {
 `invoke(method, args, encode)` returns an Action resolving to `HandleResult`: `.ok (encode result)` while mounted, `.unmounted` afterwards without touching the ref; a method returning a Promise resolves the Action asynchronously. Unknown methods throw a `TypeError` through the ordinary action error path. An unregistered name throws at first render with the name in the message.
 
 The runtime building block is `runtime.handleElement(Component, props, { onReady, onGone, adapt }, children)`: a `HandleHost` owns the React ref and a mount flag, calls `onReady(adapt(invoke, alive))` from a once-per-mount effect after the first commit, and `onGone` from its cleanup, so a keyed remount fires `onGone` before the new `onReady`. Under Strict Mode's development double-invocation the pairs stay balanced.
+
+## Router
+
+`LeanReact.useLocation (site : String := "") : Hook RouteState` is the one router hook primitive: **arity 1**, kind `router`, site argument 0, registered in `LeanReact.Compiler.options.hooks`. The host returns `LeanReact.RouteState.mk` with fields `[locationString, navigateClosure, replaceClosure, backAction]`; `navigate`/`replace` take a same-origin path starting with `/` and resolve to Lean Unit, `back` is an Action. `useRouter`, `routerProvider`, `useRoute`, `Router.ofState`, and `Router.link` are ordinary compiled Lean over that primitive and the `LeanReact.RouteState` context, whose native `TypeName` dictionary is registered as the erased intrinsic `LeanReact.instTypeNameRouteState` (arity 0).
+
+`engine/runtime/router.mjs` supplies `createRouterHooks(React, runtime, { history })`, `createBrowserHistory(window)` (`pathname + search`, `pushState`/`replaceState`/`back`, notifications for `popstate` and for its own pushes) and `createMemoryHistory(initial)` for tests and server rendering. The integrated adapter exports `router`; call `router.setHistory(createMemoryHistory('/path'))` before the first render to replace the lazily created browser history. `navigate` to the current location adds no entry.
+
+URL helpers are intrinsics because portable Lean has no string splitting yet; their Lean bodies are the reference: `LeanReact.Route.split` (`String → String × String`, arity 1, `Prod.mk [pathname, search]` without `?`/hash), `LeanReact.Route.segments` (`String → Array String`, non-empty percent-decoded parts), `LeanReact.Route.nat?` (`String → Option Nat`, decimal only), `LeanReact.Query.parse` (`String → Array (String × String)`, `URLSearchParams` order and decoding), `LeanReact.Query.encode` (`Array (String × String) → String`, `application/x-www-form-urlencoded`). `LeanReact.Route.join` is portable Lean.
+
+`LeanReact.Attribute.navigate` (fields `[action]`) maps to `runtime.onNavigate(action)`: an unmodified primary click on a same-origin anchor without a `target` prevents the browser navigation and runs the action; every other click keeps the default. The intrinsic adapter's attribute union gains `{ kind: "navigate", action }`.
 
 ## Identity, hooks, and lifecycle integration
 

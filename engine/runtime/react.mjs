@@ -174,6 +174,17 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   }));
   /** A form submit never navigates: the default is prevented before the action runs. */
   const onSubmit = work => raw => { raw.preventDefault(); event(() => work, () => ({}))(raw); };
+  /** In-place navigation for a router link: an unmodified primary click on a same-origin anchor without a
+   * `target` prevents the browser navigation and runs the action; every other click keeps the default. */
+  const onNavigate = work => raw => {
+    if (raw.defaultPrevented || raw.button !== 0 || raw.metaKey || raw.ctrlKey || raw.shiftKey || raw.altKey) return;
+    const anchor = raw.currentTarget;
+    if (anchor?.target && anchor.target !== "_self") return;
+    const origin = globalThis.location?.origin;
+    if (anchor?.origin && origin && anchor.origin !== origin) return;
+    raw.preventDefault();
+    event(() => work, () => ({}))(raw);
+  };
   function useState(initial, site = "") {
     return hook(() => {
       mark("state", site);
@@ -250,6 +261,6 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   }
   return Object.freeze({ component, nameComponent, element, foreignElement, handleElement, text, fragment, empty: null, keyed, keyedEach,
     dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
-    onScroll, onSubmit, useState, createContext, provide, provider, useContext, useEffect,
+    onScroll, onSubmit, onNavigate, useState, createContext, provide, provider, useContext, useEffect,
     runHook, bindHook, mapHook, namedHook, primitiveHook });
 }

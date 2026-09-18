@@ -45,6 +45,7 @@ export function createIntrinsicAdapter(runtime, abi) {
       case "scroll": props.onScroll = runtime.onScroll(handle("LeanReact.ScrollEvent")); break;
       case "submit": props.onSubmit = runtime.onSubmit(attr.action); break;
       case "style": props.style = Object.fromEntries(attr.entries); break;
+      case "navigate": props.onClick = runtime.onNavigate(attr.action); break;
       default: throw new TypeError(`Unknown decoded LeanReact attribute: ${attr.kind}`);
     }
   }

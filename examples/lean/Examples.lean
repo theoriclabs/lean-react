@@ -9,3 +9,4 @@ import Examples.Showcase
 import Examples.Libraries.App
 import Examples.Feedback
 import Examples.Sparkline
+import Examples.Routing

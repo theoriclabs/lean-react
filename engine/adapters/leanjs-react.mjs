@@ -3,6 +3,7 @@ import * as React from 'react';
 import { createRuntime, pureHook, pureAction, bindAction, mapAction, catchAction, runAction } from '../runtime/react.mjs';
 import { createResourceHooks } from '../runtime/resources.mjs';
 import { createCellHooks } from '../runtime/cells.mjs';
+import { createRouterHooks, splitLocation, segments, parseQuery, encodeQuery, parseNat } from '../runtime/router.mjs';
 
 export const runtime = createRuntime(React);
 const resources = createResourceHooks(React, runtime);
@@ -128,6 +129,8 @@ export function node(tag, attributes, children) {
       case 'LeanReact.Attribute.scroll': props.onScroll = runtime.onScroll(payload => name(scrollPayload(payload))); break;
       case 'LeanReact.Attribute.submit': props.onSubmit = runtime.onSubmit(name); break;
       case 'LeanReact.Attribute.style': props.style = Object.fromEntries(name.map(entry => [entry.fields[0], entry.fields[1]])); break;
+      // LR-06 router link clicks.
+      case 'LeanReact.Attribute.navigate': props.onClick = runtime.onNavigate(name); break;
       default: throw new TypeError(`Unknown LeanReact attribute: ${attribute.tag}`);
     }
   }
@@ -171,6 +174,22 @@ export function foreign(_propsType, _opsType, name, foreignProps) {
       mapAction(result => handleResult(result.ok ? { ok: true, value: encode(result.value) } : result), invoke(method, args))), mapAction(bool, alive)]),
   }, adapter.children(props));
 }
+
+// LR-06 router: `LeanReact.useLocation site` (hook primitive `router`, arity 1) plus URL helper intrinsics.
+// `router.setHistory(createMemoryHistory(path))` before mounting swaps the browser history for tests/SSR.
+export const router = createRouterHooks(React, runtime);
+export const useLocation = site => runtime.mapHook(state => ctor('LeanReact.RouteState.mk', [
+  state.location,
+  path => mapAction(() => unit, state.navigate(path)),
+  path => mapAction(() => unit, state.replace(path)),
+  mapAction(() => unit, state.back),
+]), router.useLocation(site));
+const pair = ([left, right]) => ctor('Prod.mk', [left, right]);
+export const routeSplit = location => pair(splitLocation(location));
+export const routeSegments = path => segments(path);
+export const routeNat = segment => { const value = parseNat(segment); return value == null ? ctor('Option.none') : ctor('Option.some', [value]); };
+export const queryParse = search => parseQuery(search).map(pair);
+export const queryEncode = pairs => encodeQuery(pairs.map(entry => entry.fields));
 
 export function mountElement(descriptor, props = unit) { return element(null, descriptor, props); }
 export function asReactComponent(descriptor, decodeProps = value => value) {

@@ -4,7 +4,7 @@
 
 LeanReact is the frontend library within LeanApp. This tutorial needs no native server or database; use the full-stack guide when you want the authenticated café and SQLite persistence.
 
-This guide takes you from the working showcase to a small form written in Lean, then shows how to compose editors, share domain definitions, and connect compiled libraries. It describes the implementation in this repository. LeanReact is experimental; routing, React Server Components, and automatic JS/TS bindings are still ahead.
+This guide takes you from the working showcase to a small form written in Lean, then shows how to compose editors, share domain definitions, and connect compiled libraries. It describes the implementation in this repository. LeanReact is experimental; nested routing, React Server Components, and automatic JS/TS bindings are still ahead.
 
 All commands run from the repository root unless stated otherwise. You need the toolchain in `lean-toolchain` (currently Lean 4.33.0), Node 22.13 or newer, and npm. Install Lean through [elan](https://github.com/leanprover/elan). React and the JavaScript build tools are already declared in `package.json`.
 
@@ -309,6 +309,36 @@ The [Tickets domain](../examples/lean/Examples/Tickets/Domain.lean) contains the
 Use literal, stable hook site labels. Dependencies are typed `Dependency` values; keep the dependency array's shape fixed. Resource generations suppress obsolete responses after refresh, key changes, or unmount. A host loader must explicitly forward the request's abort signal to its I/O if it should also cancel that work. The example's basic Tickets `fetch` adapter does not yet forward it.
 
 Keep domain failures as typed `Except` values. `Action.catchError` is for host exceptions; its current bridge supplies `IO.Error.userError`. Raw file, socket, and browser operations do not become portable merely because a function returns `Action`: give native operations explicit host adapters.
+
+### Route between screens
+
+Define a route type and a `RouteCodec`, mount one `routerProvider`, and read the route where a screen needs it:
+
+<!-- recipe: typed-routes -->
+```lean
+import LeanReact
+open LeanReact
+
+inductive Screen where
+  | home | ticket (id : Nat) | notFound
+
+def screens : RouteCodec Screen := {
+  parse := fun location =>
+    match (Route.segments (Route.split location).1).toList with
+    | [] => some .home
+    | ["tickets", id] => (Route.nat? id).map Screen.ticket
+    | _ => none
+  print := fun | .home => "/" | .ticket id => s!"/tickets/{id}" | .notFound => "/not-found" }
+
+def Detail : Component Nat := component fun id => do
+  let router ← useRoute screens .notFound "route"
+  pure <| DOM.section {} #[
+    DOM.h2 {} #[text s!"Ticket {id}"],
+    router.link .home {} #[text "All tickets"],
+    DOM.button { onPress := some router.back } #[text "Back"]]
+```
+
+`router.current` is the decoded route, `router.location` the raw `pathname + search`. `navigate` pushes, `replace` rewrites, `back` pops; `router.link` renders an anchor whose plain clicks navigate in place while modified clicks and external URLs keep the browser default. Deep links and reloads need the server to serve the page for every application path; `scripts/dev.mjs` does this for `/router/*`. The reference renderer has an in-memory `History`, so screens can be tested natively (`tests/runtime/Router.lean`). The complete example is [Routing.lean](../examples/lean/Examples/Routing.lean), served at `/router/`.
 
 ## Style components and use JavaScript libraries
 

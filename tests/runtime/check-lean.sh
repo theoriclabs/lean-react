@@ -15,6 +15,7 @@ lean -R engine -o "$build_dir/LeanReact/Reference.olean" engine/LeanReact/Refere
 lean -R engine -o "$build_dir/LeanReact/Forms.olean" engine/LeanReact/Forms.lean
 lean -R engine -o "$build_dir/LeanReact/Resources.olean" engine/LeanReact/Resources.lean
 lean -R engine -o "$build_dir/LeanReact/Handle.olean" engine/LeanReact/Handle.lean
+lean -R engine -o "$build_dir/LeanReact/Router.olean" engine/LeanReact/Router.lean
 lean -R engine -o "$build_dir/LeanReact.olean" engine/LeanReact.lean
 if ! lean tests/runtime/Probe.lean > "$build_dir/typechecks.log" 2>&1; then
   cat "$build_dir/typechecks.log"
@@ -23,6 +24,7 @@ fi
 echo "LeanReact typechecks passed (generic APIs and 6 expected rejections)."
 lean tests/runtime/Examples.lean
 lean --run tests/runtime/Reference.lean
+lean --run tests/runtime/Router.lean
 lean --run tests/runtime/Forms.lean
 lean --run tests/runtime/Resources.lean
 if ! lean tests/runtime/P06Types.lean > "$build_dir/p06-typechecks.log" 2>&1; then
