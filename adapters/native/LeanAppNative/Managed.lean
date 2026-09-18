@@ -49,7 +49,7 @@ def Managed.readiness (managed : Managed) : IO HttpReply := do
 the connection factory. All operation dispatch goes through withConnection; no argv or admin
 entry point is provided. Denied admission never invokes the factory or an application handler. -/
 def Managed.dispatch (managed : Managed) (context : RequestContext)
-    (method path body : String) : IO HttpReply := do
+    (method path body : String) (trace : Log.TraceRef := none) : IO HttpReply := do
   if path == managed.readinessPath then
     if method != "GET" then return ⟨405, Http.protocolResponse "method.not_allowed"⟩
     return ← managed.readiness
@@ -57,20 +57,32 @@ def Managed.dispatch (managed : Managed) (context : RequestContext)
     if method != "GET" then return ⟨405, Http.protocolResponse "method.not_allowed"⟩
     return ⟨200, managed.publicBody⟩
   try
+    let queued ← IO.monoMsNow
     let result ← managed.service.withConnection fun conn => do
-      let .ok app := managed.factory conn | return failed
-      if app.manifest != managed.approved then return failed
+      let entered ← IO.monoMsNow
+      trace.phase (fun t n => { t with queueWait := t.queueWait + n }) queued
+      let assembled := fun (outcome : IO HttpReply) => do
+        trace.phase (fun t n => { t with db := t.db + n }) entered
+        outcome
+      let .ok app := managed.factory conn | assembled (return failed)
+      if app.manifest != managed.approved then return ← assembled (return failed)
       -- The factory cannot substitute HTTP/status/codec configuration. Revalidate its registry
       -- using exactly the frozen template, then use Server's existing protocol implementation.
       let .ok server := Server.create app managed.codecs managed.config
-        | return failed
+        | assembled (return failed)
       -- Server catches handler exceptions using the fixed sanitized failure code. Declared
       -- domain responses (including their explicit status choices) remain unchanged.
-      server.dispatch context method path body
+      assembled (server.dispatch context method path body trace)
     match result with
     | .ok reply => return reply
-    | .error (.host _) => return failed
-    | .error _ => return unavailable
-  catch _ => return failed
+    | .error (.host e) =>
+      trace.failure "managed" "application.failed" e
+      return failed
+    | .error _ =>
+      trace.update fun t => { t with outcome := some .unavailable }
+      return unavailable
+  catch e =>
+    trace.failure "managed" "application.failed" e
+    return failed
 
 end LeanAppNative

@@ -146,11 +146,13 @@ def errorStatuses : Validation (List Http.ErrorStatus) := do
   let saveOp : Operation .command Save Recipe String ← Operation.canonical .command ⟨"cafe", "save", "1"⟩
   pure [Http.ErrorStatus.ofOperation saveOp (fun _ => 422)]
 
-def host (service : Auth.Service) (origin : String) (development : Bool := false) : IO Auth.Host := do
+def host (service : Auth.Service) (origin : String) (development : Bool := false)
+    (maxConnections : Nat := 64) : IO Auth.Host := do
   let .ok codecs := Http.codecs | throw (IO.userError "invalid codecs")
   let .ok app := applicationFor none | throw (IO.userError "invalid cafe application")
   let .ok statuses := errorStatuses | throw (IO.userError "invalid save contract")
-  let .ok template := Server.create app codecs { maxBodyBytes := 8192, errorStatuses := statuses }
+  let .ok template := Server.create app codecs {
+    maxBodyBytes := 8192, errorStatuses := statuses, maxConnections }
     | throw (IO.userError "invalid server")
   let .ok host := Auth.Host.create service template application origin development
     | throw (IO.userError "invalid authentication origin/configuration")

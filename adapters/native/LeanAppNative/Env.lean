@@ -3,6 +3,15 @@ import LeanAppNative.Auth.Store
 /-! Environment parsing for the application executables. The libraries take typed values only. -/
 namespace LeanAppNative.Env
 
+/-- Request logging: one JSON line per request to stderr by default, to `LEANAPP_LOG_FILE` when
+set, or nothing with `LEANAPP_LOG=off`. `LEANAPP_LOG_ERRORS=verbose` adds exception messages. -/
+def logConfig : IO Log.Config := do
+  let sink ← match ← IO.getEnv "LEANAPP_LOG", ← IO.getEnv "LEANAPP_LOG_FILE" with
+    | some "off", _ => pure Log.Sink.none
+    | _, some path => if path.isEmpty then pure .stderr else pure (.file path)
+    | _, none => pure .stderr
+  return { sink, verboseErrors := (← IO.getEnv "LEANAPP_LOG_ERRORS") == some "verbose" }
+
 /-- `LEANAPP_TENANT_POLICY=private|fixed:<name>|invite`; unset means a private tenant per account. -/
 def tenantPolicy : IO Auth.TenantPolicy := do
   match ← IO.getEnv "LEANAPP_TENANT_POLICY" with
@@ -22,6 +31,9 @@ def natSetting (name : String) (default : Nat) (max : Nat := 1000000) (min : Nat
     let some n := value.toNat? | throw (IO.userError s!"invalid {name}")
     if n < min || n > max then throw (IO.userError s!"invalid {name}")
     pure n
+
+/-- `LEANAPP_BACKEND_MAX_CONNECTIONS`: simultaneous connections the Lean listener accepts (default 64). -/
+def maxConnections : IO Nat := natSetting "LEANAPP_BACKEND_MAX_CONNECTIONS" 64 65535
 
 /-- Authentication service configuration assembled from the environment: `LEANAPP_TENANT_POLICY`,
 `LEANAPP_MAX_SESSIONS` (concurrent sessions per account, default 1) and

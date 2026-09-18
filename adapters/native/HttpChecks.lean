@@ -12,17 +12,27 @@ private def require [Repr ε] (value : Except ε α) : IO α :=
 private def rejected (code : String) (value : Validation α) : Bool :=
   match value with | .error errors => errors.first.code == code | _ => false
 
-private def binding (op : Operation .query Nat Nat String) (path : String) (calls : IO.Ref Nat) :
-    Binding IO Option Option op where
+private def binding (op : Operation .query Nat Nat String) (path : String) (calls : IO.Ref Nat)
+    (seen : Option (IO.Ref String) := none) : Binding IO Option Option op where
   http := { path }
   policy := fun ctx _ input => pure <|
     if ctx.principal.isNone || input == 401 then .error .unauthenticated
     else if input == 403 then .error .forbidden else .ok ()
-  handler _ _ input := do
+  handler ctx _ input := do
     calls.modify (· + 1)
+    if let some ref := seen then ref.set ctx.requestId
     if input == 500 then throw (IO.userError "private host detail")
     if input == 9 then return .error "third-domain-error"
     return .ok (input + 10)
+
+/-- A text operation with its own body cap, for the per-binding limit checks. -/
+private def textBinding (op : Operation .query String Nat String) (path : String) (cap : Nat) (calls : IO.Ref Nat) :
+    Binding IO Option Option op where
+  http := { path, maxBodyBytes := some cap }
+  policy := fun _ _ _ => pure (.ok ())
+  handler _ _ input := do
+    calls.modify (· + 1)
+    return .ok input.length
 
 private def noReads : ReadCapability IO Option where
   read value := match value with
@@ -37,13 +47,18 @@ private def response (status : Nat) (body : Lean.Json) : LeanHttp.Response := {
 def main : IO Unit := do
   let codecs ← require Http.codecs
   let calls ← IO.mkRef 0
+  let seen ← IO.mkRef ""
   let exchanges ← IO.mkRef 0
   let first ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "one", "1"⟩)
   let second ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "two", "1"⟩)
   let third ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "three", "1"⟩)
+  let small ← require (Operation.canonical .query (Input := String) (Output := Nat) (Error := String) ⟨"fixture", "small", "1"⟩)
+  let large ← require (Operation.canonical .query (Input := String) (Output := Nat) (Error := String) ⟨"fixture", "large", "1"⟩)
   let exports := [(binding first "/first" calls).approve (fun _ => noReads),
     (binding second "/second" calls).approve (fun _ => noReads),
-    (binding third "/third" calls).approve (fun _ => noReads)]
+    (binding third "/third" calls (some seen)).approve (fun _ => noReads),
+    (textBinding small "/small" (256 * 1024) calls).approve (fun _ => noReads),
+    (textBinding large "/large" (2 * 1024 * 1024) calls).approve (fun _ => noReads)]
   let app ← require (Application.create "generic" [{ name := "fixture", exports }])
   let statuses := [Http.ErrorStatus.ofOperation third (fun _ => 422)]
   let server ← require (Server.create app codecs { errorStatuses := statuses, maxBodyBytes := 512 })
@@ -116,19 +131,81 @@ def main : IO Unit := do
   let reply ← server.dispatch context "POST" "/third" (String.ofList (List.replicate 257 'é'))
   check "body limit counts UTF8 bytes before parsing" (reply.status == 413)
   let issued ← IO.mkRef 0
-  let streamStatus := fun (bytes : ByteArray) => Std.Async.Async.block do
+  let lines ← IO.mkRef (#[] : Array String)
+  Log.configure { sink := .buffer lines }
+  let streamStatusWith := fun (path : String) (headers : List (String × String)) (bytes : ByteArray) => Std.Async.Async.block do
     let body ← Std.Http.Body.fromBytes bytes
+    let named := Std.Http.Headers.ofList (headers.map fun (k, v) => (Std.Http.Header.Name.ofString! k, Std.Http.Header.Value.ofString! v))
     let request : Std.Http.Request Std.Http.Body.Stream := {
-      line := { method := .post, version := .v11, uri := Std.Http.RequestTarget.parse! "/third" }
+      line := { method := .post, version := .v11, uri := Std.Http.RequestTarget.parse! path, headers := named }
       body }
     let result ← Std.Async.ContextAsync.run (server.handler (fun _ => do
       issued.modify (· + 1)
       pure context) request)
     return result.line.status.toCode.toNat
+  let streamStatus := fun (path : String) (bytes : ByteArray) => streamStatusWith path [] bytes
   check "streaming body bound enforced before context issuance"
-    ((← streamStatus (String.ofList (List.replicate 513 'x')).toUTF8) == 413 && (← issued.get) == 0)
+    ((← streamStatus "/third" (String.ofList (List.replicate 513 'x')).toUTF8) == 413 && (← issued.get) == 0)
   check "invalid UTF8 rejected before context issuance"
-    ((← streamStatus ⟨#[255]⟩) == 400 && (← issued.get) == 0)
+    ((← streamStatus "/third" ⟨#[255]⟩) == 400 && (← issued.get) == 0)
+  let padded := fun (op : Operation .query String Nat String) (size : Nat) =>
+    (Http.encodeRequest codecs ⟨op.identity, .query, op.inputCodec.encode (String.ofList (List.replicate size 'x'))⟩).compress
+  let oversized := padded small (300 * 1024)
+  let handled ← calls.get
+  check "300 KiB body to a 256 KiB path is 413 before context issuance and dispatch"
+    ((← streamStatus "/small" oversized.toUTF8) == 413 && (← issued.get) == 0 && (← calls.get) == handled)
+  check "the same body to a 2 MiB path succeeds"
+    ((← streamStatus "/large" (padded large (300 * 1024)).toUTF8) == 200 && (← issued.get) == 1 && (← calls.get) == handled + 1)
+  check "buffered dispatch applies the binding cap as well"
+    ((← server.dispatch context "POST" "/small" oversized).status == 413 &&
+      (← server.dispatch context "POST" "/large" (padded large (300 * 1024))).status == 200)
+  check "a path without an override keeps the server default"
+    (bodyLimitFor app.manifest server.config "/third" == 512 && bodyLimitFor app.manifest server.config "/missing" == 512 &&
+      (← server.dispatch context "POST" "/third" (String.ofList (List.replicate 513 'x'))).status == 413)
+  check "the wire limit is the largest cap in effect" (wireBodyLimitFor app.manifest server.config == 2 * 1024 * 1024)
+  check "manifest metadata carries the per-operation cap"
+    (((app.manifest.find? (·.http.path == "/large")).bind (·.http.maxBodyBytes)) == some (2 * 1024 * 1024) &&
+      ((app.manifest.find? (·.http.path == "/third")).bind (·.http.maxBodyBytes)) == none)
+  check "zero and oversized binding caps are rejected"
+    (rejected "http.invalid_body_limit" (Application.create "bad" [{ name := "bad", exports := [
+        (textBinding small "/small" 0 calls).approve (fun _ => noReads)] }]) &&
+      rejected "http.invalid_body_limit" (HttpBinding.validate { path := "/x", maxBodyBytes := some (2^32 + 1) }))
+  check "rate limit burst defaults to a sixth of the per-minute rate"
+    ((⟨1200, 200⟩ : RateLimit) == { perPrincipalPerMinute := 1200 } && ({ perPrincipalPerMinute := 1200, burst := 20 } : RateLimit).burst == 20)
+  -- Request log: one JSON line per handled request, the client request id reaching the context.
+  lines.set #[]
+  check "client request id reaches RequestContext.requestId"
+    ((← streamStatusWith "/third" [("x-request-id", "trace-42")] goodJson.compress.toUTF8) == 200 && (← seen.get) == "trace-42")
+  check "malformed request ids are replaced"
+    ((← streamStatusWith "/third" [("x-request-id", "bad id")] goodJson.compress.toUTF8) == 200 &&
+      (← seen.get) != "bad id" && Log.validRequestId (← seen.get))
+  check "handler exceptions are logged with class and stable code" ((← streamStatus "/third"
+    (Http.encodeRequest codecs { request with input := third.inputCodec.encode 500 }).compress.toUTF8) == 500)
+  let field := fun (json : Lean.Json) (name : String) => (json.getObjVal? name).toOption.getD .null
+  let entries ← (← lines.get).toList.mapM fun line => match Lean.Json.parse line with
+    | .ok json => pure json | .error e => throw (IO.userError s!"log line is not JSON: {e}")
+  check "server handler writes one line per request" (entries.length == 3)
+  let traced := entries[0]!
+  check "log line carries request id, operation, principal hash and success outcome"
+    ((field traced "requestId").getStr?.toOption == some "trace-42" && (field (field traced "operation") "name").getStr?.toOption == some "three" &&
+      (field traced "principalHash").getStr?.toOption == some (Log.principalHash "fixture") && Log.principalHash "fixture" != "fixture" &&
+      (field traced "outcome").getStr?.toOption == some "success" && (field traced "status").getNat?.toOption == some 200 &&
+      (field traced "method").getStr?.toOption == some "POST" && (field traced "path").getStr?.toOption == some "/third" &&
+      (field traced "bodyBytes").getNat?.toOption == some goodJson.compress.utf8ByteSize && (field traced "v").getNat?.toOption == some 1)
+  let failedLine := entries[2]!
+  check "exception lines carry error class and code but no message by default"
+    ((field failedLine "outcome").getStr?.toOption == some "failed" && (field (field failedLine "error") "class").getStr?.toOption == some "userError" &&
+      (field (field failedLine "error") "code").getStr?.toOption == some "handler.failed" && field (field failedLine "error") "message" == .null &&
+      !(String.intercalate "\n" (← lines.get).toList).contains "private host detail")
+  Log.configure { sink := .buffer lines, verboseErrors := true }
+  lines.set #[]
+  discard <| streamStatus "/third" (Http.encodeRequest codecs { request with input := third.inputCodec.encode 500 }).compress.toUTF8
+  check "verbose error logging includes the message" ((String.intercalate "\n" (← lines.get).toList).contains "private host detail")
+  Log.configure {}
+  check "durations stay monotone" (entries.all fun e =>
+    let d := field e "durations"
+    let n := fun (k : String) => ((field d k).getNat?).toOption.getD 0
+    n "auth" + n "queueWait" + n "db" + n "handler" ≤ n "total")
   let result ← transport.interpreter.call third 500
   check "host exception hides details in protocol envelope" (match result with
     | .error (.protocol e) => e.code == "handler.failed" && e.status == some 500 | _ => false)

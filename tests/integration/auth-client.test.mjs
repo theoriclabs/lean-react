@@ -45,6 +45,8 @@ test('labels are coarse, optional and bounded; invite is sent only when given', 
   assert.equal(deviceLabel('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'), 'Safari on iOS');
   assert.equal(deviceLabel('Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0'), 'Firefox on Linux');
   assert.equal(deviceLabel(''), undefined);
+  assert.equal(deviceLabel('Mozilla/5.0 (darwin) AppleWebKit/537.36 (KHTML, like Gecko) jsdom/29.1.1'), undefined);
+  assert.equal(deviceLabel('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Gecko/20100101 Unknownzilla/1.0'), 'Windows');
   const calls = [];
   const c = createAuthClient({ fetch: async (path, init) => { calls.push({ path, ...init }); return response(session()); }, label: null });
   await c.signup('Alice', 'a long enough password', { invite: 'b'.repeat(64) });

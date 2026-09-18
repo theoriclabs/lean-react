@@ -17,7 +17,7 @@ structure RateLimit where
 structure HttpBinding where
   path : String
   method : HttpMethod := .post
-  /-- Overrides the server's body cap for this path, applied before the body is buffered. -/
+  /-- Overrides the server's body limit for this path; enforced before the body is buffered. -/
   maxBodyBytes : Option Nat := none
   rateLimit : Option RateLimit := none
   deriving Repr, BEq
@@ -31,8 +31,8 @@ def HttpBinding.validate (http : HttpBinding) : Validation Unit := do
       !http.path.toList.all (fun c => c.isAlphanum && c.toNat < 128 ||
         c == '/' || c == '-' || c == '_' || c == '.') then
     Validation.fail "http.invalid_literal_path" [] [("path", http.path)]
-  if let some cap := http.maxBodyBytes then
-    if cap == 0 || cap > 2^32 then Validation.fail "http.invalid_body_limit" [] [("path", http.path)]
+  if let some limit := http.maxBodyBytes then
+    if limit == 0 || limit > 2^32 then Validation.fail "http.invalid_body_limit" [] [("path", http.path)]
 
 /-- Gateway publication of a success reply: topic `"{topicPrefix}:{value.topicField}"`, and also
 `"user:{value.alsoToActorField}"` when set. Domain errors are never published. -/

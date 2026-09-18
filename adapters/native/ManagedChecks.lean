@@ -169,7 +169,21 @@ def run (dir : System.FilePath) : IO Unit := do
     let empty ← valid (Application.create "empty" ([] : List (LeanApp.Module IO)))
     let missing ← valid (Managed.create service template (fun _ => .ok empty))
     check "factory missing exports rejected" (failed (← missing.dispatch context "POST" "/put" (putBody 1)))
+    let lines ← IO.mkRef (#[] : Array String)
+    Log.configure { sink := .buffer lines }
     check "handler host exception sanitized despite template failureCode" (failed (← put 500))
+    Log.configure {}
+    let events := (← lines.get).toList.filterMap fun line => (Lean.Json.parse line).toOption
+    let text := fun (json : Lean.Json) (name : String) => ((json.getObjVal? name).bind (·.getStr?)).toOption
+    check "caught exception is logged as an event with class and code, without the message"
+      (events.length == 1 && text events[0]! "event" == some "error" && text events[0]! "component" == some "server" &&
+        text events[0]! "class" == some "userError" && text events[0]! "code" == some "application.failed" &&
+        text events[0]! "message" == none && !(String.intercalate "\n" (← lines.get).toList).contains "sensitive host error")
+    let trace ← IO.mkRef ({} : Log.Trace)
+    check "a traced dispatch records the operation, outcome and phases"
+      ((← managed.dispatch context "POST" "/value" getBody (some trace)).status == 200 &&
+        (← trace.get).operation == some ops.get.identity && (← trace.get).outcome == some .success &&
+        (← trace.get).principalHash == some (Log.principalHash "local"))
     check "host failure releases runtime admission" ((← service.snapshot).active == 0 && (← service.snapshot).queued == 0)
     check "readiness path cannot shadow export" (!(Managed.create service template factory "/put").isOk)
     check "readiness path cannot shadow manifest" (!(Managed.create service template factory "/api/manifest").isOk)

@@ -33,16 +33,17 @@ function sessionList(value) {
     return Object.freeze({ id: s.id, label: s.label, createdAt: s.createdAt, lastSeenAt: s.lastSeenAt, current: s.current });
   }));
 }
-/** Coarse platform/browser string for the session list; never a full user agent. */
+/** Coarse platform/browser string for the session list; never a full user agent, and nothing
+ * at all when neither part is recognized (so unknown environments send no label). */
 export function deviceLabel(userAgent = globalThis.navigator?.userAgent ?? '') {
   if (typeof userAgent !== 'string' || !userAgent) return undefined;
   const platform = /Android/.test(userAgent) ? 'Android' : /iPhone|iPad|iPod/.test(userAgent) ? 'iOS' :
     /Mac OS X|Macintosh/.test(userAgent) ? 'macOS' : /Windows/.test(userAgent) ? 'Windows' :
-    /CrOS/.test(userAgent) ? 'ChromeOS' : /Linux/.test(userAgent) ? 'Linux' : /Node\.js/.test(userAgent) ? 'Node.js' : 'Unknown';
+    /CrOS/.test(userAgent) ? 'ChromeOS' : /Linux/.test(userAgent) ? 'Linux' : /Node\.js/.test(userAgent) ? 'Node.js' : undefined;
   const browser = /Edg\//.test(userAgent) ? 'Edge' : /OPR\/|Opera/.test(userAgent) ? 'Opera' :
     /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\/|Chromium\/|CriOS\//.test(userAgent) ? 'Chrome' :
     /Safari\//.test(userAgent) ? 'Safari' : undefined;
-  return browser ? `${browser} on ${platform}` : platform;
+  return browser && platform ? `${browser} on ${platform}` : browser ?? platform;
 }
 
 export function createAuthClient({ fetch: fetchImpl = globalThis.fetch, label = deviceLabel() } = {}) {
