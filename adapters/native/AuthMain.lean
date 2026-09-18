@@ -1,5 +1,6 @@
 import LeanAppNative.Auth.Demo
 import LeanAppNative.Env
+import LeanAppNative.Lifecycle
 
 /-- Additive `migrate apply` for an existing demo DB before the runtime gate is consulted. -/
 private def ensureSchema (path : System.FilePath) (base : LeanDb.Base) : IO Unit := do
@@ -28,5 +29,7 @@ def main (args : List String) : IO UInt32 := do
     Std.Async.Async.block do
       let server ← host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩)
       server.waitShutdown
-    return 0
-  finally runtime.close
+    return ← LeanAppNative.Lifecycle.shutdown runtime
+  catch e =>
+    IO.eprintln s!"auth: {e}"
+    return ← LeanAppNative.Lifecycle.shutdown runtime

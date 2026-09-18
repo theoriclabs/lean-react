@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 const profile = process.argv[2] ?? 'portable';
 const cwd = projectRoot;
 
-const nativeOverrides = () => ['leanreact', 'leandb', 'leanhttp', 'leansqlite', 'openssl'].flatMap(name => {
+const nativeOverrides = () => ['leanreact', 'leandb', 'leanhttp', 'leanws', 'leansqlite', 'openssl'].flatMap(name => {
   const source = process.env[`LEANAPP_${name.toUpperCase()}_SOURCE`];
   return source ? [`-K${name}=${resolve(source)}`] : [];
 });
@@ -29,6 +29,11 @@ if (profile === 'portable') {
   const fixture = await mkdtemp(resolve(tmpdir(), 'leanapp-managed-'));
   console.log(`Managed dispatch fixture: ${fixture}`);
   await run(resolve(native, '.lake/build/bin/leanapp_managed_checks'), [fixture], { cwd: native });
+  await run('lake', [...overrides, '--no-cache', 'build', 'leanapp_channel_checks', 'leanapp_job_checks'], { cwd: native });
+  await run(resolve(native, '.lake/build/bin/leanapp_channel_checks'), [], { cwd: native });
+  const jobs = await mkdtemp(resolve(tmpdir(), 'leanapp-jobs-'));
+  console.log(`Job scheduler fixture: ${jobs}`);
+  await run(resolve(native, '.lake/build/bin/leanapp_job_checks'), [jobs], { cwd: native });
 } else if (profile === 'auth') {
   const native = resolve(cwd, 'adapters/native');
   await run('lake', [...nativeOverrides(), '--no-cache', 'build', 'leanapp_crypto_checks', 'leanapp_auth_checks', 'leanapp_auth_demo'], { cwd: native });

@@ -193,8 +193,13 @@ operations, byte/string-position operations (`String.Pos`, `String.Slice`,
 reflection and unsupported recursors/quotients are not admitted. Raw String
 construction and raw matches or projections on String/Array are rejected; use
 supported operations instead.
-Advanced dependent eliminations beyond Lean's successful pure-LCNF lowering are
-not claimed. No async scheduler, general trampoline, mutual tail-call
+Supported dependent surface (LR-10): proof fields and proof arguments erase to
+`null`; subtypes `{ n : Nat // p }` and `Fin n` are the underlying `Nat`;
+parameterized structures (`Range n`) are ordinary records plus an erased
+parameter; `DecidablePred` is a boolean function; `h ▸ x` / `Eq.mp` on data
+lower to identity. Advanced dependent eliminations beyond Lean's successful
+pure-LCNF lowering are not claimed. `tests/compiler/ProofFields.lean` is the
+fixture. No async scheduler, general trampoline, mutual tail-call
 optimization, source maps, incremental compiler cache or bundler is included.
 Recursive programs use the JavaScript stack and can exhaust resources, except
 the iterative host builtins above and self tail calls, which become loops.

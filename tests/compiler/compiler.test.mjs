@@ -203,6 +203,30 @@ test('generic array iteration preserves break, continue, and first-match evaluat
   assert.deepEqual(visited, [1n,2n,3n]);
 });
 
+test('LR-10 proof fields, subtypes, Fin, and identity casts', async () => {
+  const pf = await import('./proof-fields.mjs');
+  const score = pf['ProofFields.score'];
+  const identityCast = pf['ProofFields.identityCast'];
+  const countMake = pf['ProofFields.Count.make'];
+  const textMake = pf['ProofFields.Text.make'];
+  const indent = pf['ProofFields.Indent.ofNat?'];
+  assert.equal(score('hi', 'ab', 3n), 13n);
+  assert.equal(score('', 'x', 0n), 4n);
+  assert.equal(score('hi', '', 3n), 0n);
+  assert.equal(identityCast(7n), 7n);
+  assert.equal(countMake(0n).tag, 'Option.none');
+  assert.equal(countMake(2n).tag, 'Option.some');
+  assert.equal(textMake('').tag, 'Option.none');
+  assert.equal(indent(9n).tag, 'Option.none');
+  const delta = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Delta.mk');
+  assert.equal(delta.fieldInfo.find(f => f.name === 'normal').erased, true);
+  const text = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Text.mk');
+  assert.equal(text.fieldInfo.find(f => f.name === 'nonempty').erased, true);
+  assert.equal(text.fieldInfo.find(f => f.name === 'noBreak').erased, true);
+  const range = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Range.mk');
+  assert.equal(range.fieldInfo.find(f => f.name === 'inBounds').erased, true);
+});
+
 test('generated TypeScript declarations parse and expose retained ABI slots', async () => {
   const { transform } = await import('esbuild');
   const declarations = readFileSync(new URL('./generated.d.ts', import.meta.url),'utf8');

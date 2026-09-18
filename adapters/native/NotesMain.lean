@@ -1,5 +1,6 @@
 import LeanAppNative.Notes
 import LeanAppNative.Env
+import LeanAppNative.Lifecycle
 
 /-- Additive `migrate apply` for an existing volume before the runtime gate is consulted.
 Refuses a destructive plan so a hosted instance never drops tables on boot. -/
@@ -32,5 +33,7 @@ def main : IO UInt32 := do
     Std.Async.Async.block do
       let server ← host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩)
       server.waitShutdown
-    return 0
-  finally runtime.close
+    return ← LeanAppNative.Lifecycle.shutdown runtime
+  catch e =>
+    IO.eprintln s!"notes: {e}"
+    return ← LeanAppNative.Lifecycle.shutdown runtime

@@ -20,6 +20,7 @@ package leanapp_native where
 require leanreact from (get_config? leanreact).getD "../.."
 require leandb from (get_config? leandb).getD "../../../leandb_v2"
 require leanhttp from (get_config? leanhttp).getD "../../../leanhttp"
+require leanws from (get_config? leanws).getD "../../../leanws"
 
 /-- Normally fetched at the upstream pin; an explicit local source override
 is useful for offline development. No checkout's build cache is a dependency. -/
@@ -77,3 +78,9 @@ lean_exe leanapp_http_checks where
 /-- Native managed dispatch checks against the integrated Runtime.withConnection API. -/
 lean_exe leanapp_managed_checks where
   root := `ManagedChecks
+
+lean_exe leanapp_channel_checks where
+  root := `ChannelChecks
+
+lean_exe leanapp_job_checks where
+  root := `JobChecks

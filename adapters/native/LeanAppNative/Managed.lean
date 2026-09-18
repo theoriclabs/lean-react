@@ -1,4 +1,5 @@
 import LeanAppNative.Server
+import LeanAppNative.State
 import LeanDb.Runtime
 
 namespace LeanAppNative
@@ -18,10 +19,14 @@ structure Managed where
   private factory : LeanDb.Conn → Validation (Application IO)
   private publicBody : Lean.Json
   readinessPath : String
+  private onInvalidate : IO Unit
+  private onDrainConn : LeanDb.Conn → IO Unit
 
 def Managed.create (service : LeanDb.Runtime.Service) (template : Server)
     (factory : LeanDb.Conn → Validation (Application IO))
-    (readinessPath : String := "/health/ready") : Validation Managed := do
+    (readinessPath : String := "/health/ready")
+    (onInvalidate : IO Unit := pure ())
+    (onDrain : LeanDb.Conn → IO Unit := fun _ => pure ()) : Validation Managed := do
   -- Host exception codes are adapter-owned; do not publish a caller's diagnostic string.
   let template ← Server.create template.app template.codecs
     { template.config with failureCode := "application.failed" }
@@ -30,7 +35,27 @@ def Managed.create (service : LeanDb.Runtime.Service) (template : Server)
       template.app.manifest.any (·.http.path == readinessPath) then
     Validation.fail "managed.readiness_path_collision"
   pure ⟨service, template.app.manifest, template.codecs, template.config, factory,
-    template.config.manifest template.app.manifest, readinessPath⟩
+    template.config.manifest template.app.manifest, readinessPath, onInvalidate, onDrain⟩
+
+/-- Factory may capture `AppState` (never `Conn`). Restore runs `AppState.invalidate`. -/
+def Managed.createWithState {σ} (service : LeanDb.Runtime.Service) (template : Server)
+    (state : AppState σ)
+    (factory : AppState σ → LeanDb.Conn → Validation (Application IO))
+    (readinessPath : String := "/health/ready")
+    (onDrain : σ → LeanDb.Conn → IO Unit := fun _ _ => pure ()) : Validation Managed :=
+  Managed.create service template (factory state) readinessPath
+    (onInvalidate := state.invalidate)
+    (onDrain := fun conn => do onDrain (← state.get) conn)
+
+/-- Run `onInvalidate` then resume admission after a connection replacement. -/
+def Managed.restored (managed : Managed) : IO Unit := do
+  managed.onInvalidate
+  discard managed.service.resume
+
+/-- Flush `onDrain` under the writer, then stop admission. -/
+def Managed.shutdown (managed : Managed) : IO Unit := do
+  discard <| managed.service.withConnection fun conn => managed.onDrainConn conn
+  managed.service.drain
 
 private def unavailable : HttpReply := ⟨503, Http.protocolResponse "application.unavailable"⟩
 private def failed : HttpReply := ⟨500, Http.protocolResponse "application.failed"⟩

@@ -9,6 +9,7 @@ inductive Role where
   deriving Repr, BEq, DecidableEq, Ord
 
 instance : ToString Role := ⟨fun | .viewer => "viewer" | .editor => "editor" | .owner => "owner"⟩
+instance : LE Role := leOfOrd
 
 def roles : List Role := [.viewer, .editor, .owner]
 
@@ -34,7 +35,7 @@ def commands : CommandCapability Fixture ReadOp WriteOp where
   write op := match op with | .replace text => modify fun d => { d with text }
 
 /-- The application's single role resolution: read the resource, then place the caller. -/
-def roleOf (context : RequestContext) (cap : ReadCapability Fixture ReadOp) (_ : Input) :
+def roleOf {α : Type} (context : RequestContext) (cap : ReadCapability Fixture ReadOp) (_ : α) :
     Fixture (Option Role) := do
   let some p := context.principal | return none
   let doc ← cap.read .document
@@ -57,15 +58,21 @@ def sample (id : OperationId) : Lean.Json :=
 def application (weakened : Bool := false) : Validation (Application Fixture) := do
   let read : Operation .query Unit String String ← Operation.canonical .query readIdentity
   let edit : Operation .command String String String ← Operation.canonical .command editIdentity
-  let readBinding : Binding Fixture ReadOp WriteOp read := { requireRole Role.viewer roleOf with
-    http := { path := "/doc/read" }
-    handler := fun _ cap _ => return .ok (← cap.read .document).text }
-  let editRule : Rule Fixture ReadOp edit := if weakened then authenticated else requireRole .editor roleOf
-  let editBinding : Binding Fixture ReadOp WriteOp edit := { editRule with
-    http := { path := "/doc/edit" }
-    handler := fun _ cap text => do cap.write (.replace text); return .ok text }
-  Application.create "acl" [{ name := "documents", exports := [
-    readBinding.approve (fun _ => reads), editBinding.approve (fun _ => commands)] }]
+  let readBinding : BindingE Fixture ReadOp WriteOp read (AtLeast Role .viewer) :=
+    BindingE.atLeast Role.viewer roleOf { path := "/doc/read" }
+      (fun _ cap _ _ => return .ok (← cap.read .document).text)
+  if weakened then
+    let editBinding : Binding Fixture ReadOp WriteOp edit := { authenticated with
+      http := { path := "/doc/edit" }
+      handler := fun _ cap text => do cap.write (.replace text); return .ok text }
+    Application.create "acl" [{ name := "documents", exports := [
+      readBinding.approve (fun _ => reads), editBinding.approve (fun _ => commands)] }]
+  else
+    let editBinding : BindingE Fixture ReadOp WriteOp edit (AtLeast Role .editor) :=
+      BindingE.atLeast Role.editor roleOf { path := "/doc/edit" }
+        (fun _ cap _ text => do cap.write (.replace text); return .ok text)
+    Application.create "acl" [{ name := "documents", exports := [
+      readBinding.approve (fun _ => reads), editBinding.approve (fun _ => commands)] }]
 
 /-- Deliberately local issuance for the fixture, not authentication. -/
 def contexts : Testing.Fixture Role where

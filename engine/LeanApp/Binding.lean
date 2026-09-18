@@ -125,6 +125,10 @@ structure Export (m : Type → Type) where
   metadata : PublicMetadata
   route : RequestContext → Route (Authorized m)
 
+def Export.of (http : HttpBinding) (metadata : PublicMetadata)
+    (route : RequestContext → Route (Authorized m)) : Export m :=
+  ⟨http, metadata, route⟩
+
 def Binding.approve [Monad m] {operation : Operation kind Input Output Error}
     (binding : Binding m Read Write operation)
     (provide : RequestContext → Capability m Read Write kind) : Export m :=

@@ -93,6 +93,19 @@ Lean-native WebSocket channels are the primary real-time path; the gateway pipes
 
 Limits (`maxStreams`, `maxStreamsPerCookie`, `maxTopicsPerTicket`) and counters live in the gateway; apps whose manifest declares neither publishers nor ticket issuers get no `/stream` route at all. The presence relay described in the original design is not implemented: presence travels over channels as typed inbound messages.
 
+## Application state
+
+`AppState σ` is the sanctioned slot for memory that outlives a request (a hot cache, a rate-limit table, a topic registry). It is created once, passed into the factory, and must never contain a `Conn`.
+
+1. **Restore / re-open.** `Managed.restored` runs `onInvalidate` (default: reset to `initial`) before the next admitted request.
+2. **Drain / close.** `Managed.shutdown` runs `onDrain` under the writer, then stops admission. Nothing is persisted implicitly.
+3. **Coherence.** Mutate state from a write after the transaction commits: `AppState.afterCommit` plus `AppState.transaction`. Hooks do not run when the body aborts.
+4. **Concurrency.** `AppState` operations are atomic `IO.Ref` updates; larger invariants rely on the writer.
+
+## Channels
+
+Typed bidirectional operations (`LeanContract.Channel`) live in Lean. Subscribe policy yields evidence the inbound handler cannot invent. `Channels.Registry` fans events out in memory; `publish` never touches the database. The Node gateway (`LA-15`) is a byte pipe for `/ws` after Origin/cookie/subprotocol gates. `useChannel` / `channels.mjs` keep one multiplexed socket per origin; `useStream` is the SSE fallback.
+
 ## Keep three representations separate
 
 | Representation | Boundary rule |
@@ -109,4 +122,4 @@ The hosted café has native/browser model parity, real HTTP isolation checks and
 
 The ordering library also models revision-bound quotes, inventory and typed payment/cancellation states. It is a portable reference model; the café persists recipes rather than implementing that full ordering workflow.
 
-Durable command receipts, outbox delivery, schema evolution/restore qualification, complete application-host shutdown and a general scaffold/distribution workflow remain unfinished. Native FFI, cryptography, the JavaScript compiler/runtime and hosting are trust boundaries. [Release evidence](RELEASE.md) names the deployed artifact rather than assuming the current dirty checkout is identical to it.
+Durable command receipts, outbox delivery and schema evolution/restore qualification remain unfinished. Application-host drain is `Lifecycle.shutdown`; `scripts/new-app.mjs` scaffolds a standalone repo. Native FFI, cryptography, the JavaScript compiler/runtime and hosting are trust boundaries. [Release evidence](RELEASE.md) names the deployed artifact rather than assuming the current dirty checkout is identical to it.

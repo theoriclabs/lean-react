@@ -6,7 +6,7 @@ lake build LeanApp
 lake env lean -R tests/app -o "$app_build_dir/AclFixture.olean" tests/app/AclFixture.lean
 export LEAN_PATH="$app_build_dir:$(lake env printenv LEAN_PATH)"
 lean --run tests/app/Main.lean
-for test in RejectInput RejectOutput RejectError RejectReadWrite RejectReadIO RejectContextJson RejectContextConstructor RejectContextUpdate RejectWeakenedRole; do
+for test in RejectInput RejectOutput RejectError RejectReadWrite RejectReadIO RejectContextJson RejectContextConstructor RejectContextUpdate RejectAtLeast RejectWeakenedRole; do
   if [[ "$test" == RejectWeakenedRole ]]; then
     if lean --run "tests/app/$test.lean" > "$app_build_dir/$test.log" 2>&1; then
       echo "FAIL: $test unexpectedly passed the ACL matrix" >&2
@@ -22,6 +22,7 @@ for test in RejectInput RejectOutput RejectError RejectReadWrite RejectReadIO Re
     RejectReadIO) expected='Invalid field.*liftIO|invalid field.*liftIO' ;;
     RejectContextJson) expected='FromJson.*RequestContext' ;;
     RejectContextConstructor|RejectContextUpdate) expected='private|Invalid.*constructor|invalid.*constructor' ;;
+    RejectAtLeast) expected='type mismatch|Type mismatch|Application type mismatch' ;;
     RejectWeakenedRole) expected='acl.matrix_failed' ;;
   esac
   if ! rg -q "$expected" "$app_build_dir/$test.log"; then

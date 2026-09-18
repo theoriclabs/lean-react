@@ -15,6 +15,7 @@ inductive Role where
   deriving Repr, BEq, DecidableEq, Ord
 
 instance : ToString Role := ⟨fun | .viewer => "viewer" | .editor => "editor" | .owner => "owner"⟩
+instance : LE Role := leOfOrd
 
 def localTenant := "tickets-local"
 
@@ -27,7 +28,7 @@ def localFixtureContext : RequestContext :=
 
 /-- Declared once for every binding. A caller outside the tenant or the table has no role; missing
 tickets stay the handler's typed `notFound`, so responses remain uniform. -/
-def roleOf [Monad m] (context : RequestContext) (_ : ReadCapability m TicketRead) (_ : Input) :
+def roleOf [Monad m] {α : Type} (context : RequestContext) (_ : ReadCapability m TicketRead) (_ : α) :
     m (Option Role) :=
   pure do
     let principal ← context.principal

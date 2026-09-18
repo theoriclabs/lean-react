@@ -22,6 +22,8 @@ def intrinsics (moduleName : String) : Array LeanJS.Intrinsic := #[
   bridge moduleName `LeanReact.Cell.modifyGet "cellModifyGet" 4,
   bridge moduleName `LeanReact.useEffect "useEffect" 3,
   bridge moduleName `LeanReact.useResource "useResource" 7,
+  bridge moduleName `LeanReact.useChannel "useChannel" 14,
+  bridge moduleName `LeanReact.useStream "useStream" 8,
   bridge moduleName `LeanReact.component "component" 2,
   bridge moduleName `LeanReact.Component.named "componentNamed" 3,
   bridge moduleName `LeanReact.element "element" 3,
@@ -51,6 +53,7 @@ def options (moduleName : String) : LeanJS.Options := {
   intrinsics := intrinsics moduleName
   hooks := { primitives := ({} : LeanJS.HookConfig).primitives ++ #[
     ⟨`LeanReact.useResource, 7, "resource", 6⟩, ⟨`LeanReact.useCell, 3, "cell", 2⟩,
+    ⟨`LeanReact.useChannel, 14, "channel", 13⟩, ⟨`LeanReact.useStream, 8, "stream", 7⟩,
     -- LR-06 router
     ⟨`LeanReact.useLocation, 1, "router", 0⟩] }
 }

@@ -97,7 +97,13 @@ Tests contain independent price expectations. If you deliberately change the rul
 | [LeanAppNative/Cafe.lean](../adapters/native/LeanAppNative/Cafe.lean) | Approved operations, account-scoped reads and transactional saves. |
 | [CafeMain.lean](../adapters/native/CafeMain.lean) and [serve-cafe.mjs](../scripts/serve-cafe.mjs) | Native runtime, public gateway and process lifecycle. |
 
-For a first domain of your own, work through [domain modeling](DOMAIN_MODELING.md). There is no `leanapp new` generator yet; adding a library and explicit adapters is the current authoring path.
+For a first domain of your own, work through [domain modeling](DOMAIN_MODELING.md), or scaffold a standalone repo:
+
+```sh
+node scripts/new-app.mjs --name myapp --namespace myapp --out ../myapp
+```
+
+The generator writes a portable library, a native `Main`, a gateway stub, and a README with the build commands. Override dependency paths with Lake `-K` flags when developing against sibling checkouts.
 
 ## Check your changes
 

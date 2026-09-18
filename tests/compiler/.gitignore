@@ -1,5 +1,6 @@
 .build/
 generated.mjs
+proof-fields.mjs
 intrinsic-generated.mjs
 native.json
 *.d.ts

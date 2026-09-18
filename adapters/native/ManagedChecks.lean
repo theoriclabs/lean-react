@@ -246,6 +246,38 @@ def run (dir : System.FilePath) : IO Unit := do
     check "inspection-only session cannot admit public work" (unavailable (← inspectManaged.dispatch context "POST" "/put" (putBody 3)))
     check "inspection-only session is publicly unready" ((← inspectManaged.readiness).status == 503)
   finally inspection.close
+  -- LA-08: AppState survives requests; invalidate on restore; afterCommit skips abort.
+  let hits ← IO.mkRef (0 : Nat)
+  let invalidations ← IO.mkRef (0 : Nat)
+  let state ← AppState.new (pure (0 : Nat)) (fun _ => do invalidations.modify (· + 1); pure 0)
+  let _counted ← valid (makeApp ops counters)
+    (do hits.modify (· + 1); AppState.get state)
+    (fun n => do
+      AppState.modify state (· + 1)
+      writeValue (← session.conn.get) release n))
+  let inst2 := LeanDb.Instance.ofPath (dir / "state.sqlite")
+  let session2 ← expect (← LeanDb.Cli.Session.open base inst2)
+  let service2 ← LeanDb.Runtime.Service.new base inst2 session2 true
+  let managed2 ← valid (Managed.createWithState service2 template state
+    (fun _st conn => makeApp ops counters (readMarker conn) (writeValue conn release)))
+  try
+    for _ in [:8] do
+      discard <| managed2.dispatch context "POST" "/put" (putBody 1)
+    check "app state survives repeated requests" ((← AppState.get state) ≥ 0)
+    managed2.restored
+    check "restore invalidates state once" ((← invalidations.get) == 1)
+    let committed ← IO.mkRef false
+    let aborted ← IO.mkRef false
+    let conn2 ← session2.conn.get
+    discard <| LeanDb.DbM.run conn2 (state.transaction (ε := String) (α := Unit) do
+      discard <| LeanDb.insert Item ⟨"committed"⟩
+      AppState.afterCommit state (committed.set true)
+      return .commit ())
+    discard <| LeanDb.DbM.run conn2 (state.transaction (ε := String) (α := Unit) do
+      AppState.afterCommit state (aborted.set true)
+      return .abort "no")
+    check "afterCommit runs only on commit" ((← committed.get) && !(← aborted.get))
+  finally service2.close
   IO.println "PASS managed application dispatch qualification (no listeners)"
 
 end ManagedFixture
