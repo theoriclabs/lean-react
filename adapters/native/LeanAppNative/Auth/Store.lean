@@ -9,8 +9,21 @@ open LeanDb LeanApp
 
 inductive Error where
   | invalidUsername | invalidPassword | usernameUnavailable | invalidCredentials
-  | unauthenticated | forbidden | throttled | unavailable | internal
+  | unauthenticated | forbidden | throttled | unavailable | internal | inviteRequired
   deriving BEq, Repr
+
+/-- How signup assigns a tenant. `.fixed` lets any signup share the workspace, so pair it with
+ingress abuse controls; `.invite` admits only holders of a token issued by trusted native code. -/
+inductive TenantPolicy where
+  | privatePerAccount
+  | fixed (tenant : String)
+  | invite
+  deriving Repr, BEq
+
+structure Service.Config where
+  ttl : Nat := 86400
+  tenantPolicy : TenantPolicy := .privatePerAccount
+  deriving Repr
 
 def username (input : String) : Except Error String := do
   if input.length < 3 || input.length > 32 ||
@@ -43,8 +56,17 @@ structure Session where
   expiresAt : Int64
   deriving LeanDb.Entity
 
+/-- Single-use signup invitation under `TenantPolicy.invite`. Only the token digest is stored. -/
+structure Invite where
+  tokenDigest : String
+  tenant : String
+  role : Option String
+  expiresAt : Int64
+  usedBy : Option String
+  deriving LeanDb.Entity
+
 /-- Include these in the authoritative Base so schema drift remains managed. -/
-def tables : List CliTable := [.of Account, .of Session]
+def tables : List CliTable := [.of Account, .of Session, .of Invite]
 
 structure User where
   username : String
@@ -75,7 +97,9 @@ structure Service where
   private kdf : Std.BaseMutex
   private throttle : Std.Mutex Throttle
   private clock : IO Nat
-  ttl : Nat
+  config : Service.Config
+
+def Service.ttl (service : Service) : Nat := service.config.ttl
 
 def wallSeconds : IO Nat := do
   return (← Std.Time.Timestamp.now).toMillisecondsSinceUnixEpoch.toInt.toNat / 1000
@@ -102,20 +126,28 @@ private def accountByActor (actor : String) : DbM (Option (Stored Account)) := d
 private def sessionByDigest (digest : String) : DbM (Option (Stored Session)) := do
   return (← selectP [Session] (.eq (.here Session.Field.tokenDigest) .eq digest))[0]?
 
+private def inviteByDigest (digest : String) : DbM (Option (Stored Invite)) := do
+  return (← selectP [Invite] (.eq (.here Invite.Field.tokenDigest) .eq digest))[0]?
+
 private def userOf (account : Account) : User :=
   ⟨account.username, account.actor, account.tenant, account.generation.toInt.toNat⟩
 
+private def validTenant (tenant : String) : Bool := !tenant.isEmpty && tenant.length ≤ 64
+
 def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
-    (ttl : Nat := 86400) : IO (Except Error Service) := do
-  if ttl == 0 || ttl > 604800 then return .error .internal
+    (config : Service.Config := {}) : IO (Except Error Service) := do
+  if config.ttl == 0 || config.ttl > 604800 then return .error .internal
+  if let .fixed tenant := config.tenantPolicy then
+    unless validTenant tenant do return .error .internal
   try
     let dummy ← Crypto.hashPassword "leanapp-unknown-user-dummy-password"
-    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) clock ttl
+    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) clock config
     let result ← admitted service fun conn => runDb conn <| withTransaction do
       untrackedSqlite fun db => do
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_username ON {quoteIdent (Entity.tableName Account)} (username)"
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_actor ON {quoteIdent (Entity.tableName Account)} (actor)"
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_session ON {quoteIdent (Entity.tableName Session)} (tokenDigest)"
+        db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_invite ON {quoteIdent (Entity.tableName Invite)} (tokenDigest)"
     return result.map (fun _ => service)
   catch _ => return .error .internal
 
@@ -152,9 +184,49 @@ private def addSession (service : Service) (account : Account)
   deleteSessions account.actor
   discard <| insert Session ⟨digest, csrf, account.actor, account.generation, Int64.ofInt (now + service.ttl)⟩
 
-def Service.signup (service : Service) (input password : String) : IO (Except Error Issued) := do
+/-- Trusted native issuance only; there is no public endpoint. The token is returned once. -/
+def Service.createInvite (service : Service) (tenant : String) (ttl : Nat)
+    (role : Option String := none) : IO (Except Error String) := do
+  unless validTenant tenant && ttl > 0 do return .error .internal
+  try
+    let token ← Crypto.randomToken
+    let digest ← Crypto.digestToken token
+    let result ← admitted service fun conn => do
+      let now ← service.clock
+      if now + ttl > 9223372036854775807 then return .error .internal
+      runDb conn <| withTransaction do
+        discard <| insert Invite ⟨digest, tenant, role, Int64.ofInt (now + ttl), none⟩
+    return result.map fun _ => token
+  catch _ => return .error .internal
+
+/-- Tenant assignment runs inside the signup transaction, so an invite is spent at most once and an
+aborted signup (name taken) leaves it unused. Checked before name availability: without a valid
+invite, signup reveals nothing about existing usernames. -/
+private def assignTenant (service : Service) (actor : String) (inviteDigest : Option String)
+    (now : Nat) : DbM (Except Error String) := do
+  match service.config.tenantPolicy, inviteDigest with
+  | .privatePerAccount, _ => return .ok actor
+  | .fixed tenant, _ => return .ok tenant
+  | .invite, none => return .error .inviteRequired
+  | .invite, some digest =>
+    let some stored ← inviteByDigest digest | return .error .inviteRequired
+    if stored.val.usedBy.isSome || stored.val.expiresAt.toInt ≤ now then return .error .inviteRequired
+    discard <| update stored { stored.val with usedBy := some actor }
+    return .ok stored.val.tenant
+
+/-- `invite` is accepted only under `TenantPolicy.invite`; malformed or missing tokens fail before
+password work so they cannot spend the KDF budget. -/
+def Service.signup (service : Service) (input password : String)
+    (invite : Option String := none) : IO (Except Error Issued) := do
   let .ok name := username input | return .error .invalidUsername
   unless validPassword password do return .error .invalidPassword
+  let inviteDigest ← match service.config.tenantPolicy, invite with
+    | .invite, some token =>
+      unless tokenShape token do return .error .inviteRequired
+      some <$> Crypto.digestToken token
+    | .invite, none => return .error .inviteRequired
+    | _, none => pure none
+    | _, some _ => return .error .invalidCredentials
   withPasswordWork service name do
     let hash ← Crypto.hashPassword password
     let actor ← Crypto.randomToken
@@ -164,8 +236,11 @@ def Service.signup (service : Service) (input password : String) : IO (Except Er
     let result ← admitted service fun conn => do
       let now ← service.clock
       runDb conn <| transaction do
+        let tenant ← match ← assignTenant service actor inviteDigest now with
+          | .ok tenant => pure tenant
+          | .error e => return .abort e
         if (← accountByName name).isSome then return .abort Error.usernameUnavailable
-        let account : Account := ⟨name, hash, actor, actor, 1, true⟩
+        let account : Account := ⟨name, hash, actor, tenant, 1, true⟩
         discard <| insert Account account
         addSession service account digest csrf now
         return .commit (Issued.mk token csrf (userOf account))

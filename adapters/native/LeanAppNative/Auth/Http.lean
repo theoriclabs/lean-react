@@ -25,6 +25,7 @@ private def errorReply (error : Error) : HttpReply :=
     | .throttled => (429, "auth.throttled")
     | .unavailable => (503, "auth.unavailable")
     | .internal => (500, "auth.failed")
+    | .inviteRequired => (403, "auth.invite_required")
   ⟨status, .mkObj [("error", .str code)]⟩
 
 private def header (request : Request) (name : String) : Option String :=
@@ -88,13 +89,24 @@ private def Host.sessionToken (host : Host) (request : Request) : Option String 
   let [_, token] := entry | none
   if tokenShape token then some token else none
 
-private def credentials (body : String) : Except Error (String × String) := do
+private structure Credentials where
+  name : String
+  password : String
+  invite : Option String := none
+
+/-- Exactly `username` and `password`, plus only the listed optional string fields. -/
+private def credentials (body : String) (optional : List String := []) : Except Error Credentials := do
   let .ok json := Lean.Json.parse body | throw .invalidCredentials
   let .ok fields := json.getObj? | throw .invalidCredentials
-  if fields.size != 2 then throw .invalidCredentials
+  let present := optional.filter fun key => (json.getObjVal? key).isOk
+  if fields.size != 2 + present.length then throw .invalidCredentials
   let .ok name := json.getObjValAs? String "username" | throw .invalidCredentials
   let .ok password := json.getObjValAs? String "password" | throw .invalidCredentials
-  pure (name, password)
+  let field := fun (key : String) => do
+    if !present.contains key then return none
+    let .ok value := json.getObjValAs? String key | throw Error.invalidCredentials
+    return some value
+  pure ⟨name, password, ← field "invite"⟩
 
 private def sessionBody (user : User) (csrf : String) : Lean.Json :=
   .mkObj [("user", user.toJson), ("csrf", .str csrf)]
@@ -125,8 +137,11 @@ def Host.dispatch (host : Host) (request : Request) : IO Response := do
     if request.path == "/auth/signup" || request.path == "/auth/login" then
       if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
       if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
-      let .ok (name, password) := credentials request.body | return ⟨errorReply .invalidCredentials, none⟩
-      return host.issued (← if request.path == "/auth/signup" then host.auth.signup name password else host.auth.login name password)
+      let signup := request.path == "/auth/signup"
+      let optional := if signup && host.auth.config.tenantPolicy == .invite then ["invite"] else []
+      let .ok input := credentials request.body optional | return ⟨errorReply .invalidCredentials, none⟩
+      return host.issued (← if signup then host.auth.signup input.name input.password input.invite
+        else host.auth.login input.name input.password)
     let some token := host.sessionToken request | return ⟨errorReply .unauthenticated, none⟩
     if request.path == "/auth/session" then
       if request.method != "GET" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩

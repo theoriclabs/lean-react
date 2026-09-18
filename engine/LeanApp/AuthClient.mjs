@@ -5,7 +5,8 @@
  * never an unchecked Response that could be consumed after ownership changes.
  */
 const codes = new Set(['auth.invalid_credentials', 'auth.username_unavailable', 'auth.invalid_username',
-  'auth.invalid_password', 'auth.required', 'auth.forbidden', 'auth.throttled', 'auth.unavailable', 'auth.failed']);
+  'auth.invalid_password', 'auth.required', 'auth.forbidden', 'auth.throttled', 'auth.unavailable', 'auth.failed',
+  'auth.invite_required']);
 export class AuthError extends Error {
   constructor(code, status = 0) { super(code); this.name = 'AuthError'; this.code = code; this.status = status; }
 }
@@ -107,7 +108,9 @@ export function createAuthClient({ fetch: fetchImpl = globalThis.fetch } = {}) {
     return result.value;
   }
   return Object.freeze({
-    signup: (username, password) => transition('signup', { username, password }),
+    // `invite` is only accepted by servers configured with the invite tenant policy.
+    signup: (username, password, { invite } = {}) => transition('signup',
+      { username, password, ...(typeof invite === 'string' && invite ? { invite } : {}) }),
     login: (username, password) => transition('login', { username, password }),
     logout: () => transition('logout'), restore: () => transition('restore'), request, call,
     getSnapshot: () => state,

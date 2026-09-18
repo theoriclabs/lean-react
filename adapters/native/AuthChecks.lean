@@ -16,13 +16,95 @@ private def check (label : String) (test : Bool) : IO Unit := do
 private def ok (result : Except Auth.Error α) : IO α :=
   match result with | .ok v => pure v | .error e => throw (IO.userError s!"unexpected auth failure: {repr e}")
 
+private def failure (result : Except Auth.Error α) (expected : Auth.Error) : Bool :=
+  match result with | .error e => e == expected | .ok _ => false
+
+private def password := "a sufficiently long password 🔐"
+
+private def zeros : String := String.ofList (List.replicate 64 '0')
+
+/-- A fresh runtime and authentication service over a temporary database. -/
+private def withService (config : Auth.Service.Config)
+    (body : Auth.Service → LeanDb.Runtime.Service → IO.Ref Nat → IO Unit) : IO Unit :=
+  IO.FS.withTempDir fun dir => do
+    let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
+    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
+    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    let now ← IO.mkRef 1000
+    let service ← ok (← Auth.Service.new runtime now.get config)
+    try body service runtime now finally runtime.close
+
+private def post (path body cookie csrf : String) : Auth.Request := Auth.Request.mk "POST" path [
+  ("origin", "https://example.test"), ("content-type", "application/json"),
+  ("x-leanapp-request", "1"), ("cookie", cookie), ("x-csrf-token", csrf)] body
+
+private def signupBody (name : String) (extra : List (String × Lean.Json) := []) : String :=
+  (Lean.Json.mkObj ([("username", .str name), ("password", .str password)] ++ extra)).compress
+
+private def tenantPolicies : IO Unit := do
+  withService { tenantPolicy := .fixed "ws" } fun service runtime _ => do
+    check "fixed tenant must be nonempty and at most 64 characters"
+      ((← Auth.Service.new runtime (config := { tenantPolicy := .fixed "" })).isError &&
+        (← Auth.Service.new runtime (config := { tenantPolicy := .fixed (String.ofList (List.replicate 65 'w')) })).isError)
+    let a ← ok (← service.signup "fixed_a" password)
+    let b ← ok (← service.signup "fixed_b" password)
+    check "fixed policy shares one workspace" (a.user.tenant == "ws" && b.user.tenant == "ws" && a.user.actor != b.user.actor)
+    let visible ← ok (← service.withAuthenticated a.token (some a.csrf) "scope" fun conn context _ => do
+      let some p := context.principal | throw (IO.userError "principal")
+      let .ok byTenant ← LeanDb.DbM.run conn (LeanDb.selectP [Auth.Account] (.eq (.here Auth.Account.Field.tenant) .eq p.tenant))
+        | throw (IO.userError "tenant read")
+      let .ok owned ← LeanDb.DbM.run conn (LeanDb.selectP [Auth.Account] (.and
+        (.eq (.here Auth.Account.Field.tenant) .eq p.tenant) (.eq (.here Auth.Account.Field.actor) .eq p.actor)))
+        | throw (IO.userError "owner read")
+      pure (byTenant.size, owned.size))
+    check "shared tenant exposes another account's row only past the application's owner check" (visible == (2, 1))
+    let host ← Auth.Demo.host service "https://example.test"
+    let session ← host.dispatch { post "/auth/session" "" s!"__Host-leanapp_session={a.token}" "" with method := "GET" }
+    check "session response names the shared workspace"
+      (session.reply.status == 200 && ((session.reply.body.getObjVal? "user").bind (·.getObjValAs? String "tenant")).toOption == some "ws")
+    check "invite field refused outside the invite policy"
+      ((← host.dispatch (post "/auth/signup" (signupBody "fixed_c" [("invite", .str zeros)]) "" "")).reply.status == 401 &&
+        failure (← service.signup "fixed_c" password (some zeros)) .invalidCredentials)
+  withService { tenantPolicy := .invite } fun service _ now => do
+    check "invite policy refuses signup without a token" (failure (← service.signup "inv_a" password) .inviteRequired)
+    check "invite issuance validates tenant and lifetime"
+      ((← service.createInvite "" 60).isError && (← service.createInvite "team" 0).isError)
+    let token ← ok (← service.createInvite "team" 600)
+    check "invite tokens have the bearer token shape" (tokenShape token)
+    check "malformed and unknown invites are refused before password work"
+      (failure (← service.signup "inv_a" password (some "nope")) .inviteRequired &&
+        failure (← service.signup "inv_a" password (some zeros)) .inviteRequired)
+    let a ← ok (← service.signup "inv_a" password (some token))
+    check "invite places the account in the invite's tenant" (a.user.tenant == "team" && a.user.actor != a.user.tenant)
+    check "invite tokens are single use" (failure (← service.signup "inv_b" password (some token)) .inviteRequired)
+    let expiring ← ok (← service.createInvite "team" 10)
+    now.modify (· + 10)
+    check "invite expiry is exclusive" (failure (← service.signup "inv_b" password (some expiring)) .inviteRequired)
+    let fresh ← ok (← service.createInvite "team" 600)
+    check "invalid invite hides username availability" (failure (← service.signup "inv_a" password (some zeros)) .inviteRequired)
+    check "taken name under invite policy" (failure (← service.signup "inv_a" password (some fresh)) .usernameUnavailable)
+    let c ← ok (← service.signup "inv_c" password (some fresh))
+    check "aborted signup leaves the invite unused" (c.user.tenant == "team")
+    let host ← Auth.Demo.host service "https://example.test"
+    let denied ← host.dispatch (post "/auth/signup" (signupBody "inv_http") "" "")
+    check "HTTP signup without invite is 403 auth.invite_required"
+      (denied.reply.status == 403 && (denied.reply.body.getObjValAs? String "error").toOption == some "auth.invite_required")
+    let http ← ok (← service.createInvite "team" 600)
+    check "HTTP signup rejects an extra field beside the invite"
+      ((← host.dispatch (post "/auth/signup" (signupBody "inv_http" [("invite", .str http), ("role", .str "admin")]) "" "")).reply.status == 401)
+    let accepted ← host.dispatch (post "/auth/signup" (signupBody "inv_http" [("invite", .str http)]) "" "")
+    check "HTTP signup with a valid invite joins the invite's tenant"
+      (accepted.reply.status == 200 && accepted.cookie.isSome &&
+        ((accepted.reply.body.getObjVal? "user").bind (·.getObjValAs? String "tenant")).toOption == some "team")
+    check "HTTP login refuses the invite field"
+      ((← host.dispatch (post "/auth/login" (signupBody "inv_http" [("invite", .str http)]) "" "")).reply.status == 401)
+
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
   let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
   let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
   let now ← IO.mkRef 1000
-  let service ← ok (← Auth.Service.new runtime now.get 60)
-  let password := "a sufficiently long password 🔐"
+  let service ← ok (← Auth.Service.new runtime now.get { ttl := 60 })
   try
     check "username canonicalization" (username "Alice_01" == .ok "alice_01")
     check "username bounds and alphabet" ((username "a").isError && (username "ali ce").isError && (username "álîce").isError)
@@ -108,4 +190,6 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
     check "closed runtime refuses authentication" ((← service.session bob2.token).map (fun _ => ()) == .error .unavailable)
   finally runtime.close
 
-def main : IO Unit := run
+def main : IO Unit := do
+  run
+  tenantPolicies
