@@ -14,18 +14,22 @@ def tenantPolicy : IO Auth.TenantPolicy := do
     if tenant.isEmpty || tenant.length > 64 then throw (IO.userError "invalid LEANAPP_TENANT_POLICY tenant")
     pure (.fixed tenant)
 
-/-- A positive integer setting, or `default` when unset. -/
-def natSetting (name : String) (default : Nat) (max : Nat := 1000000) : IO Nat := do
+/-- An integer setting in `[min, max]`, or `default` when unset. -/
+def natSetting (name : String) (default : Nat) (max : Nat := 1000000) (min : Nat := 1) : IO Nat := do
   match ← IO.getEnv name with
   | none | some "" => pure default
   | some value =>
     let some n := value.toNat? | throw (IO.userError s!"invalid {name}")
-    if n == 0 || n > max then throw (IO.userError s!"invalid {name}")
+    if n < min || n > max then throw (IO.userError s!"invalid {name}")
     pure n
 
-/-- Authentication service configuration assembled from the environment:
-`LEANAPP_TENANT_POLICY` and `LEANAPP_MAX_SESSIONS` (concurrent sessions per account, default 1). -/
+/-- Authentication service configuration assembled from the environment: `LEANAPP_TENANT_POLICY`,
+`LEANAPP_MAX_SESSIONS` (concurrent sessions per account, default 1) and
+`LEANAPP_SESSION_CACHE_TTL_MS` (in-process session cache, default 0 = off, 30000 recommended). -/
 def authConfig : IO Auth.Service.Config := do
-  return { tenantPolicy := ← tenantPolicy, maxSessions := ← natSetting "LEANAPP_MAX_SESSIONS" 1 100 }
+  return {
+    tenantPolicy := ← tenantPolicy
+    maxSessions := ← natSetting "LEANAPP_MAX_SESSIONS" 1 100
+    sessionCacheTtlMs := ← natSetting "LEANAPP_SESSION_CACHE_TTL_MS" 0 600000 0 }
 
 end LeanAppNative.Env

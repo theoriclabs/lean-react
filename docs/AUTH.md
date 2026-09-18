@@ -50,6 +50,10 @@ One password operation is admitted at a time per auth service. Process-local lim
 
 `setAccess` remains the administrative override under every policy and still revokes the account's sessions. There is no public endpoint for issuing invites in this release.
 
+## Session cache
+
+`Service.Config.sessionCacheTtlMs` (`LEANAPP_SESSION_CACHE_TTL_MS` in the executables; default 0 = off, 30 s recommended) keeps resolved sessions in process memory, keyed by the token digest and guarded by the service's small mutex, never the database queue. A hit skips only the two point reads of the authentication step; the application callback still runs under `withConnection`, and hits still check CSRF and session expiry. Because exactly one Lean process serves an instance, every event that changes session validity happens here and invalidates immediately: logout, targeted revocation, sign-out-everywhere, password change, `setAccess` and eviction by the session cap. The TTL bounds staleness only for defence in depth and for `lastSeenAt`, which a hit does not refresh. `sessionCacheMax` (default 10,000 entries) clears the cache when full. `Service.cacheStats` reports hits, misses, invalidations and size. `npm run test:auth` ends with a load check of 10,000 authenticated calls with the cache off and on and prints the wall-time reduction (about 45 % on a laptop, where the authentication reads and their query-log writes were roughly half of the writer's time per call).
+
 ## HTTP and browser integration
 
 | Route | Behavior |
