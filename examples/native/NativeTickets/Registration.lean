@@ -35,12 +35,12 @@ def roleOf [Monad m] (context : RequestContext) (_ : ReadCapability m TicketRead
 
 def listBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.list :=
   { Policy.requireRole Role.viewer roleOf with
-    http := { path := "/api/tickets/list" }
+    http := { path := listPath }
     handler := fun _ cap _ => return .ok (← cap.read .list) }
 
 def saveBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.save :=
   { Policy.requireRole Role.editor roleOf with
-    http := { path := "/api/tickets/save" }
+    http := { path := savePath }
     handler := fun _ cap input => cap.write (.save input) }
 
 def application (ops : PublicOperations) (service : TicketService IO) : Validation (Application IO) := do
@@ -58,11 +58,6 @@ def approvedMetadata (ops : PublicOperations) : List PublicOperation :=
 def makeServer (ops : PublicOperations) (service : TicketService IO) : Validation LeanAppNative.Server := do
   let app ← application ops service
   LeanAppNative.Server.create app ops.httpCodecs {
-    errorStatuses := ops.errorStatuses
-    manifest := fun approved => .mkObj [
-      ("protocol", .str "tickets-http/1"),
-      ("operations", .arr (approved.map (·.operation.toJson)).toArray),
-      ("routes", .mkObj (approved.map fun op => (op.operation.identity.name, .str op.http.path)))]
-    failureCode := "storage.failed" }
+    errorStatuses := ops.errorStatuses, failureCode := "storage.failed" }
 
 end NativeTickets

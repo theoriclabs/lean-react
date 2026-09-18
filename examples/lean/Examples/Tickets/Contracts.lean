@@ -1,6 +1,7 @@
 import Examples.Tickets.Domain
 import LeanContract
 import LeanContract.Http
+import LeanApp.Binding
 
 namespace Examples.Tickets.Contracts
 open Ontology Contract
@@ -11,6 +12,8 @@ def ticketType : TypeId := ⟨packageId, "Ticket"⟩
 def userType : TypeId := ⟨packageId, "User"⟩
 def listIdentity : OperationId := ⟨packageId, "list", contractVersion⟩
 def saveIdentity : OperationId := ⟨packageId, "save", contractVersion⟩
+def listPath := "/api/tickets/list"
+def savePath := "/api/tickets/save"
 
 def titleCodec : Codec Title :=
   (Codec.string.checked (fun value =>
@@ -91,10 +94,15 @@ def publicOperations : Validation PublicOperations := do
   let save ← Operation.create .command saveIdentity codecs.saveInput codecs.summary codecs.saveError
   pure ⟨codecs, list, save⟩
 
+/-- Public HTTP metadata shared by the native registration and the generated browser client.
+The native bindings must publish the same rules; `tickets_checks` compares the served manifest. -/
+def PublicOperations.approved (ops : PublicOperations) : List LeanApp.PublicOperation :=
+  [⟨ops.list.describe, { path := listPath }, { describePolicy := "role ≥ viewer" }⟩,
+   ⟨ops.save.describe, { path := savePath }, { describePolicy := "role ≥ editor" }⟩]
+
+/-- The `/api/manifest` body: schemas, HTTP bindings and public metadata per operation. -/
 def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
-  .mkObj [("protocol", .str "tickets-http/1"),
-    ("operations", .arr #[ops.list.describe.toJson, ops.save.describe.toJson]),
-    ("routes", .mkObj [("list", .str "/api/tickets/list"), ("save", .str "/api/tickets/save")])]
+  LeanApp.PublicOperation.manifest ops.approved
 
 def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
   ⟨ops.codecs.operationId, ops.codecs.errors⟩

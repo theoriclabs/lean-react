@@ -8,9 +8,18 @@ inductive HttpMethod where
   | post
   deriving Repr, BEq, DecidableEq
 
+/-- Declarative per-principal limit on one operation; the host enforces it with a token bucket. -/
+structure RateLimit where
+  perPrincipalPerMinute : Nat
+  burst : Nat := perPrincipalPerMinute / 6
+  deriving Repr, BEq
+
 structure HttpBinding where
   path : String
   method : HttpMethod := .post
+  /-- Overrides the server's body cap for this path, applied before the body is buffered. -/
+  maxBodyBytes : Option Nat := none
+  rateLimit : Option RateLimit := none
   deriving Repr, BEq
 
 /-- Literal, canonical paths only. Adapters must match these exact paths without normalization. -/
@@ -22,12 +31,26 @@ def HttpBinding.validate (http : HttpBinding) : Validation Unit := do
       !http.path.toList.all (fun c => c.isAlphanum && c.toNat < 128 ||
         c == '/' || c == '-' || c == '_' || c == '.') then
     Validation.fail "http.invalid_literal_path" [] [("path", http.path)]
+  if let some cap := http.maxBodyBytes then
+    if cap == 0 || cap > 2^32 then Validation.fail "http.invalid_body_limit" [] [("path", http.path)]
+
+/-- Gateway publication of a success reply: topic `"{topicPrefix}:{value.topicField}"`, and also
+`"user:{value.alsoToActorField}"` when set. Domain errors are never published. -/
+structure Publish where
+  topicField : String
+  topicPrefix : String
+  eventName : String
+  alsoToActorField : Option String := none
+  deriving Repr, BEq
 
 structure PublicMetadata where
   title : String := ""
   description : String := ""
   /-- The intended access rule as published, e.g. "role ≥ editor". Filled from the binding's rule. -/
   describePolicy : String := ""
+  publish : Option Publish := none
+  /-- The success value carries `{ticket, expiresAt, topics}` for the gateway's event stream. -/
+  issuesStreamTicket : Bool := false
   deriving Repr, BEq
 
 /-- Authority failures use Contract's error channel; domain errors stay in the handler. -/
@@ -73,11 +96,19 @@ structure PublicOperation where
   deriving Repr, BEq
 
 def HttpBinding.toJson (http : HttpBinding) : Lean.Json :=
-  .mkObj [("path", .str http.path), ("method", .str (match http.method with | .post => "POST"))]
+  .mkObj [("path", .str http.path), ("method", .str (match http.method with | .post => "POST")),
+    ("maxBodyBytes", match http.maxBodyBytes with | some cap => Lean.toJson cap | none => .null)]
+
+def Publish.toJson (publish : Publish) : Lean.Json :=
+  .mkObj [("topicField", .str publish.topicField), ("topicPrefix", .str publish.topicPrefix),
+    ("eventName", .str publish.eventName),
+    ("alsoToActorField", match publish.alsoToActorField with | some field => .str field | none => .null)]
 
 def PublicMetadata.toJson (metadata : PublicMetadata) : Lean.Json :=
   .mkObj [("title", .str metadata.title), ("description", .str metadata.description),
-    ("describePolicy", .str metadata.describePolicy)]
+    ("describePolicy", .str metadata.describePolicy),
+    ("publish", match metadata.publish with | some publish => publish.toJson | none => .null),
+    ("issuesStreamTicket", .bool metadata.issuesStreamTicket)]
 
 /-- One manifest entry: the operation description plus its HTTP binding and public metadata. -/
 def PublicOperation.toJson (op : PublicOperation) : Lean.Json :=

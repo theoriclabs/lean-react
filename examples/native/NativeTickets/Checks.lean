@@ -110,8 +110,7 @@ def roleMatrix (ops : PublicOperations) (store : Store) : IO Unit := do
   let failures ← LeanApp.Testing.runMatrix app contexts cases
   unless failures.isEmpty do throw (IO.userError s!"FAIL: role matrix\n{LeanApp.Testing.report failures}")
   check (cases.size == 10) "matrix covers 3 roles × 2 operations × {anonymous, other tenant}"
-  check ((approvedMetadata ops).map (·.metadata.describePolicy) == ["role ≥ viewer", "role ≥ editor"])
-    "manifest publishes the intended rule per operation"
+  check (approvedMetadata ops == ops.approved) "bindings publish the portable contract's HTTP metadata"
   IO.println "PASS role matrix over the native application"
 
 def native (path : System.FilePath) : IO Unit := do

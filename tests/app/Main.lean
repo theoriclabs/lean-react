@@ -144,6 +144,30 @@ def main : IO Unit := do
   for path in ["value", "/value/", "/a//b", "/a/../b", "/:id", "/%76alue", "/x?q=1"] do
     reject s!"noncanonical path {path}" "http.invalid_literal_path" (HttpBinding.validate { path })
   check "shared mapping and order-independent dependencies accepted" (app.modules.length == 2)
+  for cap in [0, 2^32 + 1] do
+    reject s!"body cap {cap}" "http.invalid_body_limit" (HttpBinding.validate { path := "/value", maxBodyBytes := some cap })
+  check "body caps within (0, 2^32] accepted" ((HttpBinding.validate { path := "/value", maxBodyBytes := some (2^32) }).isOk &&
+    (HttpBinding.validate { path := "/value", maxBodyBytes := some 1 }).isOk)
+  check "rate limit burst defaults to a ten-second share" (({ perPrincipalPerMinute := 1200 } : RateLimit).burst == 200 &&
+    ({ perPrincipalPerMinute := 60, burst := 5 } : RateLimit).burst == 5)
+  let capped := ({ queryBinding v2 with http := { path := "/value", maxBodyBytes := some 4096 } }).approve (fun _ => reads)
+  reject "same path with a different cap is still ambiguous" "http.ambiguous_path"
+    (Application.create "bad" [{ base with exports := [exported, capped] }])
+  let published : LeanApp.Module Fixture := { name := "live", exports := [({ commandBinding command with
+    http := { path := "/set", maxBodyBytes := some 262144 }
+    metadata := { publish := some { topicField := "doc", topicPrefix := "doc", eventName := "ops" } } }).approve (fun _ => commands)] }
+  let live ← require (Application.create "live" [published])
+  check "manifest entries carry http and metadata in the agreed shape"
+    ((PublicOperation.manifest live.manifest).compress ==
+      "{\"operations\":[{\"error\":{\"kind\":\"string\"},\"http\":{\"maxBodyBytes\":262144,\"method\":\"POST\",\"path\":\"/set\"},\
+      \"input\":{\"kind\":\"tagged-natural\"},\"kind\":\"command\",\"metadata\":{\"describePolicy\":\"\",\"description\":\"\",\
+      \"issuesStreamTicket\":false,\"publish\":{\"alsoToActorField\":null,\"eventName\":\"ops\",\"topicField\":\"doc\",\
+      \"topicPrefix\":\"doc\"},\"title\":\"\"},\"name\":\"set\",\"namespace\":\"fixture\",\"output\":{\"kind\":\"tagged-natural\"},\
+      \"version\":\"1\"}]}")
+  let defaults := (PublicOperation.manifest app.manifest).compress
+  check "manifest defaults are null and false"
+    ((defaults.splitOn "\"maxBodyBytes\":null").length == 3 && (defaults.splitOn "\"publish\":null,").length == 3 &&
+      (defaults.splitOn "\"issuesStreamTicket\":false").length == 3)
   let acl ← require AclFixture.application
   let cases := AclFixture.matrix acl
   check "exhaustive matrix covers 3 roles × 2 operations × {anonymous, other tenant}" (cases.size == 10)
