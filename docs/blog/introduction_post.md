@@ -132,53 +132,17 @@ The two versions are the same length and the same shape. The contrast is in what
 
 Pass a number editor where a text editor is expected and both compilers complain. That part is even. What LeanReact adds is one contract for every editor, so the swap in the screenshot below needs no glue.
 
-![The title field rendered as a single-line input and a textarea, both keeping the text Fix the login page on mobile.](images/introduction/editors.png)
-
-*Swap the input for a textarea. The text you've typed stays.*
-
-[Try swapping the editor →](https://leanreact.com/editors.html)
-
-## Let people finish typing
-
-Suppose ticket titles must contain between 1 and 200 characters. Someone selects the whole title and presses Backspace before writing a better one.
-
-The empty field is invalid as a saved title. It is perfectly normal as a draft.
-
-LeanReact keeps what the person typed, even when it isn't a valid title yet. A `DraftParser` checks the text. `Form.submit` only passes it to the save function when those checks pass.
-
-So the user can clear the field, see “Give the ticket a title,” and keep typing. Their input isn't discarded because it failed validation.
-
-![The ticket editor after an empty title is submitted. The field stays empty and the form says Give the ticket a title.](images/introduction/draft-validation.png)
-
-*The form keeps the draft and explains what needs fixing.*
-
-[Try the form →](https://leanreact.com/forms.html)
-
-The browser and a Lean backend can use the same title check. Change the length limit in one place, and both agree on it.
-
-These checks work together in bigger forms too. Say someone is editing ten tickets at once. You can check every title and description, then show all the errors together. They don't have to fix one field and submit again just to discover the next problem.
-
-## A few more mistakes the compiler catches
-
-Accidentally put `count.set 0` in the render body? Lean catches it. State updates belong in a click handler or an effect.
-
-Hooks get checked too. If an `if` statement makes a hook run only on some renders, the build fails. Put that part of the screen in a child component instead.
-
-LeanReact won't catch every bug. You can still get an effect wrong or break the layout. Keep testing the app and trying it in a browser.
 
 ## Try it
 
 LeanReact 0.1 is an early release. Some Lean features aren't supported yet, and using other React libraries takes extra setup. See the [implementation guide](https://github.com/theoriclabs/lean-react/blob/main/docs/IMPLEMENTED.md) for what's available today.
 
-With Git, Node 22.13 or newer, and [elan](https://github.com/leanprover/elan#installation) installed, run:
+Hat Tip to ClojureScript, which I used at HelpShift and Nilenso and loved it. ClojureScript is a Clojure dialect which compiles to JS.
 
-```sh
-git clone --branch v0.1 https://github.com/theoriclabs/lean-react.git
-cd lean-react
-npm ci
-npm run dev
-```
+## What's next
 
-Open **http://localhost:4173**. The examples run in browser memory, so you can try the ticket workspace without setting up a server.
+You should expect a experiment around writing fullstack application in Lean.
 
-Start with the checkout type. Then swap the ticket editor, or remove a branch from the checkout match and read the compiler's response. The [how-to guide](../HOW_TO.md) walks through building your own form.
+## Ask
+
+I want to pressure test LeanReact, and LeanDB. So if there are medium complexity webapps you want me (and my agents) to try building in Lean, please comment.
