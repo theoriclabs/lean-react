@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const fixture = await mkdtemp(resolve(tmpdir(), 'leanapp-auth-browser-'));
+// Three concurrent sessions per account so the browser suite can sign in on two "devices".
 const backend = spawn(resolve('adapters/native/.lake/build/bin/leanapp_auth_demo'),
-  ['4178', resolve(fixture, 'auth.sqlite'), 'http://127.0.0.1:4177'], { stdio: 'inherit' });
+  ['4178', resolve(fixture, 'auth.sqlite'), 'http://127.0.0.1:4177'],
+  { stdio: 'inherit', env: { ...process.env, LEANAPP_MAX_SESSIONS: process.env.LEANAPP_MAX_SESSIONS ?? '3' } });
 let frontend, stopping = false;
 function stop(code = 0) {
   if (stopping) return; stopping = true;

@@ -1,4 +1,5 @@
 import LeanAppNative.Notes
+import LeanAppNative.Env
 
 def main : IO UInt32 := do
   let path := (← IO.getEnv "LEANAPP_DB_PATH").getD "/data/notes.sqlite"
@@ -12,7 +13,8 @@ def main : IO UInt32 := do
     | throw (IO.userError "notes database unavailable")
   let runtime ← LeanDb.Runtime.Service.new LeanAppNative.Notes.base config session true
   try
-    let .ok auth ← LeanAppNative.Auth.Service.new runtime | throw (IO.userError "authentication unavailable")
+    let .ok auth ← LeanAppNative.Auth.Service.new runtime (config := ← LeanAppNative.Env.authConfig)
+      | throw (IO.userError "authentication unavailable")
     let host ← LeanAppNative.Notes.host auth origin development
     Std.Async.Async.block do
       let server ← host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩)

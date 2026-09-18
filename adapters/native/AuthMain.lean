@@ -1,4 +1,5 @@
 import LeanAppNative.Auth.Demo
+import LeanAppNative.Env
 
 def main (args : List String) : IO UInt32 := do
   let [port, path, origin] := args
@@ -9,7 +10,8 @@ def main (args : List String) : IO UInt32 := do
     | throw (IO.userError "authentication database unavailable")
   let runtime ← LeanDb.Runtime.Service.new LeanAppNative.Auth.Demo.base (LeanDb.Instance.ofPath path) session true
   try
-    let .ok auth ← LeanAppNative.Auth.Service.new runtime | throw (IO.userError "authentication initialization failed")
+    let .ok auth ← LeanAppNative.Auth.Service.new runtime (config := ← LeanAppNative.Env.authConfig)
+      | throw (IO.userError "authentication initialization failed")
     let host ← LeanAppNative.Auth.Demo.host auth origin true
     Std.Async.Async.block do
       let server ← host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩)

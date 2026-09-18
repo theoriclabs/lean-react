@@ -36,6 +36,7 @@ if (profile === 'portable') {
     await run(resolve(native, '.lake/build/bin', binary), [], { cwd: native });
   await run('node', ['--test', 'tests/auth/http.test.mjs'], { cwd });
   await run('node', ['--test', 'tests/integration/auth-client.test.mjs'], { cwd });
+  await run('node', ['scripts/auth-load.mjs'], { cwd });
 } else if (profile === 'browser') {
   await run('npm', ['run', 'test:browser'], { cwd });
   await run('npm', ['run', 'test:native:browser'], { cwd });

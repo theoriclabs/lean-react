@@ -1,6 +1,20 @@
 import LeanAppNative.Auth.Demo
+import LeanDb.Migrate
 
 open LeanAppNative LeanAppNative.Auth LeanApp
+
+/-! The session table before LA-02, under the same table name, for the migration check. -/
+namespace Legacy
+structure Session where
+  tokenDigest : String
+  csrf : String
+  actor : String
+  generation : Int64
+  expiresAt : Int64
+  deriving LeanDb.Entity
+
+def base : LeanDb.Base := { Auth.Demo.base with tables := [.of Auth.Account, .of Session, .of Auth.Invite] }
+end Legacy
 
 private def Except.isError (value : Except ε α) : Bool := !value.isOk
 private instance [BEq ε] [BEq α] : BEq (Except ε α) where
@@ -16,13 +30,287 @@ private def check (label : String) (test : Bool) : IO Unit := do
 private def ok (result : Except Auth.Error α) : IO α :=
   match result with | .ok v => pure v | .error e => throw (IO.userError s!"unexpected auth failure: {repr e}")
 
+private def failure (result : Except Auth.Error α) (expected : Auth.Error) : Bool :=
+  match result with | .error e => e == expected | .ok _ => false
+
+private def password := "a sufficiently long password 🔐"
+
+private def zeros : String := String.ofList (List.replicate 64 '0')
+
+/-- A fresh runtime and authentication service over a temporary database. -/
+private def withService (config : Auth.Service.Config)
+    (body : Auth.Service → LeanDb.Runtime.Service → IO.Ref Nat → IO Unit) : IO Unit :=
+  IO.FS.withTempDir fun dir => do
+    let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
+    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
+    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    let now ← IO.mkRef 1000
+    let service ← ok (← Auth.Service.new runtime now.get config)
+    try body service runtime now finally runtime.close
+
+private def post (path body cookie csrf : String) : Auth.Request := Auth.Request.mk "POST" path [
+  ("origin", "https://example.test"), ("content-type", "application/json"),
+  ("x-leanapp-request", "1"), ("cookie", cookie), ("x-csrf-token", csrf)] body
+
+private def signupBody (name : String) (extra : List (String × Lean.Json) := []) : String :=
+  (Lean.Json.mkObj ([("username", .str name), ("password", .str password)] ++ extra)).compress
+
+private def tenantPolicies : IO Unit := do
+  withService { tenantPolicy := .fixed "ws" } fun service runtime _ => do
+    check "fixed tenant must be nonempty and at most 64 characters"
+      ((← Auth.Service.new runtime (config := { tenantPolicy := .fixed "" })).isError &&
+        (← Auth.Service.new runtime (config := { tenantPolicy := .fixed (String.ofList (List.replicate 65 'w')) })).isError)
+    let a ← ok (← service.signup "fixed_a" password)
+    let b ← ok (← service.signup "fixed_b" password)
+    check "fixed policy shares one workspace" (a.user.tenant == "ws" && b.user.tenant == "ws" && a.user.actor != b.user.actor)
+    let visible ← ok (← service.withAuthenticated a.token (some a.csrf) "scope" fun conn context _ => do
+      let some p := context.principal | throw (IO.userError "principal")
+      let .ok byTenant ← LeanDb.DbM.run conn (LeanDb.selectP [Auth.Account] (.eq (.here Auth.Account.Field.tenant) .eq p.tenant))
+        | throw (IO.userError "tenant read")
+      let .ok owned ← LeanDb.DbM.run conn (LeanDb.selectP [Auth.Account] (.and
+        (.eq (.here Auth.Account.Field.tenant) .eq p.tenant) (.eq (.here Auth.Account.Field.actor) .eq p.actor)))
+        | throw (IO.userError "owner read")
+      pure (byTenant.size, owned.size))
+    check "shared tenant exposes another account's row only past the application's owner check" (visible == (2, 1))
+    let host ← Auth.Demo.host service "https://example.test"
+    let session ← host.dispatch { post "/auth/session" "" s!"__Host-leanapp_session={a.token}" "" with method := "GET" }
+    check "session response names the shared workspace"
+      (session.reply.status == 200 && ((session.reply.body.getObjVal? "user").bind (·.getObjValAs? String "tenant")).toOption == some "ws")
+    check "invite field refused outside the invite policy"
+      ((← host.dispatch (post "/auth/signup" (signupBody "fixed_c" [("invite", .str zeros)]) "" "")).reply.status == 401 &&
+        failure (← service.signup "fixed_c" password (some zeros)) .invalidCredentials)
+  withService { tenantPolicy := .invite } fun service _ now => do
+    check "invite policy refuses signup without a token" (failure (← service.signup "inv_a" password) .inviteRequired)
+    check "invite issuance validates tenant and lifetime"
+      ((← service.createInvite "" 60).isError && (← service.createInvite "team" 0).isError)
+    let token ← ok (← service.createInvite "team" 600)
+    check "invite tokens have the bearer token shape" (tokenShape token)
+    check "malformed and unknown invites are refused before password work"
+      (failure (← service.signup "inv_a" password (some "nope")) .inviteRequired &&
+        failure (← service.signup "inv_a" password (some zeros)) .inviteRequired)
+    let a ← ok (← service.signup "inv_a" password (some token))
+    check "invite places the account in the invite's tenant" (a.user.tenant == "team" && a.user.actor != a.user.tenant)
+    check "invite tokens are single use" (failure (← service.signup "inv_b" password (some token)) .inviteRequired)
+    let expiring ← ok (← service.createInvite "team" 10)
+    now.modify (· + 10)
+    check "invite expiry is exclusive" (failure (← service.signup "inv_b" password (some expiring)) .inviteRequired)
+    let fresh ← ok (← service.createInvite "team" 600)
+    check "invalid invite hides username availability" (failure (← service.signup "inv_a" password (some zeros)) .inviteRequired)
+    check "taken name under invite policy" (failure (← service.signup "inv_a" password (some fresh)) .usernameUnavailable)
+    let c ← ok (← service.signup "inv_c" password (some fresh))
+    check "aborted signup leaves the invite unused" (c.user.tenant == "team")
+    let host ← Auth.Demo.host service "https://example.test"
+    let denied ← host.dispatch (post "/auth/signup" (signupBody "inv_http") "" "")
+    check "HTTP signup without invite is 403 auth.invite_required"
+      (denied.reply.status == 403 && (denied.reply.body.getObjValAs? String "error").toOption == some "auth.invite_required")
+    let http ← ok (← service.createInvite "team" 600)
+    check "HTTP signup rejects an extra field beside the invite"
+      ((← host.dispatch (post "/auth/signup" (signupBody "inv_http" [("invite", .str http), ("role", .str "admin")]) "" "")).reply.status == 401)
+    let accepted ← host.dispatch (post "/auth/signup" (signupBody "inv_http" [("invite", .str http)]) "" "")
+    check "HTTP signup with a valid invite joins the invite's tenant"
+      (accepted.reply.status == 200 && accepted.cookie.isSome &&
+        ((accepted.reply.body.getObjVal? "user").bind (·.getObjValAs? String "tenant")).toOption == some "team")
+    check "HTTP login refuses the invite field"
+      ((← host.dispatch (post "/auth/login" (signupBody "inv_http" [("invite", .str http)]) "" "")).reply.status == 401)
+
+private def resolves (service : Auth.Service) (issued : Auth.Issued) : IO Bool :=
+  return (← service.session issued.token).isOk
+
+private def sessions : IO Unit := do
+  withService { maxSessions := 3 } fun service runtime now => do
+    check "zero concurrent sessions is refused" ((← Auth.Service.new runtime (config := { maxSessions := 0 })).isError)
+    let a ← ok (← service.signup "multi" password (label := some "Laptop"))
+    let b ← ok (← service.login "multi" password (label := some " \tPhone 📱 (home)\x01  "))
+    check "login beyond one session keeps the generation and earlier sessions"
+      (b.user.generation == a.user.generation && (← resolves service a) && (← resolves service b))
+    now.modify (· + 1)
+    let c ← ok (← service.login "multi" password)
+    now.modify (· + 1)
+    let d ← ok (← service.login "multi" password)
+    check "four logins keep the three newest and evict the oldest"
+      (!(← resolves service a) && (← resolves service b) && (← resolves service c) && (← resolves service d))
+    let listed ← ok (← service.sessions d.token d.csrf)
+    let digests ← [b, c, d].mapM fun s => Auth.Crypto.digestToken s.token
+    check "session list is newest first with one current entry and opaque ids"
+      (listed.length == 3 && (listed.filter (·.current)).length == 1 && (listed.head?.map (·.current)) == some true &&
+        listed.all (fun s => tokenShape s.id && !digests.contains s.id && ![b.token, c.token, d.token].contains s.id))
+    check "labels are sanitized to printable ASCII and stamps are recorded"
+      (listed.any (fun s => s.label == some "Phone  (home)") &&
+        listed.all (fun s => s.createdAt.isSome && s.lastSeenAt == s.createdAt))
+    check "session listing needs the CSRF token" ((← service.sessions d.token c.csrf) == .error .forbidden)
+    let phone := (listed.find? (·.label == some "Phone  (home)")).get!.id
+    check "revoking another device from the current one"
+      ((← service.revokeSession d.token d.csrf phone) == .ok false && !(← resolves service b) && (← resolves service d))
+    check "unknown or malformed session ids are not found"
+      (failure (← service.revokeSession d.token d.csrf zeros) .sessionNotFound &&
+        failure (← service.revokeSession d.token d.csrf "short") .sessionNotFound)
+    let other ← ok (← service.signup "other" password)
+    let current := (listed.find? (·.current)).get!.id
+    check "another account cannot revoke a guessed id"
+      (failure (← service.revokeSession other.token other.csrf current) .sessionNotFound && (← resolves service d))
+    let own := ((← ok (← service.sessions c.token c.csrf)).find? (·.current)).get!.id
+    check "revoking the current session behaves like logout"
+      ((← service.revokeSession c.token c.csrf own) == .ok true && !(← resolves service c) && (← resolves service d))
+    let e ← ok (← service.login "multi" password (label := some "Tablet"))
+    let renewed := "a brand new password that is long"
+    check "password change refuses weak passwords and wrong CSRF"
+      (failure (← service.changePassword e.token e.csrf password "short") .invalidPassword &&
+        failure (← service.changePassword e.token d.csrf password renewed) .forbidden && (← resolves service d))
+    let f ← ok (← service.changePassword e.token e.csrf password renewed)
+    check "password change re-issues the caller and revokes every other session"
+      (f.token != e.token && f.csrf != e.csrf && (← resolves service f) && !(← resolves service e) &&
+        !(← resolves service d) && f.user.generation > e.user.generation)
+    check "re-issued session keeps its label"
+      (((← ok (← service.sessions f.token f.csrf)).map (·.label)) == [some "Tablet"])
+    check "old password no longer logs in" (failure (← service.login "multi" password) .invalidCredentials)
+    let g ← ok (← service.login "multi" renewed)
+    let mut throttled := false
+    for _ in [:12] do
+      match ← service.changePassword f.token f.csrf "not the current password" renewed with
+      | .error .throttled => throttled := true; break
+      | .error .invalidCredentials => pure ()
+      | other => throw (IO.userError s!"unexpected password change outcome {repr (other.map (·.user))}")
+    check "wrong current password counts against the credential throttle" (throttled && (← resolves service f))
+    discard <| ok (← service.logoutAll f.token f.csrf)
+    check "logout-all revokes every session" (!(← resolves service f) && !(← resolves service g))
+  withService { maxSessions := 2 } fun service _ now => do
+    let a ← ok (← service.signup "seen" password)
+    let stamp := fun (list : List Auth.SessionInfo) => list.head!.lastSeenAt
+    check "lastSeenAt starts at creation" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1000)
+    now.set 1299
+    discard <| ok (← service.session a.token)
+    check "lastSeenAt is not rewritten within five minutes" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1000)
+    now.set 1300
+    discard <| ok (← service.session a.token)
+    check "lastSeenAt refreshes after five minutes" (stamp (← ok (← service.sessions a.token a.csrf)) == some 1300)
+    let quiet ← ok (← service.login "seen" password (label := some "\x01\x02"))
+    check "labels reduced to nothing are stored as none"
+      ((← ok (← service.sessions quiet.token quiet.csrf)).all (·.label.isNone))
+  withService { maxSessions := 2, sessionLabel := false } fun service _ _ => do
+    let a ← ok (← service.signup "unlabeled" password (label := some "Laptop"))
+    check "labels are dropped when disabled" ((← ok (← service.sessions a.token a.csrf)).all (·.label.isNone))
+  IO.FS.withTempDir fun dir => do
+    let inst := LeanDb.Instance.ofPath (dir / "legacy.sqlite")
+    let hash ← Auth.Crypto.hashPassword password
+    let token ← Auth.Crypto.randomToken
+    let csrf ← Auth.Crypto.randomToken
+    let digest ← Auth.Crypto.digestToken token
+    let .ok legacy ← LeanDb.Cli.Session.open Legacy.base inst | throw (IO.userError "legacy session")
+    let conn ← legacy.conn.get
+    let .ok _ ← LeanDb.DbM.run conn (do
+        discard <| LeanDb.insert Auth.Account ⟨"legacy", hash, "legacy-actor", "legacy-actor", 1, true⟩
+        LeanDb.insert Legacy.Session ⟨digest, csrf, "legacy-actor", 1, 4000⟩)
+      | throw (IO.userError "legacy rows")
+    legacy.close
+    let .ok drifted ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "drifted session")
+    check "old schema is gated until migrated" ((← drifted.gate.get).isSome)
+    drifted.close
+    let .ok (some plan, some report) ← LeanDb.migrate inst.path Auth.Demo.base.specs (apply := true)
+      | throw (IO.userError "migration failed")
+    check "session columns migrate additively"
+      (!plan.isDestructive && report.applied == ["add column \"session\".\"createdAt\"",
+        "add column \"session\".\"lastSeenAt\"", "add column \"session\".\"label\""])
+    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "migrated session")
+    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    try
+      check "migrated instance is admitted" ((← session.gate.get).isNone)
+      let service ← ok (← Auth.Service.new runtime (pure 1000) { maxSessions := 3 })
+      let (user, _) ← ok (← service.session token)
+      check "legacy session still resolves" (user.username == "legacy")
+      let listed ← ok (← service.sessions token csrf)
+      check "legacy session lists with an opaque id and absent stamps"
+        (listed.length == 1 && tokenShape listed.head!.id && listed.head!.createdAt.isNone && listed.head!.lastSeenAt == some 1000)
+      check "legacy session can be revoked" ((← service.revokeSession token csrf listed.head!.id) == .ok true)
+    finally runtime.close
+
+/-- Session-table selects recorded in LeanDB's query log: the statement trace of the auth step. -/
+private def sessionReads (runtime : LeanDb.Runtime.Service) : IO Nat := do
+  let .ok count ← runtime.withConnection fun conn => conn.withAccessIO do
+      let stmt ← conn.raw.prepare "SELECT count(*) FROM _leandb_log WHERE verb = 'select' AND detail LIKE 'session |%'"
+      discard stmt.step
+      return (← stmt.columnInt64 0).toInt.toNat
+    | throw (IO.userError "query log unavailable")
+  return count
+
+private def authenticated (service : Auth.Service) (issued : Auth.Issued) (csrf : Option String := some issued.csrf) :
+    IO (Except Auth.Error Unit) :=
+  service.withAuthenticated issued.token csrf "cached" fun _ _ _ => pure ()
+
+private def sessionCache : IO Unit := do
+  withService { sessionCacheTtlMs := 30000, maxSessions := 3 } fun service runtime now => do
+    let a ← ok (← service.signup "cached" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    let stats ← service.cacheStats
+    let context ← ok (← service.withAuthenticated a.token (some a.csrf) "hit" fun _ context _ => pure context)
+    check "second authenticated call performs no session read and issues the same principal"
+      ((← sessionReads runtime) == before && (← service.cacheStats).hits == stats.hits + 1 &&
+        context.principal == some ⟨a.user.actor, a.user.tenant, a.user.generation⟩)
+    check "cache hits still enforce the CSRF token"
+      (failure (← authenticated service a (some zeros)) .forbidden && (← service.cacheStats).hits == stats.hits + 2)
+    check "cache misses are counted for unknown tokens"
+      (failure (← service.session zeros) .unauthenticated && (← service.cacheStats).misses > stats.misses)
+    let b ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service b)
+    discard <| ok (← service.logout b.token b.csrf)
+    check "logout invalidates the cache immediately" (failure (← authenticated service b) .unauthenticated)
+    let c ← ok (← service.login "cached" password)
+    let d ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service c)
+    discard <| ok (← authenticated service d)
+    let evicted ← ok (← service.login "cached" password)
+    check "session eviction invalidates the evicted entry only"
+      (failure (← authenticated service a) .unauthenticated && (← authenticated service c).isOk && (← authenticated service d).isOk)
+    let ownId := ((← ok (← service.sessions d.token d.csrf)).find? (·.current)).get!.id
+    discard <| ok (← service.revokeSession d.token d.csrf ownId)
+    check "revocation invalidates the cache immediately" (failure (← authenticated service d) .unauthenticated)
+    discard <| ok (← service.logoutAll c.token c.csrf)
+    check "generation bump invalidates every cached session of the actor"
+      (failure (← authenticated service c) .unauthenticated && failure (← authenticated service evicted) .unauthenticated)
+    let e ← ok (← service.login "cached" password)
+    let f ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service e)
+    discard <| ok (← authenticated service f)
+    let g ← ok (← service.changePassword e.token e.csrf password "a changed password for the cache")
+    check "password change invalidates cached sessions and admits the re-issued one"
+      (failure (← authenticated service e) .unauthenticated && failure (← authenticated service f) .unauthenticated &&
+        (← authenticated service g).isOk)
+    discard <| ok (← authenticated service g)
+    discard <| ok (← service.setAccess g.user.actor "moved" true)
+    check "setAccess invalidates cached sessions" (failure (← authenticated service g) .unauthenticated)
+    let h ← ok (← service.login "cached" "a changed password for the cache")
+    discard <| ok (← authenticated service h)
+    now.set (1000 + 86400)
+    check "expiry is checked on every hit" (failure (← authenticated service h) .unauthenticated)
+    let final ← service.cacheStats
+    check "cache statistics are exposed" (final.hits > 0 && final.misses > 0 && final.invalidations > 0)
+  withService { sessionCacheTtlMs := 1 } fun service runtime _ => do
+    let a ← ok (← service.signup "stale" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    IO.sleep 5
+    discard <| ok (← authenticated service a)
+    check "a stale entry misses and re-reads the session" ((← sessionReads runtime) == before + 1)
+  withService { sessionCacheTtlMs := 30000, sessionCacheMax := 2, maxSessions := 5 } fun service _ _ => do
+    let a ← ok (← service.signup "bounded" password)
+    let b ← ok (← service.login "bounded" password)
+    let c ← ok (← service.login "bounded" password)
+    for s in [a, b, c] do discard <| ok (← authenticated service s)
+    check "cache size stays within its bound" ((← service.cacheStats).size ≤ 2)
+  withService {} fun service runtime _ => do
+    let a ← ok (← service.signup "uncached" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    discard <| ok (← authenticated service a)
+    check "a disabled cache reads the session on every call"
+      ((← sessionReads runtime) == before + 1 && (← service.cacheStats) == ⟨0, 0, 0, 0⟩)
+
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
   let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
   let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
   let now ← IO.mkRef 1000
-  let service ← ok (← Auth.Service.new runtime now.get 60)
-  let password := "a sufficiently long password 🔐"
+  let service ← ok (← Auth.Service.new runtime now.get { ttl := 60 })
   try
     check "username canonicalization" (username "Alice_01" == .ok "alice_01")
     check "username bounds and alphabet" ((username "a").isError && (username "ali ce").isError && (username "álîce").isError)
@@ -108,4 +396,8 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
     check "closed runtime refuses authentication" ((← service.session bob2.token).map (fun _ => ()) == .error .unavailable)
   finally runtime.close
 
-def main : IO Unit := run
+def main : IO Unit := do
+  run
+  tenantPolicies
+  sessions
+  sessionCache

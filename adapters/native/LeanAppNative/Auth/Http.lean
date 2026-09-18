@@ -25,6 +25,8 @@ private def errorReply (error : Error) : HttpReply :=
     | .throttled => (429, "auth.throttled")
     | .unavailable => (503, "auth.unavailable")
     | .internal => (500, "auth.failed")
+    | .inviteRequired => (403, "auth.invite_required")
+    | .sessionNotFound => (404, "auth.session_not_found")
   ⟨status, .mkObj [("error", .str code)]⟩
 
 private def header (request : Request) (name : String) : Option String :=
@@ -88,13 +90,31 @@ private def Host.sessionToken (host : Host) (request : Request) : Option String 
   let [_, token] := entry | none
   if tokenShape token then some token else none
 
-private def credentials (body : String) : Except Error (String × String) := do
+private structure Credentials where
+  name : String
+  password : String
+  invite : Option String := none
+  label : Option String := none
+
+/-- Exactly the `required` string fields, plus only the listed `optional` string fields. -/
+private def exactFields (body : String) (required : List String) (optional : List String := []) :
+    Except Error (List String × (String → Option String)) := do
   let .ok json := Lean.Json.parse body | throw .invalidCredentials
   let .ok fields := json.getObj? | throw .invalidCredentials
-  if fields.size != 2 then throw .invalidCredentials
-  let .ok name := json.getObjValAs? String "username" | throw .invalidCredentials
-  let .ok password := json.getObjValAs? String "password" | throw .invalidCredentials
-  pure (name, password)
+  let present := optional.filter fun key => (json.getObjVal? key).isOk
+  if fields.size != required.length + present.length then throw .invalidCredentials
+  let values ← required.mapM fun key => do
+    let .ok value := json.getObjValAs? String key | throw Error.invalidCredentials
+    pure value
+  let extras ← present.mapM fun key => do
+    let .ok value := json.getObjValAs? String key | throw Error.invalidCredentials
+    pure (key, value)
+  pure (values, fun key => (extras.find? (·.1 == key)).map (·.2))
+
+private def credentials (body : String) (optional : List String := []) : Except Error Credentials := do
+  let ([name, password], field) ← exactFields body ["username", "password"] ("label" :: optional)
+    | throw .invalidCredentials
+  pure ⟨name, password, field "invite", field "label"⟩
 
 private def sessionBody (user : User) (csrf : String) : Lean.Json :=
   .mkObj [("user", user.toJson), ("csrf", .str csrf)]
@@ -125,8 +145,11 @@ def Host.dispatch (host : Host) (request : Request) : IO Response := do
     if request.path == "/auth/signup" || request.path == "/auth/login" then
       if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
       if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
-      let .ok (name, password) := credentials request.body | return ⟨errorReply .invalidCredentials, none⟩
-      return host.issued (← if request.path == "/auth/signup" then host.auth.signup name password else host.auth.login name password)
+      let signup := request.path == "/auth/signup"
+      let optional := if signup && host.auth.config.tenantPolicy == .invite then ["invite"] else []
+      let .ok input := credentials request.body optional | return ⟨errorReply .invalidCredentials, none⟩
+      return host.issued (← if signup then host.auth.signup input.name input.password input.invite input.label
+        else host.auth.login input.name input.password input.label)
     let some token := host.sessionToken request | return ⟨errorReply .unauthenticated, none⟩
     if request.path == "/auth/session" then
       if request.method != "GET" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
@@ -134,11 +157,31 @@ def Host.dispatch (host : Host) (request : Request) : IO Response := do
       | .ok (user, csrf) => return ⟨⟨200, sessionBody user csrf⟩, none⟩
       | .error e => return ⟨errorReply e, none⟩
     let csrf := (header request "x-csrf-token").getD ""
-    if request.path == "/auth/logout" then
+    if ["/auth/logout", "/auth/logout-all", "/auth/sessions", "/auth/sessions/revoke", "/auth/password"].contains request.path then
       if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
+      if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
+    let cleared := some (host.cookie "" true)
+    if request.path == "/auth/logout" then
       match ← host.auth.logout token csrf with
-      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, some (host.cookie "" true)⟩
+      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared⟩
       | .error e => return ⟨errorReply e, none⟩
+    if request.path == "/auth/logout-all" then
+      match ← host.auth.logoutAll token csrf with
+      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared⟩
+      | .error e => return ⟨errorReply e, none⟩
+    if request.path == "/auth/sessions" then
+      match ← host.auth.sessions token csrf with
+      | .ok sessions => return ⟨⟨200, .mkObj [("sessions", .arr (sessions.map (·.toJson)).toArray)]⟩, none⟩
+      | .error e => return ⟨errorReply e, none⟩
+    if request.path == "/auth/sessions/revoke" then
+      let .ok ([id], _) := exactFields request.body ["id"] | return ⟨errorReply .sessionNotFound, none⟩
+      match ← host.auth.revokeSession token csrf id with
+      | .ok current => return ⟨⟨200, .mkObj [("ok", .bool true), ("current", .bool current)]⟩, if current then cleared else none⟩
+      | .error e => return ⟨errorReply e, none⟩
+    if request.path == "/auth/password" then
+      let .ok ([current, next], _) := exactFields request.body ["currentPassword", "newPassword"]
+        | return ⟨errorReply .invalidCredentials, none⟩
+      return host.issued (← host.auth.changePassword token csrf current next)
     let dispatch := fun context app => do
       if app.manifest != host.approved then return errorReply .internal
       let .ok server := Server.create app host.codecs host.config | return errorReply .internal
