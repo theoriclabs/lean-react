@@ -67,9 +67,9 @@ const document = (title, description, active, content) => `<!doctype html>
 <title>${escape(title)} · LeanReact</title><meta name="description" content="${escape(description)}">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css">
 </head><body class="${active}-page"><a class="skip-link" href="#main">Skip to example</a><div class="shell">
-<header class="masthead"><a class="wordmark" href="index.html"><span class="mark" aria-hidden="true">λ</span>LeanReact</a><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
+<header class="masthead"><div class="brand"><a class="theoric-lockup" href="https://theoric.com/" aria-label="Theoric"><img src="assets/theoric-wordmark.svg" alt="" width="110" height="28"></a><span class="brand-sep" aria-hidden="true">/</span><a class="wordmark" href="index.html">LeanReact</a></div><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
 ${nav(active)}<main id="main">${content}</main>
-<footer class="page-footer"><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
+<footer class="page-footer"><span>© 2026 <a href="https://theoric.com/">Theoriclabs, Inc.</a></span><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
 </div><script defer src="assets/demo.js"></script></body></html>\n`;
 for (const [index, page] of pages.entries()) {
   const next = pages[(index + 1) % pages.length];
