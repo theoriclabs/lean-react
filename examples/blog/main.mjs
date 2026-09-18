@@ -8,5 +8,7 @@ const components = {
   editors: 'Examples.Blog.EditorDemo',
   forms: 'Examples.Blog.FormDemo',
 };
-const host = document.getElementById('demo');
-if (host) createRoot(host).render(mountElement(demos[components[host.dataset.demo]]));
+for (const host of document.querySelectorAll('[data-demo]')) {
+  const name = components[host.dataset.demo];
+  if (name) createRoot(host).render(mountElement(demos[name]));
+}

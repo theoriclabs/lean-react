@@ -2,7 +2,7 @@
 
 This is for someone who builds frontends, is comfortable with TypeScript, and has heard the phrase "dependent types" without ever needing one. It works through a single example, a checkout form, and shows what the types buy you in practice. The snippets in the body are excerpts from the complete file at the end, which `npm run test:docs` recompiles; the counts come from Lean running the enumeration, not from arithmetic done by hand.
 
-## The checkout
+## A nine-field checkout with five business rules
 
 A checkout page with the usual moving parts:
 
@@ -28,7 +28,7 @@ And the business rules, the kind that arrive one at a time over a year of ticket
 
 None of these is exotic. Every one of them is a bug someone has shipped.
 
-## How this gets stored in React
+## Nine `useState` slots admit 12,288 states; the rules allow 888
 
 Honestly, like this:
 
@@ -54,7 +54,7 @@ You know this. It's why the submit handler has a wall of `if` statements, why `d
 
 The technical name for this is **state explosion**, and the cause is precise: independent slots multiply. Every field you add multiplies the representable states by its option count, while the valid states grow much more slowly because the rules cut them down. The gap between the two numbers is where bugs live.
 
-## Types are sets; the shape decides the count
+## Why products explode and sums don't
 
 Think of a type as the set of values it allows.
 
@@ -77,7 +77,7 @@ Rule 1 has the same shape. Which methods exist depends on the country. Rule 5: w
 
 That's the pattern. Three of the five rules say "the set of valid values for this field depends on the value of another field." A type system that can express that sentence is what "dependent types" means. Nothing more mystical than that.
 
-## Building the type in Lean
+## Building a type with exactly 888 values
 
 Start with the plain enums. These are exactly TypeScript string unions:
 
@@ -91,7 +91,7 @@ inductive Method where
   deriving Repr, BEq, DecidableEq
 ```
 
-### Rule 1: a field that carries evidence
+### Rule 1, shipping methods per country: a field that carries evidence
 
 Rule 1 is a relation between two fields. Write it as an ordinary function, the same one you'd write in TypeScript:
 
@@ -129,7 +129,7 @@ The `if h : ...` form is the whole mechanism. It's an ordinary `if` on a boolean
 
 Count: `Country × Method` has 16 values. `Shipping` has 10. The type has exactly as many inhabitants as there are legal shipping choices.
 
-### Rule 2: a type that depends on a value
+### Rule 2, cash on delivery only for pickup: a type that depends on a value
 
 COD exists only for pickup. So `Payment` isn't one type. It's four types, one per shipping method, and they're almost the same:
 
@@ -145,7 +145,7 @@ inductive Payment : Method → Type where
 
 That's a dependent type. A type indexed by a value. In TypeScript terms, imagine `Payment<M extends Method>` where the union members available actually change with `M`, and the compiler enforces it at construction and at every match.
 
-### Rule 5: the same trick as rule 1
+### Rule 5, no gift wrap on pickup: the evidence trick again
 
 Gift wrap is forbidden on pickup. Write the constraint as a field whose type is the sentence:
 
@@ -161,7 +161,7 @@ structure Checkout where
 
 Two things to notice. `payment : Payment shipping.method` ties the payment field's *type* to the shipping field's *value*. That is rule 2, stated as a field declaration. And `noWrapForPickup` is an implication: "if the method is pickup, then gift wrap is false." When the method isn't pickup, the implication is trivially satisfied and both gift wrap values are allowed.
 
-### The one door
+### One function turns the flat draft into a checked `Checkout`
 
 The form itself is still flat. The user can click COD and then switch to express; the UI has to hold that. So there is a flat `Draft` type with nine independent fields, and one function that turns it into a `Checkout` or an error:
 
@@ -195,7 +195,7 @@ This is the validation function you would have written anyway. The difference is
 
 The `h ▸ Payment.cod` line is the only new syntax: "use the fact `h` (that the method is pickup) to let a `Payment .pickup` be used where a `Payment shipping.method` is expected." The compiler checks that `h` says exactly that.
 
-## Lean counts it
+## Lean enumerates the type and prints 888
 
 Rather than trust the arithmetic, enumerate. Fix payloads to one sample value each (so we count shapes, not strings) and build every `Checkout`:
 
@@ -217,7 +217,7 @@ def Checkout.all : List Checkout :=
 
 You cannot write the enumeration wrong in an interesting way. Try to add `.cod` to the non-pickup payment shapes and it won't typecheck. Try to add `⟨true, ...⟩` to the pickup gift wrap options and you'll be asked to prove `true = false`.
 
-## What this changes day to day
+## What you stop writing: guards, duplicate rules, greps
 
 **Downstream code has no guards.** Once a function takes a `Checkout`, rules 1 through 5 are facts. The API client that serializes the order doesn't check whether COD is allowed. The order summary doesn't check whether a billing address should exist. The label function matches `.cod` and knows the method is pickup:
 
@@ -254,7 +254,7 @@ validCount         = 888n
 
 The last line is the same enumeration run as a loop in the browser runtime.
 
-## What it does not change
+## What the type does not do for you
 
 **The form is still flat.** Users make invalid intermediate choices, so the draft has to hold them. What changes is that the flat shape stops at `Draft.check`. Everything after that door works on the 888, not the 12,288.
 
@@ -277,7 +277,7 @@ The last line is the same enumeration run as a loop in the browser runtime.
 
 The second row is the one to internalize first. `if h : check then ⟨value, h⟩` is the entire on-ramp: run your existing boolean check, keep the result as a field, close the constructor. Everything downstream gets to assume the check passed, and the compiler enforces that assumption. The dependent family in row three is how you say "these options exist only over there." Rows two and three together are what took a 12,288-state store down to a type with 888 values.
 
-## Try it
+## Run the listing yourself
 
 Save the listing below as `Checkout.lean` anywhere inside a LeanReact checkout and run:
 
@@ -287,7 +287,7 @@ lake env lean Checkout.lean
 
 It prints `10`, `888`, `12288`, `2`. To compile it to JavaScript, add `import LeanJS` at the top and a `run_meta` block calling `LeanJS.writeModule` with the declarations you want exported; the [how-to guide](../HOW_TO.md#compile-the-lean-definitions) shows the pattern.
 
-## Complete listing
+## Complete listing: `Checkout.lean`
 
 <!-- lean-check: checkout-state-explosion -->
 ```lean

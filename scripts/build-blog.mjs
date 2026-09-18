@@ -58,7 +58,10 @@ const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').r
 const highlight = source => escape(source)
   .replace(/(&quot;.*?&quot;)/g, '<span class="str">$1</span>')
   .replace(/\b(import|open|structure|where|def|do|let|pure|fun|match|with|if|then|else)\b/g, '<span class="kw">$1</span>');
-const nav = active => `<nav class="section-nav" aria-label="Examples">${pages.map(page => `<a href="${page.id}.html"${page.id === active ? ' aria-current="page"' : ''}>${page.name}</a>`).join('')}</nav>`;
+const nav = active => `<nav class="section-nav" aria-label="Examples">${pages.map(page => {
+  const href = active === 'index' ? `#${page.id}` : `${page.id}.html`;
+  return `<a href="${href}"${page.id === active ? ' aria-current="page"' : ''}>${page.name}</a>`;
+}).join('')}</nav>`;
 const document = (title, description, active, content) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(title)} · LeanReact</title><meta name="description" content="${escape(description)}">
@@ -67,7 +70,7 @@ const document = (title, description, active, content) => `<!doctype html>
 <header class="masthead"><a class="wordmark" href="index.html"><span class="mark" aria-hidden="true">λ</span>LeanReact</a><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
 ${nav(active)}<main id="main">${content}</main>
 <footer class="page-footer"><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
-</div>${active !== 'index' ? '<script defer src="assets/demo.js"></script>' : ''}</body></html>\n`;
+</div><script defer src="assets/demo.js"></script></body></html>\n`;
 for (const [index, page] of pages.entries()) {
   const next = pages[(index + 1) % pages.length];
   await copyFile(resolve(root, `docs/blog/images/introduction/${page.image}.png`), resolve(output, `assets/${page.image}.png`));
@@ -80,7 +83,7 @@ for (const [index, page] of pages.entries()) {
 }
 await writeFile(resolve(output, 'index.html'), document('Try the examples', 'Four small, interactive examples from the LeanReact introduction.', 'index', `
 <p class="eyebrow">The introduction, in your browser</p><h1>Try the examples.</h1><p class="lede">Click a counter, choose a loading state, swap an editor, or try saving an empty title.</p>
-<div class="tiles">${pages.map(page => `<a class="tile" href="${page.id}.html"><img src="assets/${page.image}.png" alt="" width="1280" height="${page.id === 'states' ? '799' : page.id === 'editors' ? '692' : page.id === 'forms' ? '596' : '631'}"><h2>${page.name}</h2><p>${page.description}</p><span>Try the example →</span></a>`).join('')}</div>`));
+<div class="tiles">${pages.map(page => `<article class="tile ${page.id}-demo" id="${page.id}"><div class="tile-live"><div class="tile-live-bar"><span>Live component</span><span class="badge">LEAN + REACT</span></div><div class="tile-live-body"><div data-demo="${page.id}"></div><noscript>Enable JavaScript to try this example.</noscript></div></div><div class="tile-copy"><h2>${page.name}</h2><p>${page.description}</p><a href="${page.id}.html">See the Lean source →</a></div></article>`).join('')}</div>`));
 // Keep a standard static output directory for the Sites hosting manifest.
 await mkdir(resolve(output, 'dist'), { recursive: true });
 for (const file of ['index.html', ...pages.map(page => `${page.id}.html`), 'assets'])

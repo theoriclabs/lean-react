@@ -1,120 +1,98 @@
-# LeanReact: Composable and Correct React Components in Lean
+# LeanReact: Expressing Composable and Correct React Components in Lean
 
 The intention of LeanReact is to be able to specify composable and correct React components in Lean. We talked about [why Lean types are great in the Lean DB post](https://theoric.com/blog/leandb_a_strongly_typed_sql_frontend/). The same types are also great for expressing frontend components. Today, I want to introduce LeanReact 0.1 and show you its power with some examples.
 
-## Start with a button
+LeanReact makes it easier to express composable and correct React Components.
 
-Here is a counter in Lean:
+## Example 1: Stop the checkout from reaching impossible states
 
-```lean
-import LeanReact
-open LeanReact
-
-structure CounterProps where
-  label : String
-
-def Counter : Component CounterProps := component fun props => do
-  let count ← useState 0 "count"
-  pure <| DOM.button {
-    onPress := some (count.modify (fun value => value + 1))
-  } #[
-    text (props.label ++ ": " ++ toString count.value)
-  ]
-```
-
-`CounterProps` is the props type. `useState` holds the count. Clicking the button updates it. `count.modify` works like React's `setCount(previous => previous + 1)`.
-
-The syntax takes a little getting used to. `fun` introduces a function. `#[...]` holds the button's children. `some` supplies an optional prop, and `pure <|` returns the element. `"count"` names the hook.
-
-![The Lean counter code beside its rendered React button, showing Clicks: 3.](images/introduction/counter.png)
-
-*The counter above, running in the browser after three clicks.*
-
-[Try the counter →](https://leanreact.com/counter.html)
-
-Now let's load something.
-
-## Make loading states hard to forget
-
-Suppose our support team needs a list of open tickets. A common React implementation starts with three fields:
+Here is a multi-step checkout the way it usually gets written:
 
 ```ts
-const [data, setData] = useState<Ticket[] | null>(null);
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState<string | null>(null);
+const [currentStep, setCurrentStep] = useState(1); // 1 shipping, 2 payment, 3 review
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [hasError, setHasError] = useState(false);
+const [isPaymentValidated, setIsPaymentValidated] = useState(false);
+const [showDiscountModal, setShowDiscountModal] = useState(false);
 ```
 
-These fields can disagree. A request fails and sets `error`, but nobody clears `loading`. Or the page treats `data === null` as an empty list, even though it hasn't asked the server yet.
+Each `useState` is a slot that varies on its own. Multiply the options: \(3 \times 2 \times 2 \times 2 \times 2 = 48\) states this component can be in. Only 10 out of these 48 states are valid. In real world example, the number possible states are LOT more, and you almost always forget to handle a valid state, and spend unnecessary time handling states which will probably never occur.
 
-LeanReact's `useResource` gives you one state with four possible cases:
-
-- `idle`: the request hasn't started.
-- `loading`: the request is running.
-- `success`: the request returned a value.
-- `failure`: the request failed.
-
-![Four views of the ticket list: idle and loading show a loading message, success shows two tickets, and failure shows an error.](images/introduction/resource-states.png)
-
-*Each state has a place on the screen.*
-
-[Try the loading states →](https://leanreact.com/states.html)
-
-The data lives inside `success`. You check the state before reading it.
-
-Here is how we show the ticket titles:
+Same state expressed as Lean's inductive types:
 
 ```lean
 import LeanReact
 open LeanReact
 
-def ticketList (state : ResourceState (Array String) String) : Element :=
-  match state with
-  | .idle => DOM.p {} #[text "Loading tickets…"]
-  | .loading _ => DOM.p {} #[text "Loading tickets…"]
-  | .failure _ (.loader message) =>
-      DOM.p { role := some "alert" } #[text message]
-  | .failure _ (.exception _) =>
-      DOM.p { role := some "alert" } #[text "Could not load tickets. Try again."]
-  | .success _ titles =>
-      if titles.isEmpty then
-        DOM.p {} #[text "No open tickets. You're all caught up."]
-      else
-        DOM.ul {} (titles.map fun title => DOM.li {} #[text title])
+structure Shipping where
+  address : String
+
+structure Payment where
+  cardLast4 : String
+
+inductive Checkout where
+  | shipping (draft : String)
+  | payment (shipping : Shipping) (draft : String)
+  | review (shipping : Shipping) (payment : Payment)
+  | submitting (shipping : Shipping) (payment : Payment)
+  | failed (shipping : Shipping) (payment : Payment) (message : String)
 ```
 
-`match` is like a `switch` that must cover every case. Delete the `loading` branch and the code won't compile. The request also can't be loading and failed at the same time.
+I think it's much simpler, and only the valid states are representable.
 
-The `_` means “we don't need this value here.”
+### How to render the state
 
-Notice where “No open tickets” appears: inside `success`. We only say the queue is empty after getting an answer. No more flashing an empty list while the page loads.
+Rendering is a `match`, and the match has to cover every case:
 
-The two failure branches cover errors we expect and unexpected errors. If loading throws an exception, `useResource` catches it so we can show an error message.
+```lean
+def checkoutView (checkout : Checkout) (placeOrder : Action Unit) : Element :=
+  match checkout with
+  | .shipping draft =>
+      DOM.p {} #[text ("Shipping address: " ++ draft)]
+  | .payment _ draft =>
+      DOM.p {} #[text ("Card number: " ++ draft)]
+  | .review _ payment =>
+      DOM.button { onPress := some placeOrder }
+        #[text ("Place order with card ending " ++ payment.cardLast4)]
+  | .submitting _ _ =>
+      DOM.p { role := some "status" } #[text "Placing your order…"]
+  | .failed _ _ message =>
+      DOM.p { role := some "alert" } #[text message]
+```
 
-Write out the cases you care about. A shortcut like `_ => empty` can hide a missing screen behind a blank page.
+The spinner text lives in exactly one branch, and that branch only runs when the state is `submitting`. Delete the `.submitting` arm and the compiler answers `Missing cases: Checkout.submitting …`. Compare that to the React version, where a spinner is `{isSubmitting && <Spinner />}` placed somewhere in the tree, and nothing checks whether the form underneath it is one you should be spinning over.
 
-You can [use this pattern in TypeScript](https://www.typescriptlang.org/docs/handbook/2/narrowing.html#exhaustiveness-checking) too. In LeanReact, it's built into `useResource`.
+You can write this union in TypeScript too, and you should. The difference here is that there is no `as`, no `!`, and no `any` to slip past the match, and the same `Checkout` type can be handed to a Lean backend that decides whether the order is placeable.
 
-### What about a refresh?
-
-The team clicks Reload while looking at ten tickets. We want those tickets to stay on screen while the new list loads.
-
-The [Tickets example](../../examples/lean/Examples/Tickets/Components.lean) does this by keeping a copy of the last list. It shows those rows with a loading message above them. If the refresh fails, the rows stay.
-
-It also checks ticket versions. If someone just saved an edit, an older response won't overwrite it.
-
-### What about incomplete data?
-
-Sometimes the tickets arrive before the names of the people assigned to them. Each request has its own state. You can wait for both, or show the tickets while the names load.
-
-Some tickets have nobody assigned at all. Lean represents that with `Option`: either `some` value or `none`. The code has to allow for both. That gives you a place to show “Unassigned” instead of trying to read a person who isn't there.
-
-## Compose the editor from smaller pieces
+## Example 2: Compose the editor from smaller pieces
 
 Now the support team wants two ways to edit a ticket: a quick editor beside the list and a larger editor on the detail page.
 
 Both need the same title validation and save behavior. Copying the whole editor would give us two places to fix every bug.
 
-You can pass one component into another as a prop. Here is a title field that lets us choose which input to use:
+You can pass one component into another as a prop. In React, you define the contract yourself:
+
+```tsx
+type EditorProps = { value: string; onChange: (value: string) => void };
+
+function TitleInput({ value, onChange }: EditorProps) {
+  return <input aria-label="Ticket title" value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function TitleTextarea({ value, onChange }: EditorProps) {
+  return <textarea aria-label="Ticket title" value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
+function TitleField({ Editor }: { Editor: ComponentType<EditorProps> }) {
+  const [draft, setDraft] = useState("Fix the login page");
+  return <Editor value={draft} onChange={setDraft} />;
+}
+
+<TitleField Editor={TitleInput} />
+<TitleField Editor={TitleTextarea} />
+```
+
+Same thing in LeanReact:
 
 ```lean
 import LeanReact
@@ -123,32 +101,42 @@ open LeanReact
 
 def TitleInput : Editor String := component fun field =>
   pure <| DOM.input {
-    value := some field.value
     ariaLabel := some "Ticket title"
+    value := some field.value
     onChange := some (fun event => field.set event.value)
   }
 
-structure TitleFieldProps where
-  editor : Editor String := TitleInput
+def TitleTextarea : Editor String := component fun field =>
+  pure <| node "textarea" #[
+    .string "aria-label" "Ticket title",
+    .string "value" field.value,
+    .change (fun event => field.set event.value)
+  ] #[]
 
-def TitleField : Component TitleFieldProps := component fun props => do
+def TitleField : Component (Editor String) := component fun editor => do
   let draft ← useState "Fix the login page" "title"
-  pure <| element props.editor (FieldBinding.ofState draft)
+  pure <| element editor (FieldBinding.ofState draft)
+
+def quickEditor : Element := element TitleField TitleInput
+def detailEditor : Element := element TitleField TitleTextarea
 ```
 
-An `Editor String` receives the text and a way to change it. `TitleField` keeps the draft. The editor displays it. Swap the input for a textarea, and the parent still keeps the text you've typed.
+The two versions are the same length and the same shape. The contrast is in what you had to invent:
 
-In the full Tickets example, a `useTicketEditor` hook checks the title, saves changes, and shows messages. The sidebar and detail page both use it. Fix the save code once, and both get the fix.
+| | React | LeanReact |
+| --- | --- | --- |
+| The editor contract | `EditorProps`, written by you. The next team writes `onValueChange`, the library you import gives you the raw event. | `Editor String` is built in. Every editor in the codebase receives the same `FieldBinding`. |
+| What `onChange` hands you | A DOM event. `e.target.value` for an input, a different event type for a textarea, something else for a date picker. | A snapshot with `.value`. Input and textarea are interchangeable without an adapter. |
+| Where the draft lives | In `TitleField`, because you lifted it. Put it in the editor instead and swapping editors loses the text. | An `Editor` receives a binding; it has no slot for its own draft. The parent owns it by construction. |
+| Updating from the previous value | `setDraft(d => d + "!")` | `field.modify (· ++ "!")`, plus `field.focus` for editing one field of a record while keeping its siblings. |
 
-The list also lets you choose how each row looks. A ticket card lets you choose its footer. You can change either without touching the code that loads or saves tickets.
+Pass a number editor where a text editor is expected and both compilers complain. That part is even. What LeanReact adds is one contract for every editor, so the swap in the screenshot below needs no glue.
 
 ![The title field rendered as a single-line input and a textarea, both keeping the text Fix the login page on mobile.](images/introduction/editors.png)
 
 *Swap the input for a textarea. The text you've typed stays.*
 
 [Try swapping the editor →](https://leanreact.com/editors.html)
-
-Lean checks that the pieces fit. Pass a number editor to a text field, and it tells you something is wrong.
 
 ## Let people finish typing
 
@@ -180,7 +168,7 @@ LeanReact won't catch every bug. You can still get an effect wrong or break the 
 
 ## Try it
 
-LeanReact 0.1 is an early release. Some Lean features aren't supported yet, and using other React libraries takes extra setup. See the [implementation guide](../IMPLEMENTED.md) for what's available today.
+LeanReact 0.1 is an early release. Some Lean features aren't supported yet, and using other React libraries takes extra setup. See the [implementation guide](https://github.com/theoriclabs/lean-react/blob/main/docs/IMPLEMENTED.md) for what's available today.
 
 With Git, Node 22.13 or newer, and [elan](https://github.com/leanprover/elan#installation) installed, run:
 
@@ -193,4 +181,4 @@ npm run dev
 
 Open **http://localhost:4173**. The examples run in browser memory, so you can try the ticket workspace without setting up a server.
 
-Start with the counter. Then swap the ticket editor, or remove a branch from a resource match and read the compiler's response. The [how-to guide](../HOW_TO.md) walks through building your own form.
+Start with the checkout type. Then swap the ticket editor, or remove a branch from the checkout match and read the compiler's response. The [how-to guide](../HOW_TO.md) walks through building your own form.
