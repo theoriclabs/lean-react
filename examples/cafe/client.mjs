@@ -1,39 +1,44 @@
-/** Wire parsing and session-owned recipe state. Pricing and admissibility live in Lean. */
+/** Session-owned recipe state over the generated wire client. Pricing and admissibility live in Lean. */
+import { operations } from './wire/operations.mjs';
+
 export const INITIAL_CONFIGURATION = Object.freeze({
   temperature: 'hot', size: 'regular', milk: 'whole', shots: 'double', decaf: false,
 });
 
+// The generated codecs check wire shapes; the choice lists and decimal prices are the café's
+// own protocol expectations layered on top. Admissibility (small iced, decaf triple) stays in Lean.
 const fields = {
   temperature: ['hot', 'iced'], size: ['small', 'regular', 'large'],
   milk: ['whole', 'skim', 'oat', 'almond', 'soy'], shots: ['single', 'double', 'triple'],
 };
-const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-const exact = (value, keys) => object(value) && Object.keys(value).length === keys.length &&
-  keys.every(key => Object.hasOwn(value, key));
+const exact = (value, keys) => value !== null && typeof value === 'object' && !Array.isArray(value) &&
+  Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const decimal = value => typeof value === 'string' && /^(0|[1-9][0-9]*)$/.test(value);
 
 export class CafeError extends Error {
   constructor(code) { super(code); this.name = 'CafeError'; this.code = code; }
 }
 const fail = code => { throw new CafeError(code); };
+const wire = (codec, method, value) => {
+  try { return codec[method](value); } catch { return fail('cafe.protocol'); }
+};
+
+const freezeRecipe = recipe => {
+  if (!recipe.id || !decimal(recipe.priceMinor) ||
+      !Object.entries(fields).every(([key, choices]) => choices.includes(recipe.configuration[key]))) fail('cafe.protocol');
+  return Object.freeze({ ...recipe, configuration: Object.freeze(recipe.configuration) });
+};
 
 export function parseConfiguration(value) {
-  if (!exact(value, [...Object.keys(fields), 'decaf']) || typeof value.decaf !== 'boolean' ||
-      !Object.entries(fields).every(([key, choices]) => choices.includes(value[key]))) fail('cafe.protocol');
-  return Object.freeze(Object.fromEntries([...Object.keys(fields), 'decaf'].map(key => [key, value[key]])));
+  const { configuration } = wire(operations.save.input, 'encode', { name: '', configuration: value });
+  if (!Object.entries(fields).every(([key, choices]) => choices.includes(configuration[key]))) fail('cafe.protocol');
+  return Object.freeze(configuration);
 }
 
-export function parseRecipe(value) {
-  if (!exact(value, ['id', 'name', 'configuration', 'priceMinor']) ||
-      typeof value.id !== 'string' || !value.id || typeof value.name !== 'string' ||
-      !decimal(value.priceMinor)) fail('cafe.protocol');
-  return Object.freeze({ id: value.id, name: value.name,
-    configuration: parseConfiguration(value.configuration), priceMinor: value.priceMinor });
-}
+export const parseRecipe = value => freezeRecipe(wire(operations.save.output, 'decode', value));
 
 export function parseRecipes(value) {
-  if (!Array.isArray(value)) fail('cafe.protocol');
-  const recipes = value.map(parseRecipe);
+  const recipes = wire(operations.list.output, 'decode', value).map(freezeRecipe);
   if (new Set(recipes.map(recipe => recipe.id)).size !== recipes.length) fail('cafe.protocol');
   return Object.freeze(recipes);
 }
@@ -90,17 +95,19 @@ export function createCafeClient({ auth }) {
     session = next;
   });
 
-  async function run(name, kind, input, parse, update) {
+  // The authenticated transport is the auth client's; identities, paths and codecs are generated.
+  async function run(name, input, parse, update) {
     const owner = auth.getSnapshot();
     if (disposed || owner.transitioning || !owner.user) fail('auth.required');
     if (state.busy) fail('cafe.busy');
+    const operation = operations[name];
     const ticket = ++serial;
     const current = () => !disposed && ticket === serial && auth.getSnapshot().epoch === owner.epoch &&
       auth.getSnapshot().user === owner.user && !auth.getSnapshot().transitioning;
     publish({ ...state, busy: name, error: null, notice: '' });
     try {
-      const raw = await auth.call(`/api/recipes/${name}`, {
-        operation: { namespace: 'cafe', name, version: '1' }, kind, input,
+      const raw = await auth.call(operation.path, {
+        operation: operation.identity, kind: operation.kind, input: wire(operation, 'encodeInput', input),
       });
       if (!current()) fail('auth.stale');
       const value = parse(raw);
@@ -118,22 +125,20 @@ export function createCafeClient({ auth }) {
   return Object.freeze({
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
-    load: () => run('list', 'query', null, parseRecipes, recipes => ({ recipes, loaded: true })),
+    load: () => run('list', null, parseRecipes, recipes => ({ recipes, loaded: true })),
     save(name, configuration) {
       if (typeof name !== 'string') return Promise.reject(new CafeError('cafe.protocol'));
       let draft;
       try { draft = parseConfiguration(configuration); } catch (error) { return Promise.reject(error); }
-      return run('save', 'command', { name: name.trim(), configuration: draft }, parseRecipe, recipe => {
+      return run('save', { name: name.trim(), configuration: draft }, parseRecipe, recipe => {
         if (state.recipes.some(existing => existing.id === recipe.id)) fail('cafe.protocol');
         return { recipes: Object.freeze([...state.recipes, recipe]), notice: 'Recipe saved to your collection.' };
       });
     },
     delete(id) {
       if (typeof id !== 'string' || !id) return Promise.reject(new CafeError('cafe.protocol'));
-      return run('delete', 'command', id, value => {
-        if (value !== null) fail('cafe.protocol');
-        return null;
-      }, () => ({ recipes: Object.freeze(state.recipes.filter(recipe => recipe.id !== id)), notice: 'Recipe deleted.' }));
+      return run('delete', id, value => wire(operations.delete.output, 'decode', value),
+        () => ({ recipes: Object.freeze(state.recipes.filter(recipe => recipe.id !== id)), notice: 'Recipe deleted.' }));
     },
     dismissMessage() { publish({ ...state, error: null, notice: '' }); },
     dispose() { disposed = true; ++serial; unsubscribe(); listeners.clear(); },

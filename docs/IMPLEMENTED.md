@@ -89,7 +89,7 @@ The SQLite adapter separates public IDs from row IDs and stores revisions as tex
 
 The server exposes only the two declared operations and a manifest. It validates operation identity, version, kind, and input. Both browser and LeanHttp adapters decode non-success response bodies, including conflicts. Version negotiation is explicit equality, not automatic structural compatibility or semantic-digest inference.
 
-The browser wire adapter is explicit JavaScript glue tested against the native Lean public contracts. Domain parsers are compiled Lean; automatic emission of complete browser codecs from descriptors remains future work. Lean's JSON parser also collapses duplicate textual object keys before codec validation.
+Browser wire codecs, TypeScript types and the embedded manifest are generated from the public manifest by `LeanContract.Generate` ([generated client](FULLSTACK_INTERFACES.md#generated-client)); the Tickets and café examples use the generated modules, and a small hand-written bridge converts wire values to LeanJS constructors with the compiled domain parsers. The generated codecs check schema shape only; validation beyond a schema stays on the server. The alternative of running the Lean `Codec` values in the browser by making a `Lean.Json` subset portable in LeanJS was rejected for now: a larger compiler change and larger bundles for the same wire checks. Lean's JSON parser also collapses duplicate textual object keys before codec validation.
 
 ## Current limits
 
