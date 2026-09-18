@@ -37,6 +37,18 @@ Wire natural numbers use tagged canonical decimal strings. Public IDs retain the
 
 SQLite INTEGER is signed 64-bit. `LeanAppNative.Storage.SqlNat` checks that range before encoding. `ExactNat` uses canonical decimal TEXT and deliberately has no SQL numeric-ordering capability. A mapping checks reconstruction; a public ID still needs indexed row resolution and current access policy.
 
+## Public manifest and the gateway
+
+`GET /api/manifest` returns `{"operations": [...]}`. Each entry carries the operation identity and codecs, and, once the native server emits them, `http` and `metadata`:
+
+```json
+{"namespace": "cafe", "name": "save", "version": "1", "kind": "command", "input": {}, "output": {}, "error": {},
+ "http": {"path": "/api/recipes/save", "method": "POST", "maxBodyBytes": null},
+ "metadata": {"title": "", "description": "", "publish": null, "issuesStreamTicket": false}}
+```
+
+The Node gateway reads this manifest at startup. `http.path` (a literal path per `HttpBinding.validate`) joins the route allowlist and `http.maxBodyBytes` overrides the gateway's body cap for that path; operations without `http` are covered by the gateway's `routes.extra`. `metadata.publish`, when present, is `{"topicField", "topicPrefix", "eventName", "alsoToActorField"}`: after a proxied HTTP 200 `success` reply the gateway publishes the reply `value` as an SSE event named `eventName` to topic `<topicPrefix>:<value[topicField]>` and, when `alsoToActorField` is set, to `user:<value[alsoToActorField]>`. `metadata.issuesStreamTicket: true` marks a command whose success value is `{"ticket", "expiresAt", "topics"}`; the gateway records the ticket for `GET /stream?ticket=…`. `expiresAt` is an ISO-8601 string or an epoch value (seconds or milliseconds). See [Live events](ARCHITECTURE.md#live-events) for the trust boundary and [Hosting](HOSTING.md#gateway-module) for the gateway configuration.
+
 ## Tickets compatibility fixture
 
 The baseline contract is [Examples.Tickets.Contracts](../examples/lean/Examples/Tickets/Contracts.lean). Its public paths are `GET /api/manifest`, `POST /api/tickets/list`, and `POST /api/tickets/save`. Requests contain `operation`, `kind` and `input`. Replies preserve success, domain error, decode error, protocol error and incompatibility as distinct outcomes. Native and browser clients decode declared domain errors even on non-2xx responses.
