@@ -24,7 +24,10 @@ const server = createServer(async (req, res) => {
       res.end(Buffer.from(await response.arrayBuffer()));
       return;
     }
-    const filename = resolve(dist, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
+    // History-API fallback for the routed example: every extension-less /router path serves its page.
+    const pathname = url.pathname === '/' ? '/index.html'
+      : /^\/router(\/|$)/.test(url.pathname) && !extname(url.pathname) ? '/router.html' : url.pathname;
+    const filename = resolve(dist, '.' + decodeURIComponent(pathname));
     if (!filename.startsWith(dist + sep)) { res.writeHead(403); res.end(); return; }
     const body = await readFile(filename);
     res.writeHead(200, { 'content-type': mime[extname(filename)] ?? 'application/octet-stream', 'cache-control': 'no-store' });

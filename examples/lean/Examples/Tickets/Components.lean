@@ -146,6 +146,9 @@ def reconcileTickets (current incoming : Array TicketSummary) : Array TicketSumm
 structure WorkspaceProps where
   serviceKey : String
   service : TicketService Action
+  /-- The list query behind `useResource`. A request-aware host loader forwards the resource's abort signal
+  to its I/O (see `examples/adapters/tickets-service.mjs`); the default ignores the request. -/
+  load : ResourceRequest → Action (Array TicketSummary) := fun _ => service.list
 
 def resourceStamp : ResourceState α ε → Nat × Nat
   | .idle => (0, 0)
@@ -153,9 +156,20 @@ def resourceStamp : ResourceState α ε → Nat × Nat
   | .success token _ => (token.generation, 2)
   | .failure token _ => (token.generation, 3)
 
+/-- Transport failures are a closed type, so each case gets its own message without string matching. -/
+def loadFailureMessage (failure : ResourceFailure String) : String :=
+  match Resource.failureAs failure with
+  | .ok message => message
+  | .error .unauthenticated => "Sign in to load tickets."
+  | .error .forbidden => "You do not have access to these tickets."
+  | .error .cancelled => "Loading was cancelled."
+  | .error (.incompatible expected _) => s!"The ticket service speaks version {expected.version}; reload to update."
+  | .error (.transport _) => "Could not reach the ticket service. Try reloading."
+  | .error (.decode code) | .error (.protocol code) => s!"The ticket service answered unexpectedly ({code})."
+
 def WorkspaceBody : Component WorkspaceProps := Component.named "TicketsWorkspaceBody" <| component fun props => do
   let query ← useResource (Key.string props.serviceKey)
-    (fun _ => (do pure (.ok (← props.service.list)) : Action (Except String (Array TicketSummary))))
+    (fun request => (do pure (.ok (← props.load request)) : Action (Except String (Array TicketSummary))))
     #[] true "tickets-query"
   let tickets ← useState (#[] : Array TicketSummary) "tickets"
   let stamp := resourceStamp query.state
@@ -195,7 +209,7 @@ def WorkspaceBody : Component WorkspaceProps := Component.named "TicketsWorkspac
       DOM.h2 {} #[text "Tickets, composed your way"],
       (match query.state with
        | .loading _ => DOM.p { className := some "note" } #[text "Loading tickets…"]
-       | .failure _ _ => DOM.p { role := some "alert" } #[text "Could not load tickets. Try reloading."]
+       | .failure _ failure => DOM.p { role := some "alert" } #[text (loadFailureMessage failure)]
        | _ => empty),
       DOM.div { className := some "toolbar" } #[
         DOM.button { onPress := some query.refresh } #[text "Reload tickets"],

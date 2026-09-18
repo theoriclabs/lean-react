@@ -209,6 +209,30 @@ The **typed result** is the chosen unmount policy: in the browser every operatio
 
 The host side registers `registerForeign(name, { component, props, ops })` once (see [INTRINSICS.md](../runtime/INTRINSICS.md#imperative-handles)). The native reference renders `reference.render props` under a `.child name` boundary and, on `commit`, calls `onReady` with a handle over the caller-supplied `reference.ops` stubs; disposing flips `alive` and runs `onGone`. Stubs run as given, so `.unmounted` is enforced only by the browser runtime. Without stubs the reference never calls `onReady`. The worked example is the canvas sparkline in `examples/lean/Examples/Sparkline.lean` with `examples/adapters/example-sparkline.mjs`.
 
+## Router
+
+Applications define their own route type and a total codec; the router keeps `pathname + search` in sync with it.
+
+```lean
+structure RouteCodec (ρ : Type) where
+  parse : String → Option ρ     -- pathname + search; none renders the notFound route
+  print : ρ → String
+
+structure Router (ρ : Type) where
+  current : ρ
+  location : String             -- the raw pathname + search
+  codec : RouteCodec ρ
+  navigate : ρ → Action Unit    -- pushState; a no-op when already there
+  replace : ρ → Action Unit     -- replaceState
+  back : Action Unit
+```
+
+`useRouter codec notFound site : Hook (Router ρ)` owns a history subscription. The usual shape is one `element routerProvider { children }` near the root and `useRoute codec notFound site` in the screens below it; the provider shares one concrete `RouteState` context (`location` plus the history actions), so no per-application context or `TypeName` registration is needed and every consumer picks its route type through its codec. `router.link to props children` renders `DOM.a` with `href := codec.print to` whose unmodified primary clicks navigate in place; modified clicks, `target`ed anchors, and other origins keep the browser default, and external URLs are ordinary `DOM.a` anchors. `Router.href` prints a route.
+
+Codecs work on strings, and portable Lean has no string splitting yet, so `Route.split location` (`(pathname, search)`), `Route.segments path` (non-empty decoded segments), `Route.nat? segment`, `Query.parse search : Array (String × String)`, `Query.encode pairs` and the portable `Route.join segments` are provided; in the browser they are host intrinsics with these Lean definitions as the reference. Routing is same-origin only; the browser adapter rejects paths that do not start with `/`. There is no nested routing, loader, or code splitting.
+
+Natively, `RenderEnv` carries an in-memory `History`; `Reference.runHook`/`render` accept `(history := some h)` so a test can `navigate`, re-render, `back`, and inspect `h.entries`. `Reference.dispatchNavigate` stands for a link click. See [tests/runtime/Router.lean](../../tests/runtime/Router.lean) and the two-screen example in `examples/lean/Examples/Routing.lean` (served under `/router/`).
+
 ## Reference execution and limits
 
 `Reference.runHook` prepares a Hook, yielding its value, primitive trace, and queued effects. `Reference.render` expands an Element into a `RenderedTree` for inspection and event lookup. Each child has its own recorded trace. Native context providers correctly scope typed values around descendant rendering. `Reference.runAction` explicitly executes an Action. Calling `prepared.commit` runs pending setups and returns an idempotent cleanup Action; partially failed setup cleans up already acquired resources. See [Reference.lean tests](../../tests/runtime/Reference.lean).
@@ -217,7 +241,7 @@ This native model is a **single-render reference interpreter**. `useState` alloc
 
 Forms and resources are included below. LeanJS also checks fixed primitive-hook sequences through reachable components and named custom hooks, rejecting inconsistent branches, unsupported repetition and dynamic site labels. See the [compiler hook checks](../../tests/compiler/Hooks.lean). Keep hook calls unconditional, label state/effect/context sites, and render stateful repeated rows through child components. The JS runtime compares committed traces and checks the compiler-produced `hookPlan` as an additional guard. Hoist component definitions and stable generic factory results outside render so their identities survive rerenders.
 
-There is no source view-syntax macro, `@[react]` annotation, router or foreign-component source generator. SSR has a tested example workload, not general SSR/hydration qualification. See the [implemented scope and limits](../../docs/IMPLEMENTED.md).
+There is no source view-syntax macro, `@[react]` annotation, nested router, or foreign-component source generator. SSR has a tested example workload, not general SSR/hydration qualification. See the [implemented scope and limits](../../docs/IMPLEMENTED.md).
 
 Verification: `sh tests/runtime/check-lean.sh` compiles the library and this complete example, asserts five invalid programs do not type-check, and runs executable reference checks. `node --test tests/runtime/*.test.mjs` tests the independent ESM bridge with real React roots in jsdom. `npm test` additionally checks the compiler and mounts generated Lean components in the [integration suite](../../tests/integration/). `npm run test:browser` runs the separate real-browser suite; jsdom alone does not establish browser compatibility.
 
@@ -326,6 +350,7 @@ def TicketResource : Component TicketResourceProps := component fun props => do
     | .success _ tickets => text s!"{tickets.size} tickets"
     | .failure _ (.loader .notFound) => text "Missing"
     | .failure _ (.loader (.conflict _)) => text "Changed on the server"
+    | .failure _ (.call failure) => text failure.code
     | .failure _ (.exception message) => text message
   pure <| DOM.div {} #[content,
     DOM.button { onPress := some result.refresh } #[text "Refresh"]]
@@ -337,7 +362,9 @@ end P06Examples
 
 `useResource key loader dependencies enabled site` returns a `Hook (Resource Value Error)` where `loader : ResourceRequest → Action (Except Error Value)`. A stable Key plus a fixed-length Array of Dependency values defines request scope. `enabled := false` keeps the resource idle. Loader closure identity is not a dependency; refresh uses the latest committed loader. Include all restart-worthy inputs in the key or explicit dependencies.
 
-`ResourceState Value Error` has `.idle`, `.loading token`, `.success token value`, and `.failure token reason`. `ResourceToken` has `key` and an exact natural `generation`. Failure reasons distinguish `.loader error` (the original typed domain error) from `.exception message` (a host throw or rejected promise).
+`ResourceState Value Error` has `.idle`, `.loading token`, `.success token value`, and `.failure token reason`. `ResourceToken` has `key` and an exact natural `generation`. Failure reasons distinguish `.loader error` (the original typed domain error), `.call failure` (a transport failure the host bridge recognised, as the portable `Contract.CallFailure`), and `.exception message` (any other host throw or rejected promise).
+
+`Contract.CallFailure` is closed: `unauthenticated`, `forbidden`, `incompatible expected received`, `decode code`, `protocol code`, `transport code`, `cancelled`, with `CallFailure.code`, `.kind`, and `.toCallError`. `Resource.failureAs : ResourceFailure ε → Except CallFailure ε` collapses the three shapes into the loader's typed error or a call failure (`.exception message` becomes `.transport message`). This helper was chosen over routing transport failures into the loader error type: loaders keep returning plain `Except Error Value`, existing `.loader` matches stay valid, and one function per component decides how each transport case renders. In the browser, `createRuntime({ onCallFailure })` (or the adapter's `configureRuntime`) additionally observes every recognised failure once, so an application can redirect on `unauthenticated` in one place. Host loaders built with `resourceLoader` from `engine/LeanContract/Service.mjs` forward the resource's AbortSignal to `fetch`.
 
 A Resource exposes `state`, `refresh : Action Unit`, and `read : Action (ResourceState Value Error)`. In the browser, refresh starts a new generation and returns without waiting for completion. `read` observes the controller state immediately; rendering catches up through React. Every completion is checked against active ownership, token, and scope. Dependency/key changes, disable, refresh, and unmount suppress stale results; they also clear the prior result. Refresh after unmount or while disabled does nothing.
 

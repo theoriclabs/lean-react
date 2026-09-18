@@ -68,6 +68,7 @@ The playground includes:
 - Collection forms that keep each row’s state when you reorder them and preserve invalid input while you edit.
 - A context provider and consumer built in separate libraries that share live updates.
 - A feedback form built from typed `form`, `textarea` and `select` helpers: blur validation, paste handling, Enter-to-submit without a reload, and a key handler that decides whether the browser default runs.
+- A canvas widget driven through a typed imperative handle, and a two-screen routed example under `/router/` with deep links, back/forward, and in-place link clicks.
 
 ![Ticket workspace with a saved edit and replaceable layouts and editors](images/workspace.png)
 
@@ -87,7 +88,7 @@ Existing React libraries need an explicit binding between their props and Lean. 
 
 ## What to expect from v0.1
 
-This is an experimental release for trying Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. APIs can change. Only a subset of Lean compiles to JavaScript today; routing, React Server Components, and automatic JS/TS bindings are still ahead. See [current support and limits](IMPLEMENTED.md).
+This is an experimental release for trying Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. APIs can change. Only a subset of Lean compiles to JavaScript today; a minimal typed router exists, while nested routing, React Server Components, and automatic JS/TS bindings are still ahead. See [current support and limits](IMPLEMENTED.md).
 
 To build your own screen, follow the [how-to guide](HOW_TO.md). If you’re using a coding agent, ask it to read [SKILL.md](../SKILL.md) first.
 

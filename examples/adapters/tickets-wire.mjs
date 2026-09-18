@@ -92,5 +92,8 @@ export function createTicketsClient(options = {}) {
   return {
     async list(options) { return (await client.call(listOperation.identity, null, options)).value; },
     async save(input, options) { return leanResult(await client.call(saveOperation.identity, input, options)); },
+    // The raw client and identities let a cancellable resource loader forward its AbortSignal.
+    http: client,
+    identities: { list: listOperation.identity, save: saveOperation.identity },
   };
 }

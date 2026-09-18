@@ -63,7 +63,12 @@ export function createResourceHooks(React, runtime, { onCleanupError = error => 
         request.settled = true;
         publish(Object.freeze({ status, token: request.token, ...payload }), scope);
       };
-      const reject = error => finish("failure", { error: Object.freeze({ kind: "exception", message: message(error) }) });
+      // The thrown value is retained so an adapter can recognise typed transport failures (CallFailure).
+      // Only a failure that will be published reaches the global hook: superseded generations stay silent.
+      const reject = error => {
+        if (eligible()) runtime.notifyCallFailure?.(error);
+        finish("failure", { error: Object.freeze({ kind: "exception", message: message(error), error }) });
+      };
       const accept = result => {
         if (!eligible()) return;
         if (!result || (result.ok !== true && result.ok !== false)) {

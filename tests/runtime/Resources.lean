@@ -74,4 +74,10 @@ def main : IO Unit := do
   check ((← generations.get) == #[1, 2]) "cleanup refresh lost newer request ownership"
   Reference.runAction stopReentrant
   check ((← generations.get) == #[1, 2]) "cleanup refresh reloaded after unmount"
-  IO.println "P06 resource reference checks passed (generations, stale results, refresh, failures, lifecycle, late cleanup)."
+  -- Transport failures are a closed portable type; `failureAs` collapses the three failure shapes into two.
+  check (match Resource.failureAs (.loader "domain" : ResourceFailure String) with | .ok "domain" => true | _ => false) "failureAs keeps loader errors"
+  check (match Resource.failureAs (.call .unauthenticated : ResourceFailure String) with | .error .unauthenticated => true | _ => false) "failureAs surfaces call failures"
+  check (match Resource.failureAs (.exception "boom" : ResourceFailure String) with | .error (.transport "boom") => true | _ => false) "failureAs reports host exceptions as transport"
+  check (Contract.CallFailure.code (.incompatible ⟨"ns", "list", "1"⟩ ⟨"ns", "list", "2"⟩) == "contract.incompatible" &&
+    Contract.CallFailure.code (.decode "decode.nat") == "decode.nat" && Contract.CallFailure.kind .cancelled == "cancelled") "CallFailure codes"
+  IO.println "P06 resource reference checks passed (generations, stale results, refresh, failures, lifecycle, late cleanup, call failures)."

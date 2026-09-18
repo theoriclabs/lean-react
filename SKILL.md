@@ -66,7 +66,7 @@ For shared identity, emit the owning library with `Options.library`, then load i
 
 Generated `Nat`/`Int` values are `bigint`; records/variants are tagged values and type/proof slots are `null`. Inspect `.d.mts` and manifest output. Prefer exported constructors or explicit codecs to guessed record layouts. Use `__leanjs_fn` for foreign callbacks whose JS parameter count does not reflect their intended arity.
 
-Ordinary CSS plus `className` is supported. Foreign React components need deliberate bindings. Do not assume a CSS DSL, JSX-like Lean syntax, general DOM refs/events, Tailwind, shadcn, a router, or automatic TS binding generation exists. Add a missing capability when the user's concrete task warrants it; describe and test the host contract.
+Ordinary CSS plus `className` is supported, with a typed inline `style` array. Foreign React components need deliberate bindings; imperative ones use `foreign` with a typed `Handle`. Multi-screen apps use `LeanReact.Router` (`RouteCodec`, `routerProvider`, `useRoute`, `Router.link`). Do not assume a CSS DSL, JSX-like Lean syntax, refs on ordinary DOM elements, Tailwind, shadcn, nested routing, or automatic TS binding generation exists. Add a missing capability when the user's concrete task warrants it; describe and test the host contract.
 
 ## Verify the boundary that changed
 

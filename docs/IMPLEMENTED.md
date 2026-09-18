@@ -22,6 +22,7 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Call a foreign React component | A named intrinsic with a typed Lean reference, callback, and child element | Generated-component integration tests |
 | Build a form from typed controls | `DOM.form`, `textarea`, `select`, blur validation, paste snapshots, `KeyOutcome` | Generated-component integration, reference and browser tests |
 | Drive an imperative JavaScript widget | `foreign`, `Handle`, `HandleResult`, a `useCell`-held handle, `registerForeign` | Generated-component integration, reference and browser tests |
+| Route between screens | A `Route` type with a `RouteCodec`, `routerProvider`, `useRoute`, `Router.link` | Generated-component integration, reference and browser tests |
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |
 
@@ -67,7 +68,7 @@ Code generation checks exported hooks and reachable component definitions for a 
 
 Custom hooks can forward a literal site label supplied by their caller. A component must ultimately have a statically known sequence. For a stateful collection, render a keyed child component for each item. Hoist component-family specializations such as `TicketList := ListView TicketSummary` so their React type stays stable.
 
-`useResource` uses request keys, generations, and committed dependencies to suppress obsolete results. It retains cleanup actions, aborts its host request signal when ownership ends, and keeps domain loader failures distinct from unexpected host exceptions. An adapter must actually pass that signal to its I/O to stop work; stale-response suppression alone does not cancel a remote server operation. The simple `TicketService` browser adapter does not currently attach a resource signal to `fetch`.
+`useResource` uses request keys, generations, and committed dependencies to suppress obsolete results. It retains cleanup actions, aborts its host request signal when ownership ends, and keeps domain loader failures distinct from recognised transport failures (`ResourceFailure.call` with the portable `Contract.CallFailure`) and from unexpected host exceptions. An adapter must actually pass that signal to its I/O to stop work; `resourceLoader` in `engine/LeanContract/Service.mjs` does so over `createHttpClient`, and the Tickets browser adapter uses it for the list query, so unmount and rapid refreshes abort the in-flight `fetch`. `createRuntime({ onCallFailure })` is the global hook for reacting to a failure kind once.
 
 `State.read` reads the latest committed React value. It does not flush queued updates. Use functional `modify` operations when updates depend on previous state. Actions are deferred and cannot execute during rendering. The browser `Action.catchError` bridge converts host exceptions to `IO.Error.userError`; typed service failures remain values in `Except`.
 
@@ -114,7 +115,8 @@ The compiler suite compares the native and generated results of every builtin on
 
 - The function-based DOM API is implemented, including form controls, focus/blur/input/paste/key/mouse/scroll payloads, `tabIndex`, `data-*`, common `aria*` attributes and a typed inline `style`. Elements or events outside that surface still go through `node` and `Attribute.string`/`.bool`. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
 - Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Context export ordering is automatic; contexts created inside render still need to be hoisted.
-- There is no shared query cache, distributed subscription protocol, optimistic mutation framework, router, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.
+- Routing is the minimal typed router in `LeanReact.Router`: an application route type with a codec, `useRouter`/`routerProvider`/`useRoute`, `Router.link`, `pushState`/`replaceState`/`back` over `pathname + search`, same-origin only, with an in-memory reference history. Nested routes, loaders, and code splitting are not provided. Route codecs use the intrinsic-backed `Route.*`/`Query.*` helpers until portable string splitting lands in LeanJS.
+- There is no shared query cache, distributed subscription protocol, optimistic mutation framework, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.
 - The native server is a local fixture adapter. Authentication, authorization, deployment, and package publication are separate work. It binds loopback by default.
 
 The [compiler ABI](../engine/LeanJS/ABI.md), [ontology API](../engine/LeanOntology/API.md), [React API](../engine/LeanReact/API.md), and [native guide](NATIVE.md) contain the detailed contracts and focused commands.

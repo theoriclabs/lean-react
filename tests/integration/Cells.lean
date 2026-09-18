@@ -5,7 +5,7 @@ open LeanReact Examples.Tickets
 def main : IO Unit := do
   let trace ← IO.mkRef #[]
   let effects ← IO.mkRef #[]
-  let env : RenderEnv := { trace, effects }
+  let env : RenderEnv := { trace, effects, history := ← History.create }
   let cell ← (useCell (0 : Nat) "counter").runRender env
   let first ← (cell.modifyGet fun n => (n, n + 1)).runIO
   let second ← (cell.modifyGet fun n => (n, n + 1)).runIO

@@ -1,4 +1,5 @@
 import LeanReact.Core
+import LeanContract.CallFailure
 
 namespace LeanReact
 
@@ -7,11 +8,22 @@ structure ResourceToken where
   generation : Nat
   deriving Repr, BEq, DecidableEq
 
-/-- Domain failures stay typed. Unexpected host exceptions have a separate representation. -/
+/-- Domain failures stay typed. Unexpected host exceptions have a separate representation, and transport
+failures the host bridge recognises (the JS `CallFailure` class) arrive as `.call`. -/
 inductive ResourceFailure (Error : Type) where
   | loader (error : Error)
   | exception (message : String)
+  | call (failure : Contract.CallFailure)
   deriving Repr, BEq
+
+/-- Collapses a failure into the loader's typed error or a `CallFailure`. This helper was chosen over
+routing transport failures into the loader error type: loaders keep returning plain `Except Error Value`,
+existing `.loader` matches stay valid, and a component decides once how to show each transport case. An
+unrecognised host exception is reported as `.transport message`, since the call did not complete. -/
+def Resource.failureAs : ResourceFailure Error → Except Contract.CallFailure Error
+  | .loader error => .ok error
+  | .call failure => .error failure
+  | .exception message => .error (.transport message)
 
 inductive ResourceState (Value Error : Type) where
   | idle

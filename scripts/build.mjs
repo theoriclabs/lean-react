@@ -28,6 +28,19 @@ export async function buildExample({ compile = true } = {}) {
     loader: { '.lean': 'text' },
     logLevel: 'info',
   });
+  // Routed example (LR-06): its own page under /router/ so pathname routing has a place to live.
+  await build({
+    absWorkingDir: projectRoot,
+    entryPoints: ['examples/web/router.mjs'],
+    outfile: 'examples/dist/router.js',
+    bundle: true,
+    format: 'esm',
+    platform: 'browser',
+    sourcemap: true,
+    target: ['es2022'],
+    logLevel: 'info',
+  });
+  await copyFile(resolve(projectRoot, 'examples/web/router.html'), resolve(projectRoot, 'examples/dist/router.html'));
   await copyFile(resolve(projectRoot, 'examples/web/index.html'), resolve(projectRoot, 'examples/dist/index.html'));
   await copyFile(resolve(projectRoot, 'examples/web/style.css'), resolve(projectRoot, 'examples/dist/style.css'));
   await copyFile(resolve(projectRoot, 'examples/web/favicon.svg'), resolve(projectRoot, 'examples/dist/favicon.svg'));

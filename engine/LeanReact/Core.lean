@@ -52,11 +52,39 @@ def validateHookTrace (expected actual : Array HookSite) : Except String Unit :=
   if expected == actual then .ok ()
   else .error s!"LeanReact hook placement changed: expected {repr expected}, received {repr actual}"
 
+/-- Native in-memory history for the reference renderer; entries are `pathname + search` strings. -/
+structure History where
+  entries : IO.Ref (Array String)
+  index : IO.Ref Nat
+
+namespace History
+
+def create (initial : String := "/") : IO History := do
+  pure ⟨← IO.mkRef #[initial], ← IO.mkRef 0⟩
+def current (history : History) : IO String := do
+  return (← history.entries.get).getD (← history.index.get) "/"
+/-- Drops any forward entries, like the browser. -/
+def push (history : History) (path : String) : IO Unit := do
+  let index ← history.index.get
+  history.entries.modify fun entries => (entries.extract 0 (index + 1)).push path
+  history.index.set (index + 1)
+def replace (history : History) (path : String) : IO Unit := do
+  history.entries.modify (·.set! (← history.index.get) path)
+def back (history : History) : IO Unit := do
+  let index ← history.index.get
+  if index > 0 then history.index.set (index - 1)
+def forward (history : History) : IO Unit := do
+  let index ← history.index.get
+  if index + 1 < (← history.entries.get).size then history.index.set (index + 1)
+
+end History
+
 /-- Native-only interpreter data. The browser adapter does not compile this representation. -/
 structure RenderEnv where
   trace : IO.Ref (Array HookSite)
   effects : IO.Ref (Array (Action (Action Unit)))
   contexts : Array (String × Dynamic) := #[]
+  history : History
 
 structure Hook (α : Type) where
   ofRender ::
@@ -198,6 +226,9 @@ inductive Attribute where
   | submit (handler : Action Unit)
   /-- Inline style entries with React's camelCase property names. -/
   | style (entries : Array (String × String))
+  /-- An anchor click handled in place: unmodified primary clicks on same-origin `href`s prevent the
+  browser navigation and run the handler; other clicks keep the default. -/
+  | navigate (handler : Action Unit)
 
 /-- A fully evaluated native inspection tree. It is not the browser representation. -/
 inductive RenderedTree where

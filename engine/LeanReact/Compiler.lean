@@ -35,13 +35,24 @@ def intrinsics (moduleName : String) : Array LeanJS.Intrinsic := #[
   bridge moduleName `LeanReact.useContext "useContext" 3,
   bridge moduleName `LeanReact.provide "provide" 4,
   -- LR-03 imperative handles: `foreign {P H} name props`; the host resolves `name` through `registerForeign`.
-  bridge moduleName `LeanReact.foreign "foreign" 4
+  bridge moduleName `LeanReact.foreign "foreign" 4,
+  -- LR-06 router: the history hook, its context's erased native TypeName dictionary, and URL helpers that
+  -- portable Lean cannot express yet (no string splitting).
+  bridge moduleName `LeanReact.useLocation "useLocation" 1,
+  bridge moduleName `LeanReact.instTypeNameRouteState "erased" 0,
+  bridge moduleName `LeanReact.Route.split "routeSplit" 1,
+  bridge moduleName `LeanReact.Route.segments "routeSegments" 1,
+  bridge moduleName `LeanReact.Route.nat? "routeNat" 1,
+  bridge moduleName `LeanReact.Query.parse "queryParse" 1,
+  bridge moduleName `LeanReact.Query.encode "queryEncode" 1
 ]
 
 def options (moduleName : String) : LeanJS.Options := {
   intrinsics := intrinsics moduleName
   hooks := { primitives := ({} : LeanJS.HookConfig).primitives ++ #[
-    ⟨`LeanReact.useResource, 7, "resource", 6⟩, ⟨`LeanReact.useCell, 3, "cell", 2⟩] }
+    ⟨`LeanReact.useResource, 7, "resource", 6⟩, ⟨`LeanReact.useCell, 3, "cell", 2⟩,
+    -- LR-06 router
+    ⟨`LeanReact.useLocation, 1, "router", 0⟩] }
 }
 
 end LeanReact.Compiler

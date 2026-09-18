@@ -44,6 +44,7 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 { kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll", handler: encodedLeanClosure }
 { kind: "submit", action: encodedAction }               // Action Unit; the runtime always prevents the default first
 { kind: "style", entries: [["backgroundColor", "red"], ...] }  // React camelCase names, string values
+{ kind: "navigate", action: encodedAction }             // router link click; see Router below
 ```
 
 `keyDown` handlers return `Action KeyOutcome`. The adapter additionally requires `keyOutcome(encoded)`, decoding `LeanReact.KeyOutcome` to the host string `"preventDefault"` or `"continue"`; the runtime calls `preventDefault()` only for a **synchronous** `"preventDefault"` result and reports an asynchronous one through `onActionError`, because the browser default cannot be prevented after the event has dispatched. `mouseEnter`/`mouseLeave` receive `PressEvent` modifier payloads.
@@ -80,6 +81,8 @@ The integrated adapter (`leanjs-react.mjs`) maps the Lean `Attribute` constructo
 | `LeanReact.provide` | `context, value, child` | Scoped React provider element. |
 | `LeanReact.provider` | `context` | Stable component consuming encoded ProviderProps. |
 | `LeanReact.foreign` | `name, foreignProps` | Host component with a typed imperative handle; see [Imperative handles](#imperative-handles). |
+| `LeanReact.useLocation` | `site` | Hook subscribing to the history; see [Router](#router). |
+| `LeanReact.Route.split/segments/nat?`, `LeanReact.Query.parse/encode` | `string` / `pairs` | URL helpers; see [Router](#router). |
 
 The source instances are `LeanReact.Action.instMonad` and `LeanReact.Hook.instMonad`. Ensure their generated dictionaries reference the intrinsic pure/bind functions, including derived Applicative/Functor methods. If compiler inlining occurs before intrinsic recognition, register the appropriate lowered definitions or prevent native reference code from being inlined across this boundary. Document the actual decision in the integrating adapter.
 
@@ -108,6 +111,16 @@ registerForeign('sparkline', {
 `invoke(method, args, encode)` returns an Action resolving to `HandleResult`: `.ok (encode result)` while mounted, `.unmounted` afterwards without touching the ref; a method returning a Promise resolves the Action asynchronously. Unknown methods throw a `TypeError` through the ordinary action error path. An unregistered name throws at first render with the name in the message.
 
 The runtime building block is `runtime.handleElement(Component, props, { onReady, onGone, adapt }, children)`: a `HandleHost` owns the React ref and a mount flag, calls `onReady(adapt(invoke, alive))` from a once-per-mount effect after the first commit, and `onGone` from its cleanup, so a keyed remount fires `onGone` before the new `onReady`. Under Strict Mode's development double-invocation the pairs stay balanced.
+
+## Router
+
+`LeanReact.useLocation (site : String := "") : Hook RouteState` is the one router hook primitive: **arity 1**, kind `router`, site argument 0, registered in `LeanReact.Compiler.options.hooks`. The host returns `LeanReact.RouteState.mk` with fields `[locationString, navigateClosure, replaceClosure, backAction]`; `navigate`/`replace` take a same-origin path starting with `/` and resolve to Lean Unit, `back` is an Action. `useRouter`, `routerProvider`, `useRoute`, `Router.ofState`, and `Router.link` are ordinary compiled Lean over that primitive and the `LeanReact.RouteState` context, whose native `TypeName` dictionary is registered as the erased intrinsic `LeanReact.instTypeNameRouteState` (arity 0).
+
+`engine/runtime/router.mjs` supplies `createRouterHooks(React, runtime, { history })`, `createBrowserHistory(window)` (`pathname + search`, `pushState`/`replaceState`/`back`, notifications for `popstate` and for its own pushes) and `createMemoryHistory(initial)` for tests and server rendering. The integrated adapter exports `router`; call `router.setHistory(createMemoryHistory('/path'))` before the first render to replace the lazily created browser history. `navigate` to the current location adds no entry.
+
+URL helpers are intrinsics because portable Lean has no string splitting yet; their Lean bodies are the reference: `LeanReact.Route.split` (`String → String × String`, arity 1, `Prod.mk [pathname, search]` without `?`/hash), `LeanReact.Route.segments` (`String → Array String`, non-empty percent-decoded parts), `LeanReact.Route.nat?` (`String → Option Nat`, decimal only), `LeanReact.Query.parse` (`String → Array (String × String)`, `URLSearchParams` order and decoding), `LeanReact.Query.encode` (`Array (String × String) → String`, `application/x-www-form-urlencoded`). `LeanReact.Route.join` is portable Lean.
+
+`LeanReact.Attribute.navigate` (fields `[action]`) maps to `runtime.onNavigate(action)`: an unmodified primary click on a same-origin anchor without a `target` prevents the browser navigation and runs the action; every other click keeps the default. The intrinsic adapter's attribute union gains `{ kind: "navigate", action }`.
 
 ## Identity, hooks, and lifecycle integration
 
@@ -203,8 +216,14 @@ The host state union is:
 { status: "loading", token: { key: "tickets", generation: 1n } }
 { status: "success", token, value: encodedValue }
 { status: "failure", token, error: { kind: "loader", error: encodedError } }
-{ status: "failure", token, error: { kind: "exception", message: "host error text" } }
+{ status: "failure", token, error: { kind: "exception", message: "host error text", error: thrownValue } }
 ```
+
+The `exception` entry retains the thrown value. The integrated adapter recognises the `CallFailure` class from `engine/LeanContract/Fetch.mjs` structurally (`name === "CallFailure"`, string `kind`) and encodes it as `LeanReact.ResourceFailure.call [Contract.CallFailure.*]` instead of `.exception`: `unauthenticated`/`forbidden`/`cancelled` have no fields, `decode`/`protocol`/`transport` carry `[codeString]`, and `incompatible` carries `[Contract.OperationId.mk [namespace, name, version]` for `detail.expected`, then `detail.received]`. `callFailure(error)` is exported for other adapters and returns `null` for anything else. Before a rejected loader is published, the runtime calls `onCallFailure` (see below); superseded generations stay silent.
+
+`createRuntime(React, { onActionError, onCallFailure })` and `runtime.configure({ ... })` (re-exported as `configureRuntime` by the adapter) install a global hook: every recognised CallFailure surfacing from an event action, an effect, or a published resource failure is passed to `onCallFailure(failure)` once. Returning `true` marks an action error as handled so `onActionError` does not run; resource failures still reach the typed state either way. This is how an application reacts to `unauthenticated` in one place instead of in every component.
+
+`engine/LeanContract/Service.mjs` exports `resourceLoader(client, identity, encodeArgs)`, returning `(request, args) => Action` that calls `client.call(identity, encodeArgs(args), { signal: resourceSignal(request) })`. `resourceSignal` is this adapter's WeakMap lookup from the Lean `ResourceRequest` descriptor to the request's AbortSignal, so loaders built this way abort their `fetch` on refresh, scope change, disable, and unmount.
 
 The host request is `{token, signal, cancelled, onCleanup}`. `signal` is an AbortSignal for direct host loaders; it is not a Lean record field. `cancelled` is an Action returning a host boolean, so the request codec must map its result to the tagged Lean Bool. `onCleanup` takes one opaque cleanup Action and returns an Action whose result must be mapped to Lean Unit. The Lean callback field has arity 1. The source can cooperate through `cancelled` and `onCleanup`; a specific foreign service adapter may retain the corresponding AbortSignal in its own host mapping.
 
@@ -225,6 +244,7 @@ The current ABI omits constructor parameters from `fields`, while constructor *f
 | `LeanReact.ResourceState.failure` | 4 / `Value, Error` | `[encodedToken, encodedFailure]` |
 | `LeanReact.ResourceFailure.loader` | 2 / `Error` | `[encodedError]` |
 | `LeanReact.ResourceFailure.exception` | 2 / `Error` | `[messageString]` |
+| `LeanReact.ResourceFailure.call` | 2 / `Error` | `[encodedCallFailure]` (see below) |
 
 Each is `{tag: fullyQualifiedConstructorName, fields: [...]}` as specified in engine/LeanJS/ABI.md. A nested Key uses `LeanReact.Key.mk` with `[string]`. `Except.ok` has `[encodedValue]`; `Except.error` has `[encodedError]`; both omit their constructor type parameters. Use the actual constructor metadata when integrating instead of applying a generic record-field guess.
 

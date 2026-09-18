@@ -17,6 +17,8 @@ const titled = title => seed.map((ticket, index) => index ? ticket : ctor(ticket
     ctor('Examples.Tickets.Title.mk', [title]), ...ticket.fields[2].fields.slice(1),
   ]),
 ]));
+// WorkspaceProps.load defaults to `service.list` in Lean; JS constructors must supply the slot explicitly.
+const workspaceProps = (key, service) => ctor('Examples.Tickets.WorkspaceProps.mk', [key, service, _request => service.fields[0]]);
 
 test('compiled workspace composes replaceable async services and suppresses obsolete query replies', async () => {
   const first = deferred(), second = deferred(), refresh = deferred();
@@ -26,8 +28,7 @@ test('compiled workspace composes replaceable async services and suppresses obso
   ]);
   const firstService = service(() => first.promise);
   const secondService = service(() => ++loads === 1 ? second.promise : refresh.promise);
-  const view = (key, source) => mountElement(program['Examples.Tickets.Workspace'],
-    ctor('Examples.Tickets.WorkspaceProps.mk', [key, source]));
+  const view = (key, source) => mountElement(program['Examples.Tickets.Workspace'], workspaceProps(key, source));
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -53,7 +54,7 @@ test('an old service save cannot update a newly mounted workspace with matching 
   const source = (title, save) => ctor('Examples.Tickets.TicketService.mk', [pureAction(titled(title)), save]);
   const firstService = source('First source', _input => action(() => { saves++; return pendingSave.promise; }));
   const secondService = source('Second source', _input => pureAction(ctor('Except.error', [ctor('Examples.Tickets.SaveError.notFound')])));
-  const view = (key, service) => mountElement(program['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [key, service]));
+  const view = (key, service) => mountElement(program['Examples.Tickets.Workspace'], workspaceProps(key, service));
   const container = document.createElement('div'); document.body.append(container);
   const root = createRoot(container);
   const click = text => React.act(() => [...container.querySelectorAll('button')].find(button => button.textContent === text).click());
@@ -80,7 +81,7 @@ test('a query started before a completed save cannot replace its newer revision'
   const root = createRoot(container);
   const click = text => React.act(() => [...container.querySelectorAll('button')].find(button => button.textContent === text).click());
   try {
-    await React.act(() => root.render(mountElement(program['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', ['one', service]))));
+    await React.act(() => root.render(mountElement(program['Examples.Tickets.Workspace'], workspaceProps('one', service))));
     await click('Edit ticket'); await click('Reload tickets'); await click('Save changes');
     assert.equal(container.querySelector('.card h3').textContent, 'Completed save');
     await React.act(async () => { pendingQuery.resolve(seed); await pendingQuery.promise; });

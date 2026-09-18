@@ -75,11 +75,13 @@ def TicketList : Component Unit := component fun _ => do
     | .idle => empty
     | .loading _ => DOM.p {} #[text "Loading…"]
     | .failure _ (.loader message) => DOM.p { role := some "alert" } #[text message]
+    | .failure _ (.call .unauthenticated) => DOM.p { role := some "alert" } #[text "Sign in first."]
+    | .failure _ (.call failure) => DOM.p { role := some "alert" } #[text ("Request failed: " ++ failure.code)]
     | .failure _ (.exception message) => DOM.p { role := some "alert" } #[text ("Unexpected: " ++ message)]
     | .success _ items => DOM.ul {} (items.map fun item => DOM.li {} #[text item])
 ```
 
-Delete the `.idle` and `.loading` arms and the compiler answers `Missing cases`. A typed loader error and an unexpected exception are separate constructors, so they cannot be conflated by accident. "Loading and failed at once" has no constructor at all.
+Delete the `.idle` and `.loading` arms and the compiler answers `Missing cases`. A typed loader error, a transport failure (`.call`, a closed `CallFailure` type), and an unexpected exception are separate constructors, so they cannot be conflated by accident. "Loading and failed at once" has no constructor at all.
 
 **Setting state during render.** Render runs in `Hook`; state updates are `Action` values. There is no way to run one inside the other, so this is a type error:
 

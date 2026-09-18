@@ -40,8 +40,9 @@ cd "$project_dir"
 lean --version
 shared_modules=(LeanOntology/Path LeanOntology/Validation LeanOntology/Identity LeanOntology/Schema
   LeanOntology/Codec LeanOntology/Descriptor LeanOntology/Query LeanOntology LeanContract/Operation LeanContract/Transport
-  LeanContract/Http LeanContract LeanApp/Context LeanApp/Capability LeanApp/Binding LeanApp/Policy
-  LeanApp/Module LeanApp/Application LeanApp/Testing LeanApp Examples/Tickets/Domain Examples/Tickets/Contracts)
+  LeanContract/Http LeanContract/CallFailure LeanContract LeanApp/Context LeanApp/Capability LeanApp/Binding
+  LeanApp/Policy LeanApp/Module LeanApp/Application LeanApp/Testing LeanApp
+  Examples/Tickets/Domain Examples/Tickets/Contracts)
 shared_objects=()
 for module in "${shared_modules[@]}"; do
   if [[ "$module" == Examples/* ]]; then
