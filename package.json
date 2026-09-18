@@ -27,6 +27,7 @@
     "test:native": "bash tests/native/check.sh",
     "test:native:http": "bash tests/native/run-http.sh",
     "test:native:browser": "npm run build && playwright test --config=playwright.native.config.mjs",
+    "test:gateway": "node --test tests/gateway/*.test.mjs",
     "test:framework": "node scripts/check-framework.mjs portable",
     "test:framework:native": "node scripts/check-framework.mjs native",
     "test:framework:browser": "node scripts/check-framework.mjs browser",

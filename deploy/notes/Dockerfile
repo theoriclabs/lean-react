@@ -26,6 +26,7 @@ COPY --from=build /src/leansqlite/LICENSE /app/licenses/SQLite-LICENSE
 COPY --from=build /src/leanreact/adapters/native/.lake/build/bin/leanapp_notes /app/bin/leanapp_notes
 COPY --from=build /src/leanreact/examples/dist-notes /app/examples/dist-notes
 COPY --from=build /src/leanreact/scripts/serve-notes.mjs /app/scripts/serve-notes.mjs
+COPY --from=build /src/leanreact/engine/gateway /app/engine/gateway
 COPY SOURCE-MANIFEST.json /app/SOURCE-MANIFEST.json
 ENV NODE_ENV=production PORT=8080 LEANAPP_NOTES_BINARY=/app/bin/leanapp_notes LEANAPP_BACKEND_PORT=4191
 EXPOSE 8080

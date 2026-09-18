@@ -35,6 +35,7 @@ async function copy(source, target, recursive = false) {
 }
 for (const name of ['package.json', 'package-lock.json', 'lakefile.toml', 'lean-toolchain', 'LICENSE'])
   await copy(resolve(root, name), resolve(out, 'leanreact', name));
+// `engine` includes `engine/gateway`, the public process module serve-cafe.mjs configures.
 for (const name of ['engine', 'examples/ordering', 'examples/cafe', 'adapters/native/LeanAppNative', 'adapters/native/bindings'])
   await copy(resolve(root, name), resolve(out, 'leanreact', name), true);
 for (const name of ['adapters/native/lakefile.lean', 'adapters/native/lean-toolchain', 'adapters/native/CafeMain.lean',
