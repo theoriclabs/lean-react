@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="419" height="120" viewBox="0 -8 419 120" role="img" aria-labelledby="title desc" color="#101010">
+  <title id="title">Theoric stylized wordmark</title>
+  <desc id="desc">Theoric wordmark using the structural T mark as the first letter.</desc>
+  <path fill="currentColor" fill-rule="evenodd" d="M0 0H124V23H78V80L58 104H46V23H0Z M166 35H175V49H199V35H208V70H199V56H175V70H166Z M236 35H275V42H245V49H272V56H245V63H275V70H236Z M308 35H339Q345 35 345 41V64Q345 70 339 70H308Q302 70 302 64V41Q302 35 308 35Z M311 42H336V63H311Z M372 35H407Q413 35 413 41V52Q413 58 407 58H406L413 70H404L396 58H381V70H372Z M381 42H404V52H381Z M442 35H451V70H442Z M484 35H518V42H488V63H518V70H484Q478 70 478 64V41Q478 35 484 35Z" transform="scale(0.8)"/>
+</svg>
