@@ -1,6 +1,17 @@
 import LeanAppNative.Cafe
 import LeanAppNative.Env
 
+/-- Additive `migrate apply` for an existing volume before the runtime gate is consulted.
+Refuses a destructive plan so a hosted instance never drops tables on boot. -/
+private def ensureSchema (path : System.FilePath) (base : LeanDb.Base) : IO Unit := do
+  unless ← path.pathExists do return
+  match ← LeanDb.migrate path base.specs (apply := true) with
+  | .error e => throw (IO.userError s!"cafe schema migration failed: {e}")
+  | .ok (some plan, _) =>
+    if plan.isDestructive then
+      throw (IO.userError "cafe schema migration is destructive; refusing automatic apply")
+  | .ok (none, _) => pure ()
+
 def main : IO UInt32 := do
   let path := (← IO.getEnv "LEANAPP_DB_PATH").getD "/data/cafe.sqlite"
   let portText := (← IO.getEnv "LEANAPP_BACKEND_PORT").getD "4181"
@@ -10,6 +21,7 @@ def main : IO UInt32 := do
   let origin := (← IO.getEnv "LEANAPP_ORIGIN").getD ""
   LeanAppNative.Log.configure (← LeanAppNative.Env.logConfig)
   let instanceConfig := LeanDb.Instance.ofPath path
+  ensureSchema path LeanAppNative.Cafe.base
   let .ok session ← LeanDb.Cli.Session.open LeanAppNative.Cafe.base instanceConfig
     | throw (IO.userError "cafe database unavailable")
   let runtime ← LeanDb.Runtime.Service.new LeanAppNative.Cafe.base instanceConfig session true
