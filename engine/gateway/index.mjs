@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createMetrics, isLoopback } from './metrics.mjs';
+import { attachWebSocket, websocketDefaults } from './websocket.mjs';
 
 /** Same literal-path rule as `HttpBinding.validate` and `defineHttpOperation` (Fetch.mjs). */
 export const literalPath = path => typeof path === 'string' && /^\/[A-Za-z0-9/_.-]*$/.test(path) &&
@@ -60,6 +61,11 @@ export async function createGateway(config) {
     ...(!development && hsts ? { 'strict-transport-security': hsts } : {}), ...extraHeaders };
   const hooks = config.hooks ?? {};
   const name = config.name ?? 'Gateway';
+  const websocket = config.websocket ? { ...websocketDefaults, ...config.websocket } : null;
+  if (websocket) {
+    checkPort(websocket.backendPort, 'websocket.backendPort');
+    if (!literalPath(websocket.path) || websocket.path === '/') throw new TypeError('gateway: websocket.path must be a literal path');
+  }
   // Versioned JSON lines (`v: 1`); a function sink receives the same records.
   const stamp = record => ({ v: 1, ts: new Date().toISOString(), ...record });
   const emit = typeof config.log === 'function' ? record => config.log(stamp(record)) : config.log === 'silent' ? () => {} :
@@ -85,16 +91,20 @@ export async function createGateway(config) {
   // Process lifecycle: stop admission, drain active public exchanges, then terminate the child.
   const child = attached ? null : spawn(backend.binary, backend.args ?? [], { stdio: ['ignore', 'inherit', 'inherit'], env: {
     ...process.env, ...backend.env, LEANAPP_ORIGIN: origin, LEANAPP_BACKEND_PORT: String(backend.port) } });
-  let stopping = false, requested = false, server, shutdownTimer, frontendClosed = true, backendExited = attached, exitCode = 0;
+  let stopping = false, requested = false, server, ws, shutdownTimer, frontendClosed = true, backendExited = attached, exitCode = 0;
   let resolveStopped; const stopped = new Promise(r => { resolveStopped = r; });
-  const clearDeadlineIfStopped = () => { if (frontendClosed && backendExited) { clearTimeout(shutdownTimer); resolveStopped(exitCode); } };
+  const connections = new Set();
+  const clearDeadlineIfStopped = () => { if (frontendClosed && backendExited && !ws?.sockets.size) { clearTimeout(shutdownTimer); resolveStopped(exitCode); } };
+  // HTTP exchanges drain before Lean is told to stop; upgraded pipes stay open so Lean can close sessions itself.
+  const drained = () => [...connections].every(socket => ws?.sockets.has(socket));
+  let finish, finished = false;
   function shutdown(code = 0) {
     if (stopping) return;
     stopping = true; exitCode = code;
     if (config.exit !== false) process.exitCode = code;
-    const finish = () => { frontendClosed = true; child?.kill('SIGTERM'); clearDeadlineIfStopped(); };
-    if (server?.listening) { frontendClosed = false; server.close(finish); server.closeIdleConnections(); } else finish();
-    shutdownTimer = setTimeout(() => { server?.closeAllConnections(); child?.kill('SIGKILL'); }, drainMs);
+    finish = () => { if (finished) return; finished = frontendClosed = true; child?.kill('SIGTERM'); clearDeadlineIfStopped(); };
+    if (server?.listening) { frontendClosed = false; server.close(); server.closeIdleConnections(); if (drained()) finish(); } else finish();
+    shutdownTimer = setTimeout(() => { server?.closeAllConnections(); ws?.destroyAll(); child?.kill('SIGKILL'); }, drainMs);
     shutdownTimer.unref();
     clearDeadlineIfStopped();
   }
@@ -233,6 +243,11 @@ export async function createGateway(config) {
     } catch { send(400, '', 'bad_request'); }
   });
   stopped.then(() => metrics.close());
+  server.on('connection', socket => {
+    connections.add(socket);
+    socket.on('close', () => { connections.delete(socket); if (stopping && drained()) finish(); });
+  });
+  ws = attachWebSocket(server, { websocket, origin, metrics, emit, isStopping: () => stopping, onSocketClosed: () => { if (stopping) clearDeadlineIfStopped(); } });
   server.requestTimeout = limits.requestTimeoutMs; server.headersTimeout = limits.headersTimeoutMs; server.keepAliveTimeout = limits.keepAliveTimeoutMs;
   server.maxConnections = limits.maxConnections;
   handle.server = server;
