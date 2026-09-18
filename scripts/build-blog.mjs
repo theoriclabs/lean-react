@@ -58,17 +58,13 @@ const escape = value => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').r
 const highlight = source => escape(source)
   .replace(/(&quot;.*?&quot;)/g, '<span class="str">$1</span>')
   .replace(/\b(import|open|structure|where|def|do|let|pure|fun|match|with|if|then|else)\b/g, '<span class="kw">$1</span>');
-const nav = active => `<nav class="section-nav" aria-label="Examples">${pages.map(page => {
-  const href = active === 'index' ? `#${page.id}` : `${page.id}.html`;
-  return `<a href="${href}"${page.id === active ? ' aria-current="page"' : ''}>${page.name}</a>`;
-}).join('')}</nav>`;
 const document = (title, description, active, content) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${escape(title)} · LeanReact</title><meta name="description" content="${escape(description)}">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="assets/style.css">
 </head><body class="${active}-page"><a class="skip-link" href="#main">Skip to example</a><div class="shell">
 <header class="masthead"><div class="brand"><a class="theoric-lockup" href="https://theoric.com/" aria-label="Theoric"><img src="assets/theoric-wordmark.svg" alt="" width="110" height="28"></a><span class="brand-sep" aria-hidden="true">/</span><a class="wordmark" href="index.html">LeanReact</a></div><a href="https://github.com/theoriclabs/lean-react">Source on GitHub ↗</a></header>
-${nav(active)}<main id="main">${content}</main>
+<main id="main">${content}</main>
 <footer class="page-footer"><span>© 2026 <a href="https://theoric.com/">Theoriclabs, Inc.</a></span><span>Written in Lean. Rendered by React.</span><a href="index.html">All examples</a></footer>
 </div><script defer src="assets/demo.js"></script></body></html>\n`;
 for (const [index, page] of pages.entries()) {
