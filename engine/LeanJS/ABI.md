@@ -154,10 +154,12 @@ contracts; the compiler cannot prove they agree with the native reference.
 - Nested matches (including `Option (Option Nat)`), Fibonacci and a
   well-founded decreasing-Nat recursion compiled from actual Lean definitions.
 - Iterative List host builtins for `length`, `foldl`, `map`, `flatMap`, `append`,
-  `filter` and `reverse` (including the `*TR` / auxiliary names Lean's LCNF
-  actually calls). These walk cons cells in a JavaScript loop, so a 12,000-element
-  list does not overflow the JS stack. User-written recursive List functions
-  still use the JavaScript stack.
+  `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`,
+  `replicate`, `range`, `range'`, `foldr`, `getLast?`/`getLast`, `all` and `any`
+  (including the `*TR` / auxiliary names Lean's LCNF actually calls). These walk
+  cons cells in a JavaScript loop, so a 12,000-element list does not overflow the
+  JS stack; the suite also slices 100,000 elements. User-written recursive List
+  functions still use the JavaScript stack.
 - Exact Nat addition/subtraction/multiplication/division/modulus/power and
   comparisons; subtraction saturates, division by zero returns zero and modulus
   by zero returns its dividend.
@@ -165,8 +167,12 @@ contracts; the compiler cannot prove they agree with the native reference.
   and remainder, absolute value, to-Nat, comparisons and decimal rendering.
 - String concatenation, scalar length, equality/order, emptiness and list/Char
   conversion, singleton and push. Ordering compares scalars, not UTF-16 units.
+  Scalar-indexed slicing through `LeanJS.Portable`: `String.takeScalars`,
+  `dropScalars`, `extractScalars`, `scalarLength`, `foldlScalars` and
+  `ofScalars` (see below). `Char.toNat`, `Char.ofNat`, Char equality and order.
 - Immutable arrays: creation/list conversion, length, push/pop/append, map,
-  indexed access, optional/default access and updates.
+  indexed access, optional/default access and updates, `extract`, `zipWith`/`zip`,
+  `foldr`, `findIdx?`, `insertIdx`/`insertIdx!` and `eraseIdx`/`eraseIdx!`.
 
 The exact builtin name/arity table lives in `engine/LeanJS/Compiler.lean`. Ordinary
 library functions compose over these primitives; every newly reached native
@@ -181,9 +187,11 @@ Nat indices through ordinary Lean code.
 This is an experimental subset backend, not a complete Lean implementation or a
 compiler-correctness proof. Arbitrary IO, native FFI, initializers, unregistered
 `implemented_by`, unsafe/partial definitions, general fixed-width/Float
-operations, byte/string-position operations, runtime reflection and unsupported
-recursors/quotients are not admitted. Raw String construction and raw matches or
-projections on String/Array are rejected; use supported operations instead.
+operations, byte/string-position operations (`String.Pos`, `String.Slice`,
+`Substring`; use the scalar-indexed `LeanJS.Portable` functions), runtime
+reflection and unsupported recursors/quotients are not admitted. Raw String
+construction and raw matches or projections on String/Array are rejected; use
+supported operations instead.
 Advanced dependent eliminations beyond Lean's successful pure-LCNF lowering are
 not claimed. No async scheduler, stack-safe trampoline, tail-call optimization,
 source maps, incremental compiler cache or bundler is included. Recursive programs use the JavaScript stack and can exhaust resources, except the iterative List host builtins above.
@@ -196,6 +204,58 @@ LeanJS: unsupported native extern operation
 Dependency path: Rejected.root -> Rejected.middle -> Rejected.nativeOnly
 Supply a named intrinsic adapter or move this dependency outside portable code.
 ```
+
+## Scalar-indexed strings and iterative List/Array builtins
+
+Core `String.take`/`String.drop`/`String.extract` and `Substring` work on byte
+positions and, in Lean 4.33, return `String.Slice`, a record of byte positions.
+That representation is outside this ABI, so those names are **not** lowered.
+`engine/LeanJS/Portable.lean` defines scalar-indexed functions whose Lean bodies
+are the obvious `String.toList` definitions (the native reference); the compiler
+recognises the names and substitutes a code-point loop from `Runtime.js` that
+iterates `for (const ch of s)`, never UTF-16 units. A lone surrogate is not a
+Unicode scalar and raises `TypeError`. Import `LeanJS.Portable` from portable
+code; it has no compiler dependency.
+
+| Recognised name | Slots | Slot layout (erased slots receive `null`) |
+| --- | --- | --- |
+| `String.takeScalars`, `String.dropScalars` | 2 | `(s, n)` |
+| `String.extractScalars` | 3 | `(s, start, len)` |
+| `String.scalarLength` | 1 | `(s)`; same value as `String.length` |
+| `String.foldlScalars` | 4 | `(β, f, init, s)` |
+| `String.ofScalars` | 1 | `(chars : Array Char)` |
+| `Char.toNat`, `Char.ofNat` | 1 | `(c)` / `(n)`; invalid scalars map to `'\0'` |
+| `instDecidableEqChar`, `Char.instDecidableLt`, `Char.instDecidableLe` | 2 | `(a, b)` → tagged `Decidable` |
+| `List.take`, `List.takeTR`, `List.drop`, `List.splitAt` | 3 | `(α, n, xs)`; `splitAt` returns `Prod.mk` |
+| `List.takeTR.go` (private), `List.splitAt.go` | 5 | `(α, l, xs, n, acc)` |
+| `List.zip` | 4 | `(α, β, xs, ys)` → list of `Prod.mk` |
+| `List.zipWith`, `List.zipWithTR` | 6 | `(α, β, γ, f, xs, ys)` |
+| `List.zipWithTR.go` (private) | 7 | `(α, β, γ, f, xs, ys, acc : Array)` |
+| `List.zipIdx`, `List.zipIdxTR` | 3 | `(α, xs, start)` → list of `Prod.mk [x, index]` |
+| `List.replicate`, `List.replicateTR` | 3 | `(α, n, x)` |
+| `List.replicateTR.loop` | 4 | `(α, x, n, acc)` |
+| `List.range` / `List.range.loop` | 1 / 2 | `(n)` / `(n, acc)` |
+| `List.range'`, `List.range'TR` / `List.range'TR.go` | 3 / 4 | `(start, len, step)` / `(step, n, e, acc)` |
+| `List.foldr`, `List.foldrTR` | 5 | `(α, β, f, init, xs)` |
+| `List.getLast?` / `List.getLast` | 2 / 3 | `(α, xs)` / `(α, xs, proof)`; `RangeError` on `[]` |
+| `List.all`, `List.any` | 3 | `(α, xs, p)`; short-circuit, expect tagged `Bool` |
+| `Array.extract` | 4 | `(α, xs, start, stop)`; `Array.take`/`drop` lower via their bodies |
+| `Array.zipWith` / `Array.zip` | 6 / 4 | `(α, β, γ, f, xs, ys)` / `(α, β, xs, ys)` |
+| `Array.foldr` | 7 | `(α, β, f, init, xs, start, stop)`; visits `min(start, size) - 1` down to `stop` |
+| `Array.findIdx?` | 3 | `(α, p, xs)` |
+| `Array.insertIdx` / `Array.insertIdx!` | 5 / 4 | `(α, xs, i, x, proof)` / `(α, xs, i, x)`; `RangeError` when `i > size` |
+| `Array.eraseIdx` / `Array.eraseIdx!` | 4 / 3 | `(α, xs, i, proof)` / `(α, xs, i)`; `RangeError` when `i ≥ size` |
+
+The private `*.go` helpers are the names LCNF produces for `where` clauses of
+`@[inline]` core definitions (`_private.Init.Data.List.Impl.0.List.takeTR.go`);
+user code never reaches them directly, but the table is complete. Auxiliary
+accumulator names keep their core meaning (`takeTR.go l xs n acc` returns `l`
+once `xs` is exhausted). `Array.eraseIdxIfInBounds`, `Array.insertIdxIfInBounds`,
+`Array.take` and `Array.drop` compile from their reference bodies over these
+builtins. The native/Node corpus compares digests of 10,000 random strings
+(ASCII, Latin-1, CJK, emoji, ZWJ sequences, variation selectors, U+10000,
+U+10FFFF, private use, NUL), lists and arrays, plus `String.dropScalars` on a
+100,000-scalar string and `List.take 50_000` on a 100,000-element list.
 
 ## Checks and integration notes
 

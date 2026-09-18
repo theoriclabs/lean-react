@@ -93,7 +93,21 @@ The browser wire adapter is explicit JavaScript glue tested against the native L
 
 ## Current limits
 
-- The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack, except the iterative List host builtins (`length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, including `*TR` names). `Repr`/`reprStr` are not portable (`Std.Format.pretty` is partial and reaches `String.Internal.*`); `toString` on `Nat` is.
+- The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack, except the iterative List host builtins below. `Repr`/`reprStr` are not portable (`Std.Format.pretty` is partial and reaches `String.Internal.*`); `toString` on `Nat` is.
+- Core `String.take`/`drop`/`extract` and `Substring` are byte-position (`String.Slice`) operations and are not portable. `LeanJS.Portable` supplies scalar-indexed `String.takeScalars`, `dropScalars`, `extractScalars`, `scalarLength`, `foldlScalars` and `ofScalars`; their Lean bodies are the native reference and the compiler substitutes code-point loops.
+
+## Iterative host builtins
+
+These names compile to JavaScript loops rather than to their Lean bodies; the exact slot layouts are in the [compiler ABI](../engine/LeanJS/ABI.md).
+
+| Family | Host builtins | Lower through their reference bodies |
+| --- | --- | --- |
+| `String` | `append`, `length`, `isEmpty`, equality/order, `toList`, `ofList`, `singleton`, `push`, `takeScalars`, `dropScalars`, `extractScalars`, `scalarLength`, `foldlScalars`, `ofScalars` | `intercalate` |
+| `Char` | `toNat`, `ofNat`, equality, `<`, `≤` | — |
+| `List` | `length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`, `replicate`, `range`, `range'`, `foldr`, `getLast?`, `getLast`, `all`, `any` (with the `*TR`/auxiliary names LCNF calls) | pattern matching, `Option.getD`, other List functions (JS stack) |
+| `Array` | `mk`, `toList`, `size`, `push`, `pop`, `append`, `get`/`get!`/`getD`, `set`/`set!`, `foldl`, `filter`, `map`, `extract`, `zipWith`, `zip`, `foldr`, `findIdx?`, `insertIdx`, `insertIdx!`, `eraseIdx`, `eraseIdx!` | `take`, `drop`, `insertIdxIfInBounds`, `eraseIdxIfInBounds`, `forIn'`, `foldlM`, `find?`, `xs[i]?` |
+
+The compiler suite compares the native and generated results of every builtin on 10,000 random inputs, including strings with emoji, ZWJ sequences and astral-plane scalars, and slices 100,000-element strings and lists without stack growth.
 - The function-based DOM API is implemented. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
 - Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Context export ordering is automatic; contexts created inside render still need to be hoisted.
 - There is no shared query cache, distributed subscription protocol, optimistic mutation framework, router, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.

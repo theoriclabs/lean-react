@@ -17,7 +17,41 @@ const arrays = [[], [1n,2n,3n], [9007199254740993n,5n]];
 const str = x => String(x);
 const natArray = xs => xs.map(str);
 
+// The generator, palette and digests mirror tests/compiler/Native.lean exactly.
+const next = (seed, bound) => {
+  seed = (seed * 1103515245n + 12345n) % 2147483648n;
+  return [seed / 65536n % bound, seed];
+};
+const palette = [0x41, 0x62, 0x7A, 0x20, 0xE9, 0x4E2D, 0x1F600, 0x200D, 0x1F468,
+  0x1F469, 0x1F467, 0xFE0F, 0x1F3FD, 0x10000, 0x10FFFF, 0xE000, 0xD7FF, 0x0];
+const digestNat = (h, x) => (h * 1000003n + x + 1n) % 1000000007n;
+const digestNats = (h, xs) => xs.reduce(digestNat, h);
+const digestString = (h, s) => digestNats(h, Array.from(s, c => BigInt(c.codePointAt(0))));
+const random = () => {
+  let seed = 20250918n;
+  const out = {strings: 7n, lists: 7n, arrays: 7n, stringSamples: [], listSamples: [], arraySamples: []};
+  for (let round = 0; round < 10000; round++) {
+    let len; [len, seed] = next(seed, 25n);
+    let scalars = '';
+    for (let j = 0n; j < len; j++) { let i; [i, seed] = next(seed, BigInt(palette.length)); scalars += String.fromCodePoint(palette[i]); }
+    let n, k; [n, seed] = next(seed, len + 3n); [k, seed] = next(seed, len + 3n);
+    const text = f('scalarOps')(scalars, n, k);
+    out.strings = digestString(out.strings, text);
+    if (out.stringSamples.length < 64) out.stringSamples.push(text);
+    let count; [count, seed] = next(seed, 13n);
+    const xs = [];
+    for (let j = 0n; j < count; j++) { let x; [x, seed] = next(seed, 100n); xs.push(x); }
+    let i, m; [i, seed] = next(seed, count + 2n); [m, seed] = next(seed, count + 3n);
+    const listed = array(f('listOps')(list(xs), m)), arrayed = f('arrayOps')(xs, i, n);
+    out.lists = digestNats(out.lists, listed); out.arrays = digestNats(out.arrays, arrayed);
+    if (out.listSamples.length < 32) out.listSamples.push(natArray(listed));
+    if (out.arraySamples.length < 32) out.arraySamples.push(natArray(arrayed));
+  }
+  return out;
+};
+
 test('native Lean / generated Node parity across composed functions', () => {
+  const sampled = random();
   const actual = {
     iteration: [[], [1n], [2n,3n,0n,9n], [9n,0n], [1n,2n,3n]].map(xs => {
       const result = iter('scanExcept')(xs);
@@ -55,6 +89,11 @@ test('native Lean / generated Node parity across composed functions', () => {
     mappedList: natArray(array(f('mapCaptured')(9n,list(ns)))),
     listSmall: str(f('listLarge')([1n,2n,3n])),
     listLarge: str(f('listLarge')(Array.from({length:12000}, (_,i) => BigInt(i)))),
+    listSlices: [[], [1n,2n,3n], Array.from({length:12000}, (_,i) => BigInt(i))].flatMap(xs =>
+      [0n, 1n, 6000n, 12000n, 9007199254740993n].map(n => str(f('listSlices')(xs, n)))),
+    randomStrings: str(sampled.strings), randomStringSamples: sampled.stringSamples,
+    randomLists: str(sampled.lists), randomListSamples: sampled.listSamples,
+    randomArrays: str(sampled.arrays), randomArraySamples: sampled.arraySamples,
     arrayWork: arrays.map(xs => natArray(f('arrayWork')(xs,4n))),
     arrayRead: arrays.map(xs => [0n,1n,50n].map(i => str(f('arrayRead')(xs,i)))),
     arraySet: natArray(f('arraySet')([1n,2n,3n],1n,99n))
@@ -100,6 +139,30 @@ test('export and constructor metadata describe the adapter boundary', () => {
 test('iterative List builtins do not overflow the JS stack at 12k elements', () => {
   const xs = Array.from({length: 12000}, (_, i) => BigInt(i));
   assert.equal(f('listLarge')(xs), 144066000n);
+  // take/drop/splitAt/zip/zipIdx/foldr/getLast?/all over the same 12,000 elements.
+  assert.equal(f('listSlices')(xs, 12000n), 12000n + 12000n * 3n + 12000n + 71994000n + 11999n + 1n);
+});
+
+test('scalar string and List builtins iterate at 100k elements without stack growth', () => {
+  const text = '😀'.repeat(50000) + 'a'.repeat(50000);
+  const dropped = f('scalarDrop')(text, 50000n);
+  assert.equal(dropped, 'a'.repeat(50000));
+  assert.equal(f('scalarDrop')(text, 99999n), 'a');
+  assert.equal(f('scalarDrop')(text, 100000n), '');
+  assert.equal(f('scalarDrop')(text, 9007199254740993n), '');
+  const xs = Array.from({length: 100000}, (_, i) => BigInt(i));
+  assert.doesNotThrow(() => f('listSlices')(xs, 50000n));
+  assert.equal(array(f('listOps')(list(xs.slice(0, 20)), 3n)).length, 20 + 2 + 19 + 20 + 20 + 3 + 3 + 0 + 4);
+});
+
+test('scalar string builtins index code points and reject lone surrogates', () => {
+  const family = '👨\u200D👩\u200D👧';
+  assert.equal(f('scalarOps')(family, 1n, 2n), '👨|\u200D👩\u200D👧|\u200D👩|5|400722|' + family);
+  assert.equal(f('scalarOps')('𐀀\uE000', 1n, 5n), '𐀀|\uE000|\uE000|2|122880|𐀀\uE000');
+  assert.equal(f('scalarOps')('A😀é中', 2n, 1n), 'A😀|é中|é|4|148823|A😀é中');
+  assert.equal(f('scalarOps')('', 3n, 3n), '|||0|0|');
+  assert.throws(() => f('scalarDrop')('a\uD800b', 2n), TypeError);
+  assert.throws(() => f('scalarOps')('\uDC00', 0n, 0n), TypeError);
 });
 
 test('array contracts preserve range, callback order, and immutable inputs', () => {

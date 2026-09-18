@@ -65,6 +65,44 @@ def listLarge (xs : Array Nat) : Nat :=
     | [] => 0
     | x :: _ => x
   len + summed + mapped + flat + appended + filtered + rev
+
+/-- Slice a host Array's List with the iterative builtins; safe at 12,000 elements. -/
+def listSlices (xs : Array Nat) (n : Nat) : Nat :=
+  let ys := xs.toList
+  let (front, back) := ys.splitAt n
+  (ys.take n).length + (ys.drop n).length * 2 + front.length * 3 + back.length * 4
+    + (ys.zip back).length + ys.zipIdx.length + ys.foldr (fun x acc => acc + x) 0
+    + ys.getLast?.getD 0 + (if ys.all (· < n + 20000) then 1 else 0)
+
+/-- Every iterative List builtin, combined for parity on random inputs. -/
+def listOps (xs : List Nat) (n : Nat) : List Nat :=
+  let (front, back) := xs.splitAt n
+  let pairs := (xs.zip (xs.drop 1)).map fun (a, b) => a * 31 + b
+  let indexed := xs.zipIdx.map fun (x, i) => x + i
+  xs.take n ++ xs.drop n ++ [front.length, back.length] ++ pairs
+    ++ xs.zipWith (fun a b => a + b) xs.reverse ++ indexed
+    ++ List.replicate (n % 4) 7 ++ List.range (n % 6) ++ List.range' n (n % 3) 2
+    ++ [xs.foldr (fun x acc => acc * 3 + x) 1, xs.getLast?.getD 999,
+      if xs.all (· < 50) then 1 else 0, if xs.any (· > 90) then 1 else 0]
+
+/-- The Array counterparts, combined for parity on random inputs. -/
+def arrayOps (xs : Array Nat) (i n : Nat) : Array Nat :=
+  let found := (xs.findIdx? (· > n)).getD 777
+  let folded := xs.foldr (fun x acc => acc * 3 + x) 1
+  let erased := if h : i < xs.size then xs.eraseIdx i h else xs.eraseIdxIfInBounds n
+  let inserted := xs.insertIdx! (i % (xs.size + 1)) n
+  xs.extract i n ++ xs.take n ++ xs.zipWith (fun a b => a * 2 + b) (xs.drop 1)
+    ++ #[found, folded] ++ erased ++ inserted ++ (xs.zip erased).map fun (a, b) => a + b
+
+/-- Every scalar-indexed string builtin, combined for parity on random inputs. -/
+def scalarOps (s : String) (n k : Nat) : String :=
+  let sum := s.foldlScalars (fun acc c => acc + c.toNat) 0
+  let copy := String.ofScalars (s.foldlScalars (fun acc c => acc.push c) #[])
+  String.intercalate "|" [s.takeScalars n, s.dropScalars n, s.extractScalars n k,
+    toString s.scalarLength, toString sum, copy]
+
+def scalarDrop (s : String) (n : Nat) : String := s.dropScalars n
+
 def fibonacci : Nat → Nat
   | 0 => 0
   | 1 => 1

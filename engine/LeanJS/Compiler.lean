@@ -38,6 +38,10 @@ private structure Builtin where
   arity : Nat
   body : String
 
+/-- The private `where` helper `n` of a core module, as LCNF names it. -/
+private def corePrivate (module n : Name) : Name :=
+  (Name.mkNum (`_private ++ module) 0) ++ n
+
 private def builtin (n : Name) : Option Builtin := do
   let (_, arity, body) ← (#[
     (`Nat.add, 2, "(a,b)=>a+b"), (`Nat.sub, 2, "$natSub"),
@@ -64,6 +68,14 @@ private def builtin (n : Name) : Option Builtin := do
     (`String.ofList, 1, "xs=>$array(xs).map(c=>String.fromCodePoint(Number($codepoint(c)))).join('')"),
     (`String.singleton, 1, "c=>String.fromCodePoint(Number($codepoint(c)))"),
     (`String.push, 2, "(s,c)=>s+String.fromCodePoint(Number($codepoint(c)))"),
+    -- Scalar-indexed slicing; the Lean reference bodies live in LeanJS.Portable.
+    (`String.takeScalars, 2, "$takeScalars"), (`String.dropScalars, 2, "$dropScalars"),
+    (`String.extractScalars, 3, "$extractScalars"), (`String.scalarLength, 1, "$scalarLength"),
+    (`String.foldlScalars, 4, "(_,f,z,s)=>$foldlScalars(f,z,s)"), (`String.ofScalars, 1, "$ofScalars"),
+    (`Char.toNat, 1, "$codepoint"), (`Char.ofNat, 1, "$charOfNat"),
+    (`instDecidableEqChar, 2, "(a,b)=>$dec($codepoint(a)===$codepoint(b))"),
+    (`Char.instDecidableLt, 2, "(a,b)=>$dec($codepoint(a)<$codepoint(b))"),
+    (`Char.instDecidableLe, 2, "(a,b)=>$dec($codepoint(a)<=$codepoint(b))"),
     (`Array.mk, 2, "(_,xs)=>$array(xs)"),
     (`List.toArray, 2, "(_,xs)=>$array(xs)"),
     (`List.toArrayImpl, 2, "(_,xs)=>$array(xs)"),
@@ -81,6 +93,15 @@ private def builtin (n : Name) : Option Builtin := do
     (`Array.map, 4, "(_,__,f,xs)=>xs.map(x=>$app(f,[x]))"),
     (`Array.pop, 2, "(_,xs)=>xs.slice(0,-1)"),
     (`Array.append, 3, "(_,xs,ys)=>xs.concat(ys)"),
+    (`Array.extract, 4, "(_,xs,start,stop)=>$extract(xs,start,stop)"),
+    (`Array.zipWith, 6, "(_,__,___,f,xs,ys)=>$zipWith(f,xs,ys)"),
+    (`Array.zip, 4, "(_,__,xs,ys)=>$zipWith($prod,xs,ys)"),
+    (`Array.foldr, 7, "(_,__,f,z,xs,start,stop)=>$foldr(f,z,xs,start,stop)"),
+    (`Array.findIdx?, 3, "(_,p,xs)=>$findIdx(p,xs)"),
+    (`Array.insertIdx, 5, "(_,xs,i,x,h)=>$insertIdx(xs,i,x)"),
+    (`Array.insertIdx!, 4, "(_,xs,i,x)=>$insertIdx(xs,i,x)"),
+    (`Array.eraseIdx, 4, "(_,xs,i,h)=>$eraseIdx(xs,i)"),
+    (`Array.eraseIdx!, 3, "(_,xs,i)=>$eraseIdx(xs,i)"),
     (`List.length, 2, "(_,xs)=>$listLength(xs)"),
     (`List.lengthTR, 2, "(_,xs)=>$listLength(xs)"),
     (`List.lengthTRAux, 3, "(_,xs,n)=>n+$listLength(xs)"),
@@ -96,7 +117,29 @@ private def builtin (n : Name) : Option Builtin := do
     (`List.filterTR, 3, "(_,p,xs)=>$listFilter(p,xs)"),
     (`List.filterTR.loop, 4, "(_,p,xs,acc)=>$listAppend($listReverse(acc),$listFilter(p,xs))"),
     (`List.reverse, 2, "(_,xs)=>$listReverse(xs)"),
-    (`List.reverseAux, 3, "(_,xs,acc)=>$listReverseAux(xs,acc)")
+    (`List.reverseAux, 3, "(_,xs,acc)=>$listReverseAux(xs,acc)"),
+    (`List.take, 3, "(_,n,xs)=>$listTake(n,xs)"),
+    (`List.takeTR, 3, "(_,n,xs)=>$listTake(n,xs)"),
+    (corePrivate `Init.Data.List.Impl `List.takeTR.go, 5, "(_,l,xs,n,acc)=>$listTakeGo(l,xs,n,acc)"),
+    (`List.drop, 3, "(_,n,xs)=>$listDrop(n,xs)"),
+    (`List.splitAt, 3, "(_,n,xs)=>$listSplitAt(n,xs)"),
+    (`List.splitAt.go, 5, "(_,l,xs,n,acc)=>$listSplitAtGo(l,xs,n,acc)"),
+    (`List.zip, 4, "(_,__,xs,ys)=>$listZipWith($prod,xs,ys)"),
+    (`List.zipWith, 6, "(_,__,___,f,xs,ys)=>$listZipWith(f,xs,ys)"),
+    (`List.zipWithTR, 6, "(_,__,___,f,xs,ys)=>$listZipWith(f,xs,ys)"),
+    (corePrivate `Init.Data.List.Impl `List.zipWithTR.go, 7, "(_,__,___,f,xs,ys,acc)=>$listAppend($list(acc),$listZipWith(f,xs,ys))"),
+    (`List.zipIdx, 3, "(_,xs,n)=>$listZipIdx(xs,n)"),
+    (`List.zipIdxTR, 3, "(_,xs,n)=>$listZipIdx(xs,n)"),
+    (`List.replicate, 3, "(_,n,x)=>$listReplicate(n,x)"),
+    (`List.replicateTR, 3, "(_,n,x)=>$listReplicate(n,x)"),
+    (`List.replicateTR.loop, 4, "(_,x,n,acc)=>$listReplicate(n,x,acc)"),
+    (`List.range, 1, "n=>$listRange(n)"), (`List.range.loop, 2, "(n,acc)=>$listRange(n,acc)"),
+    (`List.range', 3, "$listRangeFrom"), (`List.range'TR, 3, "$listRangeFrom"),
+    (`List.range'TR.go, 4, "$listRangeGo"),
+    (`List.foldr, 5, "(_,__,f,z,xs)=>$listFoldr(f,z,xs)"),
+    (`List.foldrTR, 5, "(_,__,f,z,xs)=>$listFoldr(f,z,xs)"),
+    (`List.getLast?, 2, "(_,xs)=>$listLastOpt(xs)"), (`List.getLast, 3, "(_,xs,h)=>$listLast(xs)"),
+    (`List.all, 3, "(_,xs,p)=>$listAll(xs,p)"), (`List.any, 3, "(_,xs,p)=>$listAny(xs,p)")
   ] : Array (Name × Nat × String)).find? (·.1 == n)
   return ⟨n, arity, body⟩
 

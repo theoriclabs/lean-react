@@ -16,7 +16,11 @@ Unicode scalars and string ordering, records and proof slots, payload/nested
 variants, closure capture, polymorphism, typeclass dictionaries, interchangeable
 services, generic monadic code under Id/Option, list recursion, Fibonacci,
 well-founded recursion and immutable arrays. `Native.lean` and
-`compiler.test.mjs` independently encode the results for comparison.
+`compiler.test.mjs` independently encode the results for comparison. Both also
+run the same deterministic generator over 10,000 random strings (emoji, ZWJ
+sequences, astral scalars), lists and arrays through the scalar string and
+iterative List/Array builtins, comparing digests and leading samples; Node
+alone checks 100,000-element slicing for stack safety.
 
 `Generate.lean` demonstrates both public entry points. `intrinsic.mjs` is a tiny
 trusted foreign primitive; its deliberately distinguishable result tests that
