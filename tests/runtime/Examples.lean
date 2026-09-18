@@ -73,6 +73,31 @@ def LocalPicker : Component Unit := component fun _ => do
   let selection ← useState false (site := "selection")
   pure <| element Picker { selected := selection.value, onChange := selection.set }
 
+structure SignupProps where
+  submit : String → Action Unit
+
+-- A form never navigates; blur validates; Ctrl+S keeps the browser's save dialog closed.
+def Signup : Component SignupProps := component fun props => do
+  let email ← useState "" (site := "email")
+  let error ← useState "" (site := "error")
+  pure <| DOM.form { onSubmit := props.submit email.value } #[
+    DOM.label { htmlFor := "signup-email" } #[text "Email"],
+    DOM.input {
+      id := some "signup-email"
+      type := .email
+      value := some email.value
+      autoComplete := some "email"
+      ariaDescribedBy := some "signup-error"
+      data := #[("testid", "signup-email")]
+      onChange := some fun event => email.set event.value
+      onBlur := some fun event => error.set (if event.value.isEmpty then "Email is required." else "")
+      onKeyDown := some fun event =>
+        if event.ctrl && event.key == "s" then pure .preventDefault else pure .continue
+    },
+    DOM.p { id := some "signup-error", role := some "alert" } #[text error.value],
+    DOM.button { type := .submit } #[text "Sign up"]
+  ]
+
 structure Theme where
   label : String
   deriving TypeName

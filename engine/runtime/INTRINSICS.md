@@ -30,7 +30,8 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 
 - `LeanReact.State`: `{value, set, modify, read}`. `value` is already a backend value; `set` and `modify` have already been wrapped with `abi.closure`; `read` is an opaque Action handle. Encode the record layout, not these values again.
 - `LeanReact.PressEvent`: `{alt, ctrl, metaKey, shift}`. These are host booleans: encode them as backend Bool values.
-- `LeanReact.ChangeEvent`: `{value, checked}` with a host string and boolean. `LeanReact.KeyEvent`: `{key, alt, ctrl, metaKey, shift}` with a host string and booleans. Encode each primitive before constructing the backend record.
+- `LeanReact.ChangeEvent`: `{value, checked}` with a host string and boolean. `LeanReact.KeyEvent`: `{key, alt, ctrl, metaKey, shift, repeat}` with a host string and booleans. Encode each primitive before constructing the backend record.
+- `LeanReact.FocusEvent`: `{value}` (host string, `""` for elements without a value). `LeanReact.InputEvent`: `{value, isComposing}`. `LeanReact.PasteEvent`: `{text, html}` where `html` is a host string or `null` (encode as `Option String`). `LeanReact.ScrollEvent`: `{scrollTop, scrollLeft}` as host integers (encode as `Int`).
 
 `attribute` produces exactly one of:
 
@@ -39,10 +40,17 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 { kind: "bool", name: "disabled", value: false }
 { kind: "press", handler: encodedLeanClosure }
 { kind: "change", handler: encodedLeanClosure }
-{ kind: "keyDown", handler: encodedLeanClosure }
+{ kind: "keyDown", handler: encodedLeanClosure }        // handler returns Action KeyOutcome
+{ kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll", handler: encodedLeanClosure }
+{ kind: "submit", action: encodedAction }               // Action Unit; the runtime always prevents the default first
+{ kind: "style", entries: [["backgroundColor", "red"], ...] }  // React camelCase names, string values
 ```
 
+`keyDown` handlers return `Action KeyOutcome`. The adapter additionally requires `keyOutcome(encoded)`, decoding `LeanReact.KeyOutcome` to the host string `"preventDefault"` or `"continue"`; the runtime calls `preventDefault()` only for a **synchronous** `"preventDefault"` result and reports an asynchronous one through `onActionError`, because the browser default cannot be prevented after the event has dispatched. `mouseEnter`/`mouseLeave` receive `PressEvent` modifier payloads.
+
 This is a host protocol defined by P03; it is **not** a guess about the compiler's constructor encoding. Unknown variants should fail decoding.
+
+The integrated adapter (`leanjs-react.mjs`) maps the Lean `Attribute` constructors directly: `LeanReact.Attribute.keyDown` (fields `[handler]`) through `LeanReact.Attribute.style` (fields `[Array (String × String)]`), with `LeanReact.KeyEvent.mk` fields `[key, alt, ctrl, metaKey, shift, repeat]`, `LeanReact.FocusEvent.mk [value]`, `LeanReact.InputEvent.mk [value, isComposing]`, `LeanReact.PasteEvent.mk [text, Option html]`, `LeanReact.ScrollEvent.mk [scrollTop, scrollLeft]` and `LeanReact.KeyOutcome.continue | preventDefault`. DOM helpers such as `DOM.form`, `DOM.textarea`, `DOM.select` and `Props.attributes` are ordinary compiled Lean; only `LeanReact.node` crosses the boundary, so no arity changes were needed for the added surface.
 
 ## Required intrinsic declarations
 
@@ -71,12 +79,35 @@ This is a host protocol defined by P03; it is **not** a guess about the compiler
 | `LeanReact.useContext` | `context, site` | Hook reading the nearest matching provider or default. |
 | `LeanReact.provide` | `context, value, child` | Scoped React provider element. |
 | `LeanReact.provider` | `context` | Stable component consuming encoded ProviderProps. |
+| `LeanReact.foreign` | `name, foreignProps` | Host component with a typed imperative handle; see [Imperative handles](#imperative-handles). |
 
 The source instances are `LeanReact.Action.instMonad` and `LeanReact.Hook.instMonad`. Ensure their generated dictionaries reference the intrinsic pure/bind functions, including derived Applicative/Functor methods. If compiler inlining occurs before intrinsic recognition, register the appropriate lowered definitions or prevent native reference code from being inlined across this boundary. Document the actual decision in the integrating adapter.
 
 DOM helpers, props-to-attribute functions, Key constructors, application components, custom hooks, and ordinary domain functions should compile normally until reaching the listed boundaries. Default `site` arguments arrive as Lean strings (usually `""`); they are not optional arguments in the logical intrinsic handlers.
 
 `Action.ofIO`, `Action.runIO`, `Hook.ofRender`, `Hook.runRender`, `Hook.mark`, Context packing functions, Element's native renderer, and the `Reference` namespace are **native reference operations**. They are not browser capabilities. Source `Action.catchError` currently handles native `IO.Error`; it has no binding until the parent supplies an explicit error conversion. Portable services can return typed `Except` values inside Action. The host runtime separately exports `catchAction` for JavaScript errors.
+
+## Imperative handles
+
+`LeanReact.foreign {P H : Type} (name : String) (props : ForeignProps P H) : Element` is registered with **arity 4**: `foreign(null, null, nameString, encodedForeignProps)`. `LeanReact.ForeignProps.mk` has fields `[props, onReady, onGone, reference]` (the two type parameters are omitted); the host ignores `reference`, which is the native stand-in. `LeanReact.Handle.mk` has fields `[ops, alive]`; `LeanReact.HandleResult.ok` has `[value]` and `LeanReact.HandleResult.unmounted` has `[]`.
+
+The integrated adapter resolves `name` through a registry filled by the application before the first render:
+
+```js
+import { registerForeign, ctor } from '../../engine/adapters/leanjs-react.mjs';
+registerForeign('sparkline', {
+  component: SparklineCanvas,                 // React component using React.useImperativeHandle(ref, ...)
+  props: value => ({ width: Number(value.fields[0]), ... }),   // Lean props record → React props
+  ops: invoke => ctor('Examples.Sparkline.SparklineOps.mk', [  // Lean ops record of Actions
+    points => invoke('draw', [points.map(Number)], count => BigInt(count)),
+    invoke('clear'),                          // encode defaults to Lean Unit
+  ]),
+});
+```
+
+`invoke(method, args, encode)` returns an Action resolving to `HandleResult`: `.ok (encode result)` while mounted, `.unmounted` afterwards without touching the ref; a method returning a Promise resolves the Action asynchronously. Unknown methods throw a `TypeError` through the ordinary action error path. An unregistered name throws at first render with the name in the message.
+
+The runtime building block is `runtime.handleElement(Component, props, { onReady, onGone, adapt }, children)`: a `HandleHost` owns the React ref and a mount flag, calls `onReady(adapt(invoke, alive))` from a once-per-mount effect after the first commit, and `onGone` from its cleanup, so a keyed remount fires `onGone` before the new `onReady`. Under Strict Mode's development double-invocation the pairs stay balanced.
 
 ## Identity, hooks, and lifecycle integration
 

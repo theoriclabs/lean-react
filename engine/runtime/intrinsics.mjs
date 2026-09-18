@@ -24,11 +24,27 @@ export function createIntrinsicAdapter(runtime, abi) {
   }
   function adaptAttribute(value, props) {
     const attr = abi.attribute(value);
+    const handle = (record) => event => call(attr.handler, abi.record(record, event));
     switch (attr.kind) {
       case "string": case "bool": props[attr.name] = attr.value; break;
-      case "press": props.onClick = runtime.onClick(event => call(attr.handler, abi.record("LeanReact.PressEvent", event))); break;
-      case "change": props.onChange = runtime.onChange(event => call(attr.handler, abi.record("LeanReact.ChangeEvent", event))); break;
-      case "keyDown": props.onKeyDown = runtime.onKeyDown(event => call(attr.handler, abi.record("LeanReact.KeyEvent", event))); break;
+      case "press": props.onClick = runtime.onClick(handle("LeanReact.PressEvent")); break;
+      case "change": props.onChange = runtime.onChange(handle("LeanReact.ChangeEvent")); break;
+      case "keyDown":
+        // The handler's KeyOutcome is decoded to the host outcome string before the runtime inspects it.
+        if (typeof abi.keyOutcome !== "function") throw new TypeError("LeanReact keyDown attributes require abi.keyOutcome");
+        props.onKeyDown = runtime.onKeyDown(event => mapAction(outcome => abi.keyOutcome(outcome), handle("LeanReact.KeyEvent")(event)));
+        break;
+      // LR-02 DOM surface: added attribute kinds.
+      case "keyUp": props.onKeyUp = runtime.onKeyUp(handle("LeanReact.KeyEvent")); break;
+      case "focus": props.onFocus = runtime.onFocus(handle("LeanReact.FocusEvent")); break;
+      case "blur": props.onBlur = runtime.onBlur(handle("LeanReact.FocusEvent")); break;
+      case "input": props.onInput = runtime.onInput(handle("LeanReact.InputEvent")); break;
+      case "paste": props.onPaste = runtime.onPaste(handle("LeanReact.PasteEvent")); break;
+      case "mouseEnter": props.onMouseEnter = runtime.onMouseEnter(handle("LeanReact.PressEvent")); break;
+      case "mouseLeave": props.onMouseLeave = runtime.onMouseLeave(handle("LeanReact.PressEvent")); break;
+      case "scroll": props.onScroll = runtime.onScroll(handle("LeanReact.ScrollEvent")); break;
+      case "submit": props.onSubmit = runtime.onSubmit(attr.action); break;
+      case "style": props.style = Object.fromEntries(attr.entries); break;
       default: throw new TypeError(`Unknown decoded LeanReact attribute: ${attr.kind}`);
     }
   }

@@ -1,4 +1,4 @@
-import { action, isAction, runAction, duringRender, isRendering } from "./actions.mjs";
+import { action, isAction, pureAction, runAction, duringRender, isRendering } from "./actions.mjs";
 export { action, pureAction, bindAction, mapAction, catchAction, runAction } from "./actions.mjs";
 
 const hookTag = Symbol("LeanReact.Hook");
@@ -75,6 +75,43 @@ export function createRuntime(React, { onActionError = error => { throw error; }
     return React.createElement(Component, { leanProps: props, ...(key === undefined ? {} : { key: keyString(key) }) });
   }
   const foreignElement = (Component, props, children = []) => React.createElement(Component, props, ...children);
+  const execute = work => {
+    try {
+      const result = runAction(work);
+      if (result != null && typeof result.then === "function") Promise.resolve(result).catch(report);
+    } catch (error) { report(error); }
+  };
+  /** Owns the React ref of an imperative foreign component and its handle lifecycle. Effects run once per
+   * mount, so a keyed remount fires `onGone` for the old instance before `onReady` for the new one. */
+  function HandleHost({ Component, props, children, lifecycle }) {
+    const ref = React.useRef(null);
+    const latest = React.useRef(lifecycle);
+    latest.current = lifecycle;
+    React.useEffect(() => {
+      let mounted = true;
+      const { onReady, adapt } = latest.current;
+      const invoke = (method, args = []) => action(() => {
+        if (!mounted) return { ok: false };
+        const target = ref.current;
+        if (!target || typeof target[method] !== "function") throw new TypeError(`Foreign handle has no method "${method}"`);
+        const result = target[method](...args);
+        return result != null && typeof result.then === "function" ? result.then(value => ({ ok: true, value })) : { ok: true, value: result };
+      });
+      execute(onReady(adapt(invoke, action(() => mounted))));
+      return () => { mounted = false; execute(latest.current.onGone); };
+    }, []);
+    return React.createElement(Component, { ...props, ref }, ...children);
+  }
+  HandleHost.displayName = "LeanReact.HandleHost";
+  /** A foreign component exposing an imperative API through `React.useImperativeHandle(ref, ...)`.
+   * `adapt(invoke, alive)` builds the handle passed to `onReady(handle)` once per mount, after the first commit:
+   * `invoke(method, args)` is an Action resolving to `{ok:true, value}` while mounted and `{ok:false}` after
+   * unmount (the stale ref is never touched); `alive` is an Action returning the mount flag. `onGone` is an
+   * Action run on unmount. Handle actions are ordinary Actions: they cannot run during render. */
+  function handleElement(Component, props, { onReady, onGone = pureAction(undefined), adapt = invoke => invoke }, children = []) {
+    if (typeof onReady !== "function") throw new TypeError("handleElement requires onReady(handle) returning an Action");
+    return React.createElement(HandleHost, { Component, props, children, lifecycle: { onReady, onGone, adapt } });
+  }
   const text = value => {
     if (typeof value !== "string") throw new TypeError("text expects a string");
     return value;
@@ -96,19 +133,47 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   }
   const dom = (tag, props = {}, children = []) => React.createElement(tag, props, ...children);
   const modifiers = event => ({ alt: !!event.altKey, ctrl: !!event.ctrlKey, metaKey: !!event.metaKey, shift: !!event.shiftKey });
-  function event(callback, project) {
+  // `settle(result, raw, async)` observes the action result; only a synchronous result can still affect `raw`.
+  function event(callback, project, settle) {
     return raw => {
       try {
         const payload = Object.freeze(project(raw));
         const result = runAction(callback(payload));
-        if (result != null && typeof result.then === "function") Promise.resolve(result).catch(report);
+        if (result != null && typeof result.then === "function") {
+          Promise.resolve(result).then(value => settle?.(value, raw, true)).catch(report);
+        } else settle?.(result, raw, false);
       } catch (error) { report(error); }
     };
   }
   const onPress = work => event(() => work, () => ({}));
   const onClick = callback => event(callback, modifiers);
   const onChange = callback => event(callback, e => ({ value: String(e.currentTarget.value), checked: !!e.currentTarget.checked }));
-  const onKeyDown = callback => event(callback, e => ({ key: String(e.key), ...modifiers(e) }));
+  const keyPayload = e => ({ key: String(e.key), ...modifiers(e), repeat: !!e.repeat });
+  /** The action resolves to the host outcome `"preventDefault"` or `"continue"`; the browser default can only
+   * be prevented synchronously, so an asynchronous `"preventDefault"` is reported as an error. */
+  const onKeyDown = callback => event(callback, keyPayload, (outcome, raw, async) => {
+    if (outcome !== "preventDefault") return;
+    if (async) throw new Error("LeanReact KeyOutcome.preventDefault resolved asynchronously; decide it before awaiting host work");
+    raw.preventDefault();
+  });
+  const onKeyUp = callback => event(callback, keyPayload);
+  const focusPayload = e => ({ value: e.currentTarget?.value == null ? "" : String(e.currentTarget.value) });
+  const onFocus = callback => event(callback, focusPayload);
+  const onBlur = callback => event(callback, focusPayload);
+  const onInput = callback => event(callback, e => ({ value: String(e.currentTarget.value ?? ""), isComposing: !!e.nativeEvent?.isComposing }));
+  // Clipboard data is only readable during dispatch, so it is copied before any deferred work.
+  const onPaste = callback => event(callback, e => {
+    const data = e.clipboardData;
+    const html = data?.getData("text/html") ?? "";
+    return { text: data?.getData("text/plain") ?? "", html: html === "" ? null : html };
+  });
+  const onMouseEnter = callback => event(callback, modifiers);
+  const onMouseLeave = callback => event(callback, modifiers);
+  const onScroll = callback => event(callback, e => ({
+    scrollTop: Math.floor(Number(e.currentTarget.scrollTop) || 0), scrollLeft: Math.floor(Number(e.currentTarget.scrollLeft) || 0),
+  }));
+  /** A form submit never navigates: the default is prevented before the action runs. */
+  const onSubmit = work => raw => { raw.preventDefault(); event(() => work, () => ({}))(raw); };
   function useState(initial, site = "") {
     return hook(() => {
       mark("state", site);
@@ -183,7 +248,8 @@ export function createRuntime(React, { onActionError = error => { throw error; }
       return undefined;
     });
   }
-  return Object.freeze({ component, nameComponent, element, foreignElement, text, fragment, empty: null, keyed, keyedEach,
-    dom, event, onPress, onClick, onChange, onKeyDown, useState, createContext, provide, provider, useContext, useEffect,
+  return Object.freeze({ component, nameComponent, element, foreignElement, handleElement, text, fragment, empty: null, keyed, keyedEach,
+    dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
+    onScroll, onSubmit, useState, createContext, provide, provider, useContext, useEffect,
     runHook, bindHook, mapHook, namedHook, primitiveHook });
 }

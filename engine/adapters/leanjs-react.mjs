@@ -8,7 +8,8 @@ export const runtime = createRuntime(React);
 const resources = createResourceHooks(React, runtime);
 const cells = createCellHooks(React, runtime);
 const ctor = (tag, fields = []) => ({ tag, fields });
-const unit = ctor('Unit.unit');
+// `Unit.unit` is a definition; the constructor Lean matches on is `PUnit.unit`.
+const unit = ctor('PUnit.unit');
 export const erased = null;
 const bool = value => ctor(value ? 'Bool.true' : 'Bool.false');
 const fromBool = value => value?.tag === 'Bool.true';
@@ -97,8 +98,15 @@ export const keyedEach = (_type, items, key, row) => runtime.keyedEach(items, it
 function eventPayload(tag, value) {
   if (tag === 'LeanReact.ChangeEvent.mk') return ctor(tag, [value.value, bool(value.checked)]);
   const flags = [bool(value.alt), bool(value.ctrl), bool(value.metaKey), bool(value.shift)];
-  return ctor(tag, tag === 'LeanReact.KeyEvent.mk' ? [value.key, ...flags] : flags);
+  return ctor(tag, tag === 'LeanReact.KeyEvent.mk' ? [value.key, ...flags, bool(value.repeat)] : flags);
 }
+// LR-02 DOM surface: payload codecs for the added event records (field order follows Core.lean).
+const focusPayload = value => ctor('LeanReact.FocusEvent.mk', [value.value]);
+const inputPayload = value => ctor('LeanReact.InputEvent.mk', [value.value, bool(value.isComposing)]);
+const pastePayload = value => ctor('LeanReact.PasteEvent.mk', [value.text,
+  value.html == null ? ctor('Option.none') : ctor('Option.some', [value.html])]);
+const scrollPayload = value => ctor('LeanReact.ScrollEvent.mk', [BigInt(value.scrollTop), BigInt(value.scrollLeft)]);
+const keyOutcome = value => value?.tag === 'LeanReact.KeyOutcome.preventDefault' ? 'preventDefault' : 'continue';
 export function node(tag, attributes, children) {
   const props = {};
   for (const attribute of attributes) {
@@ -108,7 +116,18 @@ export function node(tag, attributes, children) {
       case 'LeanReact.Attribute.bool': props[name] = fromBool(value); break;
       case 'LeanReact.Attribute.press': props.onClick = runtime.onClick(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
       case 'LeanReact.Attribute.change': props.onChange = runtime.onChange(payload => name(eventPayload('LeanReact.ChangeEvent.mk', payload))); break;
-      case 'LeanReact.Attribute.keyDown': props.onKeyDown = runtime.onKeyDown(payload => name(eventPayload('LeanReact.KeyEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.keyDown': props.onKeyDown = runtime.onKeyDown(payload => mapAction(keyOutcome, name(eventPayload('LeanReact.KeyEvent.mk', payload)))); break;
+      // LR-02 DOM surface: added attribute constructors. `name` holds the handler (or style entries) slot.
+      case 'LeanReact.Attribute.keyUp': props.onKeyUp = runtime.onKeyUp(payload => name(eventPayload('LeanReact.KeyEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.focus': props.onFocus = runtime.onFocus(payload => name(focusPayload(payload))); break;
+      case 'LeanReact.Attribute.blur': props.onBlur = runtime.onBlur(payload => name(focusPayload(payload))); break;
+      case 'LeanReact.Attribute.input': props.onInput = runtime.onInput(payload => name(inputPayload(payload))); break;
+      case 'LeanReact.Attribute.paste': props.onPaste = runtime.onPaste(payload => name(pastePayload(payload))); break;
+      case 'LeanReact.Attribute.mouseEnter': props.onMouseEnter = runtime.onMouseEnter(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.mouseLeave': props.onMouseLeave = runtime.onMouseLeave(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.scroll': props.onScroll = runtime.onScroll(payload => name(scrollPayload(payload))); break;
+      case 'LeanReact.Attribute.submit': props.onSubmit = runtime.onSubmit(name); break;
+      case 'LeanReact.Attribute.style': props.style = Object.fromEntries(name.map(entry => [entry.fields[0], entry.fields[1]])); break;
       default: throw new TypeError(`Unknown LeanReact attribute: ${attribute.tag}`);
     }
   }
@@ -128,6 +147,30 @@ function hostContext(descriptor) {
 }
 export const useContext = (_type, descriptor, site) => runtime.useContext(hostContext(descriptor), site);
 export const provide = (_type, descriptor, value, child) => runtime.provide(hostContext(descriptor), value, child);
+
+// LR-03 imperative handles: `LeanReact.foreign {P H} name props` resolves `name` in this registry.
+const foreignAdapters = new Map();
+const handleResult = result => result.ok ? ctor('LeanReact.HandleResult.ok', [result.value]) : ctor('LeanReact.HandleResult.unmounted');
+/** Register the host side of `LeanReact.foreign name`. `component` is an ordinary React component that
+ * exposes its API through `React.useImperativeHandle(ref, ...)`; `props(leanProps)` decodes the Lean props
+ * record into React props; `ops(invoke)` builds the Lean ops record, where `invoke(method, args, encode)` is an
+ * Action resolving to `HandleResult` with `encode(result)` as the `.ok` payload (default: Lean Unit).
+ * Registration must happen before the first render that reaches the element; re-registering replaces. */
+export function registerForeign(name, { component, props: decodeProps = value => value, ops: buildOps, children = () => [] }) {
+  if (typeof name !== 'string' || !name) throw new TypeError('registerForeign requires a stable non-empty name');
+  if (typeof component !== 'function' || typeof buildOps !== 'function') throw new TypeError(`registerForeign("${name}") requires component and ops`);
+  foreignAdapters.set(name, { component, decodeProps, buildOps, children });
+}
+export function foreign(_propsType, _opsType, name, foreignProps) {
+  const adapter = foreignAdapters.get(name);
+  if (!adapter) throw new TypeError(`No host adapter registered for LeanReact.foreign "${name}"; call registerForeign before rendering`);
+  const [props, onReady, onGone] = foreignProps.fields;
+  return runtime.handleElement(adapter.component, adapter.decodeProps(props), {
+    onReady, onGone,
+    adapt: (invoke, alive) => ctor('LeanReact.Handle.mk', [adapter.buildOps((method, args = [], encode = () => unit) =>
+      mapAction(result => handleResult(result.ok ? { ok: true, value: encode(result.value) } : result), invoke(method, args))), mapAction(bool, alive)]),
+  }, adapter.children(props));
+}
 
 export function mountElement(descriptor, props = unit) { return element(null, descriptor, props); }
 export function asReactComponent(descriptor, decodeProps = value => value) {

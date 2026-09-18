@@ -39,7 +39,7 @@ ordinary constructor values, with no one-field unboxing. For example:
 { tag: "List.cons", fields: [9n, {tag: "List.nil", fields: []}] }
 { tag: "Bool.true", fields: [] }
 { tag: "Decidable.isTrue", fields: [null] }
-{ tag: "Unit.unit", fields: [] }
+{ tag: "PUnit.unit", fields: [] }   // `Unit.unit` is a definition reducing to this constructor
 ```
 
 `Bool` is **not** a JS boolean. `Decidable.isFalse` likewise has one erased proof

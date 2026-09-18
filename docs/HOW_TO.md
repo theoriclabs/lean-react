@@ -342,7 +342,19 @@ Wrap a foreign component with a typed Lean function and a named intrinsic. The m
 
 Use `runtime.onPress(action)` to adapt a deferred action to an event handler. Do not execute the action while creating the element. The foreign component's own React hooks stay inside its React component boundary.
 
-A shadcn component would use the same binding pattern, plus its actual CSS/theme setup. shadcn is not installed or qualified here. A simple Button needs a much smaller contract than a Dialog with refs, portals, focus management, or `asChild`. Implement and test those capabilities explicitly for the component you choose. The Lean DOM API currently supplies click/change/keydown snapshots; it does not provide general refs or arbitrary browser events.
+#### Imperative components: typed handles
+
+Props and callbacks are enough when the component is a function of its inputs. Editors, maps, charts, players, and virtualized lists are **imperative**: the host object must be told to `focus`, `flyTo`, `scrollToIndex`, or `draw`. For those, use `foreign` with a `Handle`:
+
+- Declare the operations as a Lean record of Actions whose results are `HandleResult α` (`.ok value` or `.unmounted`), and pass `ForeignProps { props, onReady, onGone, reference }` to `foreign "name"`. `onReady` runs once per mount with a `Handle`; `onGone` runs on unmount and before a keyed remount's `onReady`.
+- Register the host side once with `registerForeign("name", { component, props, ops })` from `engine/adapters/leanjs-react.mjs`. `component` is an ordinary React component exposing its API through `useImperativeHandle`; `ops(invoke)` builds the Lean record from `invoke(method, args, encode)` Actions.
+- Every operation checks the mount flag before touching the ref and resolves to `.unmounted` afterwards, so a retained handle never reaches a dead node and React logs no warning. Match on the result instead of guessing whether the component is still there.
+- Keep the handle in a `useCell`, not `useState`: it is a capability, not render data, and storing it in state would rerender on every `onReady`. Handle operations are Actions, so calling one during render is a type error.
+- The native reference renders `reference.render` and backs the handle with `reference.ops` stubs, so component logic that depends on a handle can be unit-tested in Lean.
+
+The maintained example is a `<canvas>` sparkline with `draw(points)` and `clear`: [Sparkline.lean](../examples/lean/Examples/Sparkline.lean), [example-sparkline.mjs](../examples/adapters/example-sparkline.mjs), tested in `tests/integration/handles.test.mjs`, `tests/runtime/Reference.lean`, and `tests/browser/handles.spec.mjs`.
+
+A shadcn component would use the same binding pattern, plus its actual CSS/theme setup. shadcn is not installed or qualified here. A simple Button needs a much smaller contract than a Dialog with refs, portals, focus management, or `asChild`. Implement and test those capabilities explicitly for the component you choose. The Lean DOM API supplies typed click/change/input/paste/focus/blur/key/mouse/scroll/submit snapshots and typed handles for foreign components; it does not provide refs on ordinary DOM elements or arbitrary browser events.
 
 ### JavaScript and TypeScript consumers
 

@@ -7,3 +7,5 @@ import Examples.Foreign
 import Examples.Collections
 import Examples.Showcase
 import Examples.Libraries.App
+import Examples.Feedback
+import Examples.Sparkline

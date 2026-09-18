@@ -8,8 +8,11 @@ import counterSource from '../lean/Examples/Showcase.lean';
 import ticketsSource from '../lean/Examples/Tickets/Components.lean';
 import collectionsSource from '../lean/Examples/Collections.lean';
 import librariesSource from '../lean/Examples/Libraries/App.lean';
+import feedbackSource from '../lean/Examples/Feedback.lean';
+import sparklineSource from '../lean/Examples/Sparkline.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
 import { createTicketsService } from '../adapters/tickets-service.mjs';
+import '../adapters/example-sparkline.mjs';
 
 const parameters = new URLSearchParams(location.search);
 const remote = parameters.get('service') === 'native';
@@ -28,6 +31,16 @@ const examples = {
     description: 'Change the provider heading. A consumer compiled in another library receives the update through one shared context.',
     file: 'Libraries/App.lean', source: librariesSource,
     start: 'def App', end: '-- Only this component',
+  },
+  forms: {
+    description: 'Leave the name empty and tab away, paste into the message, then press Enter or Ctrl+S. Typed controls, typed event payloads, no page reload.',
+    file: 'Feedback.lean', source: feedbackSource,
+    start: 'def App', end: 'end Examples.Feedback',
+  },
+  canvas: {
+    description: 'Draw on a plain JavaScript canvas widget through a typed handle. Unmount it and draw again: the handle answers with a typed result instead of touching a dead node.',
+    file: 'Sparkline.lean', source: sparklineSource,
+    start: 'structure SparklineOps', end: 'def series',
   },
 };
 const requestedExample = parameters.get('example');
@@ -93,7 +106,10 @@ document.getElementById('copy-install').addEventListener('click', async event =>
   }
 });
 const element = example === 'collections' ? mountElement(collections['Examples.Collections.App'])
-  : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App']) : remote
+  : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
+  : example === 'forms' ? mountElement(smoke['Examples.Feedback.App'])
+  : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
+    ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']])) : remote
   ? mountElement(tickets['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [
     'native-tickets', createTicketsService(),
   ]))
