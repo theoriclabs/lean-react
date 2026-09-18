@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createMetrics, isLoopback } from './metrics.mjs';
 import { attachWebSocket, websocketDefaults } from './websocket.mjs';
+import { createEventHub, eventsDefaults } from './events.mjs';
 
 /** Same literal-path rule as `HttpBinding.validate` and `defineHttpOperation` (Fetch.mjs). */
 export const literalPath = path => typeof path === 'string' && /^\/[A-Za-z0-9/_.-]*$/.test(path) &&
@@ -91,7 +92,7 @@ export async function createGateway(config) {
   // Process lifecycle: stop admission, drain active public exchanges, then terminate the child.
   const child = attached ? null : spawn(backend.binary, backend.args ?? [], { stdio: ['ignore', 'inherit', 'inherit'], env: {
     ...process.env, ...backend.env, LEANAPP_ORIGIN: origin, LEANAPP_BACKEND_PORT: String(backend.port) } });
-  let stopping = false, requested = false, server, ws, shutdownTimer, frontendClosed = true, backendExited = attached, exitCode = 0;
+  let stopping = false, requested = false, server, ws, hub = null, shutdownTimer, frontendClosed = true, backendExited = attached, exitCode = 0;
   let resolveStopped; const stopped = new Promise(r => { resolveStopped = r; });
   const connections = new Set();
   const clearDeadlineIfStopped = () => { if (frontendClosed && backendExited && !ws?.sockets.size) { clearTimeout(shutdownTimer); resolveStopped(exitCode); } };
@@ -102,6 +103,7 @@ export async function createGateway(config) {
     if (stopping) return;
     stopping = true; exitCode = code;
     if (config.exit !== false) process.exitCode = code;
+    hub?.drain();
     finish = () => { if (finished) return; finished = frontendClosed = true; child?.kill('SIGTERM'); clearDeadlineIfStopped(); };
     if (server?.listening) { frontendClosed = false; server.close(); server.closeIdleConnections(); if (drained()) finish(); } else finish();
     shutdownTimer = setTimeout(() => { server?.closeAllConnections(); ws?.destroyAll(); child?.kill('SIGKILL'); }, drainMs);
@@ -158,18 +160,25 @@ export async function createGateway(config) {
     if (unbound) emit({ event: 'manifest_unbound_operations', count: unbound, message: 'operations without http.path; relying on routes.extra' });
   }
   handle.manifest = manifest;
+  const metrics = createMetrics();
+  stopped.then(() => metrics.close());
+  // Live events exist only when the manifest declares publishers or ticket issuers.
+  try { hub = config.events === false ? null : createEventHub({ manifest, events: { ...eventsDefaults, ...config.events }, origin, metrics, emit }); }
+  catch (error) { return fail(error.message); }
+  handle.events = hub;
 
   // Bound active work; rejected anonymous traffic cannot consume a global time quota.
   // Credential KDF work has its own native admission gate and work budgets.
   let inFlight = 0;
-  const metrics = createMetrics();
   const requests = metrics.counter('requests_total', 'Public responses by status');
   const rejected = metrics.counter('rejected_total', 'Requests answered by the gateway without reaching Lean, by reason');
   const upstream = metrics.counter('upstream_total', 'Proxied exchanges by upstream status');
   const upstreamMs = metrics.counter('upstream_ms_total', 'Milliseconds spent waiting for upstream headers');
   metrics.gauge('in_flight', 'Proxied exchanges currently admitted', () => inFlight);
   handle.metrics = metrics;
-  const proxied = (req, reply) => { try { hooks.onProxied?.(req, reply); } catch { /* hooks never affect the exchange */ } };
+  const proxied = (req, reply) => {
+    try { hub?.onProxied(req, reply); hooks.onProxied?.(req, reply); } catch { /* hooks never affect the exchange */ }
+  };
   server = createServer(async (req, res) => {
     res.on('error', () => {});
     // One line per exchange; the path is logged without its query, never cookies or bodies.
@@ -195,6 +204,7 @@ export async function createGateway(config) {
       res.end(req.method === 'HEAD' ? undefined : asset.bytes);
     };
     if (assets[path] && ['GET', 'HEAD'].includes(req.method)) { serve(assets[path]); return; }
+    if (hub && line.path === hub.path) { hub.handleStream(req, res, base, new URL(req.url, origin)); return; }
     if (!allowed(path) || !['GET', 'POST'].includes(req.method)) {
       if (spa && ['GET', 'HEAD'].includes(req.method) && literalPath(path) && !path.split('/').pop().includes('.')) serve(spa);
       else send(404, '', 'not_allowed');
@@ -232,7 +242,7 @@ export async function createGateway(config) {
         line.upstreamStatus = reply.statusCode; line.durations.upstream = Number((performance.now() - sent).toFixed(1));
         upstream.inc({ status: reply.statusCode }); upstreamMs.inc({}, line.durations.upstream);
         res.writeHead(reply.statusCode, { ...base, ...Object.fromEntries(backward.filter(k => reply.headers[k] !== undefined).map(k => [k, reply.headers[k]])) });
-        const buffered = hooks.onProxied ? [] : null; let replyBytes = 0;
+        const buffered = hooks.onProxied || hub?.observes(path) ? [] : null; let replyBytes = 0;
         reply.on('data', chunk => { replyBytes += chunk.length; if (buffered && replyBytes <= (hooks.bodyBytes ?? 1048576)) buffered.push(chunk); });
         reply.on('end', () => proxied(req, { status: reply.statusCode, headers: reply.headers, requestId, line,
           body: buffered && replyBytes <= (hooks.bodyBytes ?? 1048576) ? Buffer.concat(buffered) : null }));
@@ -242,7 +252,6 @@ export async function createGateway(config) {
       up.on('error', () => send(502, '', 'upstream_error')); res.on('close', () => up.destroy()); up.end(body);
     } catch { send(400, '', 'bad_request'); }
   });
-  stopped.then(() => metrics.close());
   server.on('connection', socket => {
     connections.add(socket);
     socket.on('close', () => { connections.delete(socket); if (stopping && drained()) finish(); });

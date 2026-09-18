@@ -10,7 +10,7 @@ const labelText = labels => {
 export function createMetrics(prefix = 'leanapp_gateway') {
   const families = [];
   const family = (name, type, help) => { const f = { name: `${prefix}_${name}`, type, help, series: new Map(), gauge: null }; families.push(f); return f; };
-  const lag = monitorEventLoopDelay({ resolution: 20 });
+  const lag = monitorEventLoopDelay({ resolution: 10 });
   lag.enable();
   const metrics = {
     /** Monotonic counter; `inc(labels?, by?)`. Series appear on first increment. */

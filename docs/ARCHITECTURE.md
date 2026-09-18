@@ -83,6 +83,16 @@ Auth resolves current account/session authority under the runtime's owned connec
 
 LeanHttp supplies outbound clients, not this inbound listener. `Std.Http.Server` handles inbound native HTTP. React can be authored in JavaScript, as in the café, or in Lean through LeanReact, as in the frontend playground.
 
+## Live events
+
+Lean-native WebSocket channels are the primary real-time path; the gateway pipes those upgrades to Lean byte for byte and holds no session state. For environments that block WebSockets, and for one-way feeds, the gateway offers a Server-Sent Events fallback in [engine/gateway/events.mjs](../engine/gateway/events.mjs). Its trust boundary is deliberately narrow:
+
+- What gets published is declared in Lean. An approved operation's `metadata.publish` names the success-value field that selects the topic, the topic prefix and the SSE event name. The gateway re-broadcasts only Lean's own HTTP 200 `success` reply values; domain errors, failures and unannotated operations publish nothing.
+- Who may listen is decided in Lean. An ordinary approved command marked `issuesStreamTicket` runs the real access check in its policy and returns `{ticket, expiresAt, topics}`. The gateway records that ticket bound to a hash of the caller's session cookie; `GET /stream?ticket=…` needs the same cookie and an unexpired ticket. The gateway mints no authority and never inspects cookie values beyond hashing them.
+- Nothing is replayed. The gateway keeps no history: a reconnecting client receives `hello` with its `Last-Event-ID` and gap-fills through its own Lean query. Under backpressure the per-stream queue drops droppable events oldest first and closes the stream rather than dropping an `ops` event, so a client that fell behind knows to resynchronise.
+
+Limits (`maxStreams`, `maxStreamsPerCookie`, `maxTopicsPerTicket`) and counters live in the gateway; apps whose manifest declares neither publishers nor ticket issuers get no `/stream` route at all. The presence relay described in the original design is not implemented: presence travels over channels as typed inbound messages.
+
 ## Keep three representations separate
 
 | Representation | Boundary rule |
