@@ -134,6 +134,12 @@ private structure Cache where
   misses : Nat := 0
   invalidations : Nat := 0
 
+/-- Socket hosts subscribe so a logout or generation bump can close live sessions. -/
+inductive InvalidationEvent where
+  | digest (tokenDigest : String)
+  | actor (actor : String)
+  deriving Repr, BEq
+
 structure CacheStats where
   hits : Nat
   misses : Nat
@@ -154,6 +160,7 @@ structure Service where
   private throttle : Std.Mutex Throttle
   private cache : Std.Mutex Cache
   private buckets : Std.Mutex (Std.HashMap String Bucket)
+  private invalidation : Std.Mutex (Array (InvalidationEvent → IO Unit))
   private clock : IO Nat
   config : Service.Config
 
@@ -200,7 +207,7 @@ def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
   try
     let dummy ← Crypto.hashPassword "leanapp-unknown-user-dummy-password"
     let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) (← Std.Mutex.new {})
-      (← Std.Mutex.new {}) clock config
+      (← Std.Mutex.new {}) (← Std.Mutex.new #[]) clock config
     let result ← admitted service fun conn => runDb conn <| withTransaction do
       untrackedSqlite fun db => do
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_username ON {quoteIdent (Entity.tableName Account)} (username)"
@@ -241,6 +248,15 @@ private def Service.cacheLookup (service : Service) (digest : String) : IO (Opti
       ref.set { cache with misses := cache.misses + 1 }
       return none
 
+private def Service.emitInvalidation (service : Service) (event : InvalidationEvent) : IO Unit := do
+  let cbs ← service.invalidation.atomically fun ref => ref.get
+  for cb in cbs do
+    try cb event catch _ => pure ()
+
+/-- Channel hosts register here; logout, revocation and generation bumps notify every listener. -/
+def Service.onInvalidation (service : Service) (callback : InvalidationEvent → IO Unit) : IO Unit :=
+  service.invalidation.atomically fun ref => ref.modify (·.push callback)
+
 /-- Bounded by `sessionCacheMax`: a full cache is cleared rather than evicted selectively. -/
 private def Service.cacheStore (service : Service) (digest : String) (entry : CacheEntry) : IO Unit := do
   if service.config.sessionCacheTtlMs == 0 then return
@@ -251,10 +267,12 @@ private def Service.cacheStore (service : Service) (digest : String) (entry : Ca
     ref.set { cache with entries := cache.entries.insert digest entry, actors := cache.actors.insert entry.user.actor owned }
 
 private def Service.cacheEvict (service : Service) (digests : List String) : IO Unit := do
+  for d in digests do service.emitInvalidation (.digest d)
   if service.config.sessionCacheTtlMs == 0 || digests.isEmpty then return
   service.cache.atomically fun ref => ref.modify (·.remove digests)
 
 private def Service.cacheEvictActor (service : Service) (actor : String) : IO Unit := do
+  service.emitInvalidation (.actor actor)
   if service.config.sessionCacheTtlMs == 0 then return
   service.cache.atomically fun ref => do
     let cache ← ref.get

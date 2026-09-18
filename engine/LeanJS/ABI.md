@@ -193,11 +193,14 @@ operations, byte/string-position operations (`String.Pos`, `String.Slice`,
 reflection and unsupported recursors/quotients are not admitted. Raw String
 construction and raw matches or projections on String/Array are rejected; use
 supported operations instead.
-Supported dependent surface (LR-10): proof fields and proof arguments erase to
+Supported dependent surface (LR-10 / LR-11): proof fields and proof arguments erase to
 `null`; subtypes `{ n : Nat // p }` and `Fin n` are the underlying `Nat`;
 parameterized structures (`Range n`) are ordinary records plus an erased
-parameter; `DecidablePred` is a boolean function; `h ▸ x` / `Eq.mp` on data
-lower to identity. Advanced dependent eliminations beyond Lean's successful
+parameter; `DecidablePred` is a boolean function; `Decidable` from a boolean
+check (`Normal.check` / `Normal.check_iff`) compiles to that boolean;
+∀-quantified proof fields over array indices (`Chain.dense` / `Chain.linked`)
+erase like any other proof; `h ▸ x` / `Eq.mp` on data lower to identity.
+Advanced dependent eliminations beyond Lean's successful
 pure-LCNF lowering are not claimed. `tests/compiler/ProofFields.lean` is the
 fixture. No async scheduler, general trampoline, mutual tail-call
 optimization, source maps, incremental compiler cache or bundler is included.

@@ -2,7 +2,7 @@ import tests.compiler.Corpus
 import tests.compiler.ProofFields
 open Lean
 #lean_js "tests/compiler/iteration.mjs" [Corpus.scanId, Corpus.scanExcept, Corpus.arrayFoldM, Corpus.arrayFind]
-#lean_js "tests/compiler/proof-fields.mjs" [ProofFields.score, ProofFields.identityCast, ProofFields.Count.make, ProofFields.Text.make, ProofFields.Indent.ofNat?]
+#lean_js "tests/compiler/proof-fields.mjs" [ProofFields.score, ProofFields.identityCast, ProofFields.Count.make, ProofFields.Text.make, ProofFields.Indent.ofNat?, ProofFields.Delta.ofOps, ProofFields.Normal.check, ProofFields.Delta.normalize, ProofFields.Chain.make]
 #lean_js "tests/compiler/generated.mjs" [Corpus.useCapture, Corpus.capture, Corpus.twice, Corpus.services, Corpus.runService, Corpus.ticketScore, Corpus.updateTicket, Corpus.titleCheck, Corpus.statusScore, Corpus.sum, Corpus.mapCaptured, Corpus.listLarge, Corpus.fibonacci, Corpus.countdown, Corpus.natural, Corpus.signed, Corpus.text, Corpus.chars, Corpus.arrayWork, Corpus.arrayRead, Corpus.arrayFold, Corpus.arrayFilter, Corpus.arraySet, Corpus.observation, Corpus.programId, Corpus.programOption, Corpus.classifyText, Corpus.integerParts, Corpus.nestedOption, Corpus.bindFirst, Corpus.listSlices, Corpus.listOps, Corpus.arrayOps, Corpus.scalarOps, Corpus.scalarDrop, Corpus.sumAcc, Corpus.countLoop, Corpus.sumEven, Corpus.sumWhere]
 run_meta do
   let options : LeanJS.Options := { intrinsics := #[{

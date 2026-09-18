@@ -135,7 +135,19 @@ On SIGTERM, the public process stops admission and drains active HTTP exchanges,
 
 ## Scheduled work
 
-`LeanAppNative.Jobs` runs one job at a time on a dedicated task, using the same `Service.withConnection` admission path as requests. A job returns `.done`, `.continue state` (reschedule immediately after yielding), or `.failed code`. `Scheduler.stop` is part of drain: no new slices start, and an in-flight slice finishes or hits its budget. Built-in values: `Jobs.pruneSessions`, `Jobs.walCheckpoint`, and `Jobs.backup dir retainDays` (`VACUUM INTO`, then delete older files). The café can include prune-plus-daily-backup by passing those jobs to `Scheduler.start` next to `Lifecycle.shutdown`. Job state is in-memory; restart the process and jobs begin again.
+`LeanAppNative.Jobs` runs jobs on a dedicated task, using the same `Service.withConnection` admission path as requests. A job returns `.done`, `.continue state` (reschedule immediately after yielding), or `.failed code`. `Scheduler.stop` is part of drain: no new slices start, and an in-flight slice finishes or hits its budget. Each job has a `lane`:
+
+| Job | Lane | Notes |
+| --- | --- | --- |
+| `Jobs.walCheckpoint` | writer | `PRAGMA wal_checkpoint(TRUNCATE)`; stays inside `budgetPerSliceMs` (50 ms). |
+| `Jobs.pruneSessions` | writer | Deletes expired session rows; sliced like any other writer job. |
+| `Jobs.backup dir retainDays` | reader | `VACUUM INTO`, then deletes older files. Exempt from the slice budget because a multi-GiB copy cannot be sliced. |
+
+The scheduler keeps one writer job at a time (as today) and runs reader jobs concurrently, bounded by the `readers` argument to `Scheduler.start`. `JobContext.withReader` is the reader pool when `readers ≥ 1`; with `readers := 0` it is the writer (LeanDB's fallback) and each reader-lane job logs a warning at schedule time so the misconfiguration is visible at startup, not at the first outage. A throwing reader job is logged and rescheduled; the writer loop is unaffected.
+
+The café can include prune-plus-daily-backup by passing those jobs to `Scheduler.start` next to `Lifecycle.shutdown`. Job state is in-memory; restart the process and jobs begin again. Drain: a running reader slice may finish up to the process drain timeout, then is abandoned and its temporary output removed.
+
+The café passed a Linux amd64 provider build and public browser/API smoke checks, including a real Railway restart. This does not qualify other Linux architectures or Heroku's durable-data arrangement.
 
 The café passed a Linux amd64 provider build and public browser/API smoke checks, including a real Railway restart. This does not qualify other Linux architectures or Heroku's durable-data arrangement.
 

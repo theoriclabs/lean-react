@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStreamRuntime } from '../../engine/runtime/streams.mjs';
+import { createStreamRuntime, reconnectPolicy } from '../../engine/runtime/streams.mjs';
 
 class MockEventSource {
   static instances = [];
@@ -37,4 +37,30 @@ test('stream opens, delivers, and records lastEventId on reconnect', async () =>
   handle.close();
   assert.ok(states.includes('open'));
   assert.ok(states.includes('reconnecting') || states.includes('closed'));
+});
+
+test('streams share the channel reconnect policy including 503 spread', () => {
+  const delays = [];
+  const sources = [];
+  const runtime = createStreamRuntime({
+    EventSourceImpl: class {
+      constructor() {
+        this.onopen = null;
+        this.onmessage = null;
+        this.onerror = null;
+        sources.push(this);
+      }
+      close() {}
+    },
+    random: () => 0.25,
+    setTimeoutFn: (_fn, ms) => { delays.push(ms); return 0; },
+    clearTimeoutFn() {},
+    reconnectPolicy: { goingAwaySpreadMs: 8000 },
+  });
+  const handle = runtime.open({ url: 'http://127.0.0.1/stream', onEvent() {}, onState() {} });
+  assert.equal(runtime.reconnectPolicy.goingAwaySpreadMs, 8000);
+  sources[0].onerror();
+  assert.equal(delays[0], 2000);
+  assert.equal(reconnectPolicy({ attempt: 0, reason: 503, random: () => 0.25, goingAwaySpreadMs: 8000 }), 2000);
+  handle.close();
 });

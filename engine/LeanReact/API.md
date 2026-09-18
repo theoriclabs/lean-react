@@ -373,3 +373,11 @@ A Resource exposes `state`, `refresh : Action Unit`, and `read : Action (Resourc
 Native `useResource` has a sequential reference implementation: preparation does not load; explicit commit starts the loader; explicit refresh runs it again; cleanup invalidates ownership. Each invocation is fresh, with no native mounted reconciliation or automatic dependency scheduling. Pure `ResourceTracker.begin`, `.settle`, and `.cancel` allow deterministic testing of reordered results. The browser scheduler is in `engine/runtime/resources.mjs`; [INTRINSICS.md](../runtime/INTRINSICS.md#p06-forms-and-resource-integration) specifies the exact seven-slot LeanJS boundary, including both erased type arguments. Parent adapter wiring and generated-code integration remain separate work.
 
 P06 does not add a shared resource cache, request deduplication, retry policy, Suspense, form auto-deriving, schema-driven widgets, asynchronous field validation, or automatic draft merge policies. Ordinary callbacks/services and components remain the extension points.
+
+## Channels reconnect policy
+
+`createChannelRuntime` (and `createStreamRuntime`) reconnect with **full jitter**: `delay = random(0, min(cap, base · 2^attempt))` with `base = 1000` and `cap = 30000`. After a `1001 going away` close, or a `503` at upgrade, the first reconnect waits `random(0, goingAwaySpreadMs)` instead (`goingAwaySpreadMs` defaults to 10 000). Hidden tabs (`document.hidden`) use three times that spread. Ordinary drops still reconnect within 1 s on average.
+
+Resubscribes after a reconnect go out in mount order. A `use({ priority: 'background' })` subscription (for example `user.inbox`) is deferred 1–3 s so document subscriptions win the first round trip.
+
+`reconnectPolicy` is exported from `engine/runtime/channels.mjs` and attached as `runtime.reconnectPolicy` so tests and apps can change `goingAwaySpreadMs`, `base`, or `cap`. The SSE fallback in `streams.mjs` uses the same function.

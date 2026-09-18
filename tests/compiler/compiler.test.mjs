@@ -210,6 +210,10 @@ test('LR-10 proof fields, subtypes, Fin, and identity casts', async () => {
   const countMake = pf['ProofFields.Count.make'];
   const textMake = pf['ProofFields.Text.make'];
   const indent = pf['ProofFields.Indent.ofNat?'];
+  const ofOps = pf['ProofFields.Delta.ofOps'];
+  const normalize = pf['ProofFields.Delta.normalize'];
+  const check = pf['ProofFields.Normal.check'];
+  const chainMake = pf['ProofFields.Chain.make'];
   assert.equal(score('hi', 'ab', 3n), 13n);
   assert.equal(score('', 'x', 0n), 4n);
   assert.equal(score('hi', '', 3n), 0n);
@@ -225,6 +229,64 @@ test('LR-10 proof fields, subtypes, Fin, and identity casts', async () => {
   assert.equal(text.fieldInfo.find(f => f.name === 'noBreak').erased, true);
   const range = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Range.mk');
   assert.equal(range.fieldInfo.find(f => f.name === 'inBounds').erased, true);
+  const chain = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Chain.mk');
+  assert.deepEqual(chain.fieldInfo.filter(f => f.erased).map(f => f.name), ['dense', 'first', 'linked']);
+  const doc = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Doc.mk');
+  assert.equal(doc.fieldInfo[0].name, 'paragraphs');
+  const t = textMake('ab').fields[0];
+  const c = countMake(2n).fields[0];
+  const insert = { tag: 'ProofFields.Op.insert', fields: [t] };
+  const retain = { tag: 'ProofFields.Op.retain', fields: [c] };
+  const del = { tag: 'ProofFields.Op.delete', fields: [c] };
+  assert.equal(ofOps([]).tag, 'Option.some');
+  assert.equal(ofOps([insert]).tag, 'Option.none');
+  const ok = ofOps([insert, retain]);
+  assert.equal(ok.tag, 'Option.some');
+  assert.equal(ok.fields[0].fields[1], null);
+  const swapped = ofOps([insert, del, retain]);
+  assert.equal(swapped.tag, 'Option.some');
+  assert.equal(swapped.fields[0].fields[0][0].tag, 'ProofFields.Op.delete');
+  assert.equal(chainMake([0n, 1n, 2n]).tag, 'Option.some');
+  assert.deepEqual(chainMake([0n, 1n, 2n]).fields[0].fields.slice(1), [null, null, null]);
+  assert.equal(chainMake([1n, 2n]).tag, 'Option.none');
+  const next = (seed, bound) => {
+    seed = (seed * 1103515245n + 12345n) % 2147483648n;
+    return [seed / 65536n % bound, seed];
+  };
+  let seed = 20260918n;
+  for (let round = 0; round < 10000; round++) {
+    let n; [n, seed] = next(seed, 8n);
+    const ops = [];
+    for (let j = 0n; j < n; j++) {
+      let kind, mag; [kind, seed] = next(seed, 3n); [mag, seed] = next(seed, 4n);
+      const count = countMake(mag + 1n).fields[0];
+      const letter = String.fromCharCode(97 + Number(j % 26n));
+      ops.push(kind === 0n ? { tag: 'ProofFields.Op.insert', fields: [textMake(letter).fields[0]] }
+        : kind === 1n ? { tag: 'ProofFields.Op.retain', fields: [count] }
+        : { tag: 'ProofFields.Op.delete', fields: [count] });
+    }
+    const normalized = normalize(ops);
+    const got = ofOps(ops);
+    const expectSome = check(normalized).tag === 'Bool.true';
+    if (expectSome) {
+      assert.equal(got.tag, 'Option.some');
+      assert.deepEqual(got.fields[0].fields[0], normalized);
+      assert.equal(got.fields[0].fields[1], null);
+    } else {
+      assert.equal(got.tag, 'Option.none');
+    }
+  }
+  const big = [];
+  const one = countMake(1n).fields[0];
+  const ix = textMake('x').fields[0];
+  for (let i = 0; i < 100000; i++) {
+    big.push(i % 2 === 0
+      ? { tag: 'ProofFields.Op.insert', fields: [ix] }
+      : { tag: 'ProofFields.Op.retain', fields: [one] });
+  }
+  assert.doesNotThrow(() => check(big));
+  assert.equal(check(big).tag, 'Bool.true');
+  assert.doesNotThrow(() => ofOps(big));
 });
 
 test('generated TypeScript declarations parse and expose retained ABI slots', async () => {
