@@ -2,6 +2,7 @@ import LeanApp
 import LeanDb.Runtime
 import LeanDb.Derive
 import LeanAppNative.Auth.Crypto
+import LeanAppNative.Metrics
 import Std.Time
 
 namespace LeanAppNative.Auth
@@ -287,7 +288,9 @@ def Service.admitRate (service : Service) (actor path : String) (limit : RateLim
 deployments also need ingress/IP limits. Restart does not preserve these counters. -/
 private def withPasswordWork (service : Service) (name : String)
     (action : IO (Except Error α)) : IO (Except Error α) := do
-  unless ← service.kdf.tryLock do return .error .throttled
+  unless ← service.kdf.tryLock do
+    Metrics.countAuthThrottle
+    return .error .throttled
   try
     let now ← IO.monoMsNow
     let allowed ← service.throttle.atomically fun ref => do
@@ -299,7 +302,9 @@ private def withPasswordWork (service : Service) (name : String)
         total := state.total + 1
         names := (name, count + 1) :: state.names.filter (·.1 != name) }
       return true
-    unless allowed do return .error .throttled
+    unless allowed do
+      Metrics.countAuthThrottle
+      return .error .throttled
     action
   catch _ => return .error .internal
   finally service.kdf.unlock
@@ -481,23 +486,36 @@ A session cache hit skips the database work of the authentication step only; the
 runs under `withConnection`. Cache entries are only ever written inside that same queue, so an
 invalidation issued after a committed change removes every entry that predates it. -/
 def Service.withAuthenticated (service : Service) (token : String) (csrf : Option String)
-    (requestId : String) (action : Conn → RequestContext → User → IO α) : IO (Except Error α) := do
+    (requestId : String) (action : Conn → RequestContext → User → IO α)
+    (trace : Log.TraceRef := none) : IO (Except Error α) := do
   unless tokenShape token do return .error .unauthenticated
   try
+    let started ← IO.monoMsNow
+    let auth := fun (t : Log.Timings) (n : Nat) => { t with auth := t.auth + n }
+    let queue := fun (t : Log.Timings) (n : Nat) => { t with queueWait := t.queueWait + n }
     let digest ← Crypto.digestToken token
     if let some entry ← service.cacheLookup digest then
       unless ← csrfAccepted csrf entry.csrf do return .error .forbidden
+      trace.phase auth started
       let context := TrustedNative.issueContext ⟨entry.user.actor, entry.user.tenant, entry.user.generation⟩ requestId
-      return ← admitted service fun conn => .ok <$> action conn context entry.user
+      trace.principal context
+      let queued ← IO.monoMsNow
+      return ← admitted service fun conn => do
+        trace.phase queue queued
+        .ok <$> action conn context entry.user
     admitted service fun conn => do
+      let entered ← IO.monoMsNow
+      trace.phase queue started
       let now ← service.clock
       let checked ← runDb conn (resolveSession digest now)
       match flatten checked with
-      | .error e => return .error e
+      | .error e => trace.phase auth entered; return .error e
       | .ok (session, user) =>
-        unless ← csrfAccepted csrf session.val.csrf do return .error .forbidden
+        unless ← csrfAccepted csrf session.val.csrf do trace.phase auth entered; return .error .forbidden
         service.cacheStore digest ⟨user, session.val.csrf, session.val.expiresAt.toInt.toNat, ← IO.monoMsNow⟩
         let context := TrustedNative.issueContext ⟨user.actor, user.tenant, user.generation⟩ requestId
+        trace.principal context
+        trace.phase auth entered
         return .ok (← action conn context user)
   catch _ => return .error .internal
 
@@ -514,18 +532,25 @@ bounded callback finishes. Session validation and application reads share that t
 The callback is trusted, synchronous host code, not a general untrusted-code sandbox. -/
 def Service.withAuthenticatedTransaction (service : Service) (token csrf : String)
     (requestId : String)
-    (action : Conn → RequestContext → User → Nat → Nat → IO α) : IO (Except Error α) := do
+    (action : Conn → RequestContext → User → Nat → Nat → IO α)
+    (trace : Log.TraceRef := none) : IO (Except Error α) := do
   unless tokenShape token && tokenShape csrf do return .error .unauthenticated
   try
+    let started ← IO.monoMsNow
     let digest ← Crypto.digestToken token
     admitted service fun conn => do
+      let entered ← IO.monoMsNow
+      trace.phase (fun t n => { t with queueWait := t.queueWait + n }) started
+      let auth := trace.phase (fun t n => { t with auth := t.auth + n }) entered
       let result ← runDb conn <| withTransaction do
         let now ← service.clock
         match ← resolveSession digest now with
-        | .error e => return .error e
+        | .error e => auth; return .error e
         | .ok (session, user) =>
-          unless ← Crypto.constantTimeEqual csrf session.val.csrf do return .error .forbidden
+          unless ← Crypto.constantTimeEqual csrf session.val.csrf do auth; return .error .forbidden
           let context := TrustedNative.issueContext ⟨user.actor, user.tenant, user.generation⟩ requestId
+          trace.principal context
+          auth
           return .ok (← action conn context user now session.val.expiresAt.toInt.toNat)
       return flatten result
   catch _ => return .error .internal
@@ -624,5 +649,8 @@ def Service.setAccess (service : Service) (actor tenant : String) (enabled : Boo
   return result
 
 def Service.ready (service : Service) : IO Bool := service.runtime.ready
+
+/-- Writer queue state for metrics: active/queued/completed callbacks. -/
+def Service.queue (service : Service) : IO Runtime.State := service.runtime.snapshot
 
 end LeanAppNative.Auth

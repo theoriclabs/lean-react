@@ -1,5 +1,6 @@
 import LeanApp
 import LeanContract.Http
+import LeanAppNative.Metrics
 import Std.Http
 
 namespace LeanAppNative
@@ -82,14 +83,17 @@ def Server.reply (server : Server) (identity : OperationId)
   | .error (.domain impossible) => nomatch impossible
   | .error _ => ⟨500, Http.protocolResponse server.config.failureCode⟩
 
-/-- No identity is decoded into authority. The host supplies context separately. -/
+/-- No identity is decoded into authority. The host supplies context separately. The optional
+trace receives the operation, outcome, handler time and any caught exception for the request log. -/
 def Server.dispatch (server : Server) (context : RequestContext)
-    (method path body : String) : IO HttpReply := do
+    (method path body : String) (trace : Log.TraceRef := none) : IO HttpReply := do
   if path == server.config.manifestPath then
     if method != "GET" then return ⟨405, Http.protocolResponse "method.not_allowed"⟩
     return ⟨200, server.config.manifest server.app.manifest⟩
   let some metadata := server.app.manifest.find? (·.http.path == path)
     | return ⟨404, Http.protocolResponse "route.not_found"⟩
+  trace.update fun t => { t with operation := some metadata.operation.identity }
+  trace.principal context
   let expectedMethod := match metadata.http.method with | .post => "POST"
   if method != expectedMethod then return ⟨405, Http.protocolResponse "method.not_allowed"⟩
   if body.utf8ByteSize > metadata.http.maxBodyBytes.getD server.config.maxBodyBytes then
@@ -99,10 +103,19 @@ def Server.dispatch (server : Server) (context : RequestContext)
     Http.decodeRequest server.codecs json
   let request ← match decoded with
     | .ok request => pure request
-    | .error errors => return ⟨400, Http.decodeErrorResponse server.codecs errors⟩
+    | .error errors =>
+      trace.update fun t => { t with outcome := some .decode }
+      return ⟨400, Http.decodeErrorResponse server.codecs errors⟩
+  let started ← IO.monoMsNow
   try
-    return server.reply request.operation (← server.app.dispatchHttp context metadata.http request)
-  catch _ => return ⟨500, Http.protocolResponse server.config.failureCode⟩
+    let result ← server.app.dispatchHttp context metadata.http request
+    trace.phase (fun t n => { t with handler := t.handler + n }) started
+    trace.update fun t => { t with outcome := some (Log.Outcome.ofResult result) }
+    return server.reply request.operation result
+  catch e =>
+    trace.phase (fun t n => { t with handler := t.handler + n }) started
+    trace.failure "server" server.config.failureCode e
+    return ⟨500, Http.protocolResponse server.config.failureCode⟩
 
 def respond (reply : HttpReply) : Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
   let status := (Std.Http.Status.ofCode none reply.status.toUInt16).getD .internalServerError
@@ -112,22 +125,44 @@ def respond (reply : HttpReply) : Std.Async.ContextAsync (Std.Http.Response Std.
 /-- Preserve percent escapes and empty segments; never use toDecodedSegments for routing. -/
 def literalPath (target : Std.Http.RequestTarget) : String := toString target.path
 
+/-- A single request header by lowercase name; ambiguous headers count as absent. -/
+def requestHeader (request : Std.Http.Request Std.Http.Body.Stream) (name : String) : Option String :=
+  match request.line.headers.toList.filter (fun (key, _) => (toString key).toLower == name) with
+  | [(_, value)] => some (toString value)
+  | _ => none
+
+/-- Emit the request line and count it. `replyBytes` is the serialized JSON size. -/
+def logRequest (trace : IO.Ref Log.Trace) (method path : String) (status : Nat) (started bodyBytes replyBytes : Nat) :
+    IO Unit := do
+  Metrics.observe (← Log.request (← trace.get) method path status started bodyBytes replyBytes)
+
 /-- The issuer is trusted native code, not a client principal parser. Work runs off the event loop.
-The per-path body cap is chosen by literal path before any byte is buffered. -/
+The per-path body cap is chosen by literal path before any byte is buffered; the request id
+(`X-Request-Id` when well-formed) reaches `RequestContext.requestId` and the log line. -/
 def Server.handler (server : Server)
     (issue : Std.Http.Request Std.Http.Body.Stream → IO RequestContext)
     (request : Std.Http.Request Std.Http.Body.Stream) :
     Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
+  let started ← IO.monoMsNow
   let path := literalPath request.line.uri
+  let method := toString request.line.method
+  let trace ← IO.mkRef ({ requestId := ← Log.requestId (requestHeader request "x-request-id") } : Log.Trace)
+  let finish := fun (reply : HttpReply) (bodyBytes : Nat) => do
+    logRequest trace method path reply.status started bodyBytes reply.body.compress.utf8ByteSize
+    respond reply
   let bytes : ByteArray ← try
       Std.Http.Body.Stream.readAll request.body (some (bodyLimitFor server.app.manifest server.config path).toUInt64)
-    catch _ => return ← respond ⟨413, Http.protocolResponse "request.body_too_large"⟩
+    catch _ => return ← finish ⟨413, Http.protocolResponse "request.body_too_large"⟩ 0
   let some body := String.fromUTF8? bytes
-    | return ← respond ⟨400, Http.decodeErrorResponse server.codecs (ValidationErrors.single "decode.invalid_utf8")⟩
+    | return ← finish ⟨400, Http.decodeErrorResponse server.codecs (ValidationErrors.single "decode.invalid_utf8")⟩ bytes.size
   let task ← IO.asTask (do
-    try server.dispatch (← issue request) (toString request.line.method) path body
-    catch _ => pure ⟨500, Http.protocolResponse server.config.failureCode⟩) (prio := .dedicated)
-  respond (← Std.Async.Async.ofAsyncTask task)
+    try
+      let context := Log.withRequestId (← issue request) (← trace.get).requestId
+      server.dispatch context method path body (some trace)
+    catch e =>
+      Log.TraceRef.failure (some trace) "server" server.config.failureCode e
+      pure ⟨500, Http.protocolResponse server.config.failureCode⟩) (prio := .dedicated)
+  finish (← Std.Async.Async.ofAsyncTask task) bytes.size
 
 /-- Minimal runtime; authentication, lifecycle and deployment qualification are separate work. -/
 def Server.serve (server : Server) (address : Std.Net.SocketAddress)

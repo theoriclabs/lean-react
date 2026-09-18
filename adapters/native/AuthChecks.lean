@@ -326,6 +326,114 @@ private def limitedHost (service : Auth.Service) : IO Auth.Host := do
     | throw (IO.userError "limited host")
   pure host
 
+/-- Drive `Host.handler` with a real `Std.Http` request; returns status and body text. -/
+private def httpRequest (host : Auth.Host) (method : Std.Http.Method) (path : String)
+    (headers : List (String × String)) (body : String) (peer : Option Std.Net.SocketAddress := none) :
+    IO (Nat × String) := Std.Async.Async.block do
+  let stream ← Std.Http.Body.fromBytes body.toUTF8
+  let named := Std.Http.Headers.ofList (headers.map fun (k, v) => (Std.Http.Header.Name.ofString! k, Std.Http.Header.Value.ofString! v))
+  let extensions := match peer with
+    | some addr => Std.Http.Extensions.empty.insert (Std.Http.Server.RemoteAddr.mk addr)
+    | none => Std.Http.Extensions.empty
+  let request : Std.Http.Request Std.Http.Body.Stream := {
+    line := { method, version := .v11, uri := Std.Http.RequestTarget.parse! path, headers := named }
+    body := stream, extensions }
+  let response ← Std.Async.ContextAsync.run (host.handler request)
+  let mut bytes := ByteArray.empty
+  repeat
+    match ← response.body.recv with
+    | some chunk => bytes := bytes ++ chunk.data
+    | none => break
+  return (response.line.status.toCode.toNat, String.fromUTF8! bytes)
+
+private def field (json : Lean.Json) (name : String) : Lean.Json := (json.getObjVal? name).toOption.getD .null
+private def natField (json : Lean.Json) (name : String) : Nat := ((field json name).getNat?).toOption.getD 0
+
+private def observability : IO Unit := withService { sessionCacheTtlMs := 30000 } fun service _ _ => do
+  let lines ← IO.mkRef (#[] : Array String)
+  Log.configure { sink := .buffer lines }
+  Metrics.reset
+  try
+    let host ← Auth.Demo.host service "https://example.test"
+    let base := [("origin", "https://example.test"), ("content-type", "application/json"), ("x-leanapp-request", "1")]
+    let (status, signedUp) ← httpRequest host .post "/auth/signup" (("x-request-id", "check-1") :: base) (signupBody "observed")
+    check "HTTP signup through the handler succeeds" (status == 200)
+    let .ok signedJson := Lean.Json.parse signedUp | throw (IO.userError "signup body")
+    let csrf := ((field signedJson "csrf").getStr?).toOption.getD ""
+    let actor := ((field (field signedJson "user") "actor").getStr?).toOption.getD ""
+    let a ← ok (← service.login "observed" password)
+    let cookie := s!"__Host-leanapp_session={a.token}"
+    let wire := "{\"operation\":{\"namespace\":\"auth-demo\",\"name\":\"whoami\",\"version\":\"1\"},\"kind\":\"query\",\"input\":null}"
+    let authed := fun (extra : List (String × String)) => httpRequest host .post "/api/whoami"
+      (extra ++ base ++ [("cookie", cookie), ("x-csrf-token", a.csrf)]) wire
+    check "authenticated operations succeed through the handler"
+      ((← authed [("x-request-id", "check-2")]).1 == 200 && (← authed [("x-request-id", "a b")]).1 == 200 &&
+        (← authed [("x-request-id", String.ofList (List.replicate 65 'x'))]).1 == 200)
+    check "wrong CSRF is logged as forbidden" ((← httpRequest host .post "/api/whoami" (base ++ [("cookie", cookie), ("x-csrf-token", zeros)]) wire).1 == 403)
+    check "oversized bodies are refused before dispatch"
+      ((← httpRequest host .post "/api/whoami" (base ++ [("cookie", cookie), ("x-csrf-token", a.csrf)]) (String.ofList (List.replicate 9000 'x'))).1 == 413)
+    let captured ← lines.get
+    let entries ← captured.toList.mapM fun line => match Lean.Json.parse line with
+      | .ok json => pure json | .error e => throw (IO.userError s!"log line is not JSON: {e}")
+    check "one JSON line per request" (entries.length == 6)
+    let keys := ["v", "ts", "requestId", "method", "path", "operation", "status", "outcome", "principalHash", "durations", "bodyBytes", "replyBytes"]
+    let hasKeys := fun (json : Lean.Json) => match json.getObj? with
+      | .ok fields => keys.all (fun k => (json.getObjVal? k).isOk) && fields.size == keys.length
+      | .error _ => false
+    check "every line carries exactly the versioned field set" (entries.all fun e => hasKeys e && natField e "v" == 1 && natField e "ts" > 0)
+    let durations := fun (e : Lean.Json) => field e "durations"
+    check "durations are monotone" (entries.all fun e =>
+      let d := durations e
+      natField d "auth" + natField d "queueWait" + natField d "db" + natField d "handler" ≤ natField d "total")
+    let signup := entries[0]!
+    let hash := Log.principalHash actor
+    check "signup line honours the client request id and hashes the principal"
+      ((field signup "requestId").getStr? == .ok "check-1" && (field signup "path").getStr? == .ok "/auth/signup" &&
+        natField signup "status" == 200 && (field signup "outcome").getStr? == .ok "success" &&
+        field signup "operation" == .null && (field signup "principalHash").getStr? == .ok hash && hash.length == 16 &&
+        natField signup "bodyBytes" == (signupBody "observed").utf8ByteSize && natField signup "replyBytes" == signedUp.utf8ByteSize &&
+        natField (durations signup) "auth" > 0)
+    let whoami := entries[1]!
+    check "operation lines name the operation, outcome and principal"
+      ((field whoami "requestId").getStr? == .ok "check-2" &&
+        (field (field whoami "operation") "name").getStr? == .ok "whoami" &&
+        (field (field whoami "operation") "namespace").getStr? == .ok "auth-demo" &&
+        (field whoami "outcome").getStr? == .ok "success" && (field whoami "principalHash").getStr? == .ok hash)
+    check "malformed request ids are replaced by generated ones"
+      ([entries[2]!, entries[3]!].all fun e => match (field e "requestId").getStr? with
+        | .ok id => id.startsWith "r" && Log.validRequestId id && id != "a b" | .error _ => false)
+    check "denied and refused requests are logged with their outcome"
+      ((field entries[4]! "outcome").getStr? == .ok "forbidden" && natField entries[4]! "status" == 403 &&
+        (field entries[5]! "outcome").getStr? == .ok "protocol" && natField entries[5]! "status" == 413 &&
+        natField entries[5]! "bodyBytes" == 0)
+    let text := String.intercalate "\n" captured.toList
+    check "logs never contain the username, actor, tokens, CSRF, password or cookie"
+      (!text.contains "observed" && !text.contains actor && !text.contains a.token &&
+        !text.contains a.csrf && !text.contains csrf && !text.contains password && !text.contains cookie)
+    let loopback : Std.Net.SocketAddress := .v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, 4000⟩
+    let remote : Std.Net.SocketAddress := .v4 ⟨Std.Net.IPv4Addr.ofParts 10 0 0 7, 4000⟩
+    let (metricsStatus, metrics) ← httpRequest host .get "/internal/metrics" [] "" (some loopback)
+    -- Three hits: the second and third whoami and the CSRF-refused request, which resolved before the check.
+    check "metrics are served to loopback peers in Prometheus text format"
+      (metricsStatus == 200 && metrics.contains "leanapp_requests_total{operation=\"auth-demo/whoami/1\",outcome=\"success\"} 3" &&
+        metrics.contains "leanapp_requests_total{operation=\"-\",outcome=\"forbidden\"} 1" &&
+        metrics.contains "leanapp_request_duration_ms_count 6" && metrics.contains "leanapp_auth_session_cache_hits_total 3" &&
+        metrics.contains "leanapp_auth_session_cache_misses_total 1" &&
+        metrics.contains "leanapp_writer_queue_depth 0" && metrics.contains "leanapp_request_queue_wait_ms_bucket{le=\"+Inf\"} 6")
+    check "metrics are refused for non-loopback or unknown peers"
+      ((← httpRequest host .get "/internal/metrics" [] "" (some remote)).1 == 404 && (← httpRequest host .get "/internal/metrics" [] "").1 == 404)
+    check "metrics scrapes are not logged as requests" ((← lines.get).size == 8)
+    -- Three admitted credential attempts so far; the per-name quota of ten leaves five throttled.
+    discard <| ok (← service.login "observed" password)
+    for _ in [:12] do discard <| service.login "observed" "not the password at all"
+    check "auth throttles are counted" ((← httpRequest host .get "/internal/metrics" [] "" (some loopback)).2.contains "leanapp_auth_throttles_total 5")
+    Metrics.setGauge "leanapp_hot_state_entries" 7
+    check "later subsystems can register gauges by name"
+      ((← httpRequest host .get "/internal/metrics" [] "" (some loopback)).2.contains "leanapp_hot_state_entries 7")
+    check "request id validation" (Log.validRequestId "abc-DEF_0.9~" && !Log.validRequestId "" &&
+      !Log.validRequestId (String.ofList (List.replicate 65 'a')) && !Log.validRequestId "a/b" && !Log.validRequestId "é")
+  finally Log.configure {}
+
 private def rateLimits : IO Unit := withService {} fun service _ now => do
   let host ← limitedHost service
   let a ← ok (← service.signup "limited_a" password)
@@ -451,3 +559,4 @@ def main : IO Unit := do
   sessions
   sessionCache
   rateLimits
+  observability

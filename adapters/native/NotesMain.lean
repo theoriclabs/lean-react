@@ -8,6 +8,7 @@ def main : IO UInt32 := do
   if port == 0 || port > 65535 then throw (IO.userError "invalid backend port")
   let development := (← IO.getEnv "LEANAPP_DEVELOPMENT") == some "1"
   let origin := (← IO.getEnv "LEANAPP_ORIGIN").getD ""
+  LeanAppNative.Log.configure (← LeanAppNative.Env.logConfig)
   let config := LeanDb.Instance.ofPath path
   let .ok session ← LeanDb.Cli.Session.open LeanAppNative.Notes.base config
     | throw (IO.userError "notes database unavailable")

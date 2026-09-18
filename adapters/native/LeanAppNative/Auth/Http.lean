@@ -125,7 +125,24 @@ private def Host.issued (host : Host) (result : Except Error Issued) : Response 
   | .error e => ⟨errorReply e, none, none⟩
   | .ok session => ⟨⟨200, sessionBody session.user session.csrf⟩, some (host.cookie session.token), none⟩
 
-def Host.dispatch (host : Host) (request : Request) : IO Response := do
+/-- Loopback-only operator endpoint: counters plus live writer-queue and session-cache gauges. -/
+def Host.metrics (host : Host) : IO String := do
+  let queue ← host.auth.queue
+  let cache ← host.auth.cacheStats
+  Metrics.render [("leanapp_writer_queue_depth", queue.queued), ("leanapp_writer_active", queue.active),
+    ("leanapp_writer_completed_total", queue.completed),
+    ("leanapp_auth_session_cache_hits_total", cache.hits), ("leanapp_auth_session_cache_misses_total", cache.misses),
+    ("leanapp_auth_session_cache_invalidations_total", cache.invalidations), ("leanapp_auth_session_cache_size", cache.size)]
+
+/-- The optional trace collects the request id, operation, principal hash, phase timings and
+outcome for the request line written by `Host.handler`. -/
+def Host.dispatch (host : Host) (request : Request) (trace : Log.TraceRef := none) : IO Response := do
+  let requestId ← match trace with
+    | some ref => do
+      let current := (← ref.get).requestId
+      if current.isEmpty then Log.requestId (header request "x-request-id") else pure current
+    | none => Log.requestId (header request "x-request-id")
+  trace.update fun t => { t with requestId }
   try
     if request.path == "/health/ready" && request.method == "GET" then
       let ready ← host.auth.ready
@@ -149,8 +166,13 @@ def Host.dispatch (host : Host) (request : Request) : IO Response := do
       let signup := request.path == "/auth/signup"
       let optional := if signup && host.auth.config.tenantPolicy == .invite then ["invite"] else []
       let .ok input := credentials request.body optional | return ⟨errorReply .invalidCredentials, none, none⟩
-      return host.issued (← if signup then host.auth.signup input.name input.password input.invite input.label
-        else host.auth.login input.name input.password input.label)
+      let started ← IO.monoMsNow
+      let issued ← if signup then host.auth.signup input.name input.password input.invite input.label
+        else host.auth.login input.name input.password input.label
+      trace.phase (fun t n => { t with auth := t.auth + n }) started
+      if let .ok session := issued then
+        trace.update fun t => { t with principalHash := some (Log.principalHash session.user.actor) }
+      return host.issued issued
     let some token := host.sessionToken request | return ⟨errorReply .unauthenticated, none, none⟩
     if request.path == "/auth/session" then
       if request.method != "GET" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none, none⟩
@@ -182,32 +204,46 @@ def Host.dispatch (host : Host) (request : Request) : IO Response := do
     if request.path == "/auth/password" then
       let .ok ([current, next], _) := exactFields request.body ["currentPassword", "newPassword"]
         | return ⟨errorReply .invalidCredentials, none, none⟩
-      return host.issued (← host.auth.changePassword token csrf current next)
+      let started ← IO.monoMsNow
+      let issued ← host.auth.changePassword token csrf current next
+      trace.phase (fun t n => { t with auth := t.auth + n }) started
+      if let .ok session := issued then
+        trace.update fun t => { t with principalHash := some (Log.principalHash session.user.actor) }
+      return host.issued issued
     -- Declared per-principal limits are enforced after authentication and before the handler;
     -- anonymous traffic is the gateway's business. The limiter state never enters the DB queue.
     let limited := fun (context : RequestContext) => do
       let some limit := (host.approved.find? (·.http.path == request.path)).bind (·.http.rateLimit) | return none
       let some principal := context.principal | return none
       host.auth.admitRate principal.actor request.path limit
-    let dispatch := fun context app => do
-      if app.manifest != host.approved then return (⟨errorReply .internal, none, none⟩ : Response)
+    let dispatch := fun (entered : Nat) (context : RequestContext) (app : Application IO) => do
+      trace.principal context
+      let assembled := trace.phase (fun t n => { t with db := t.db + n }) entered
+      if app.manifest != host.approved then assembled; return (⟨errorReply .internal, none, none⟩ : Response)
       if let some retryAfter ← limited context then
+        assembled
+        Metrics.countRateLimited
         return ⟨⟨429, Http.protocolResponse "request.rate_limited"⟩, none, some retryAfter⟩
-      let .ok server := Server.create app host.codecs host.config | return ⟨errorReply .internal, none, none⟩
-      return ⟨← server.dispatch context request.method request.path request.body, none, none⟩
+      let .ok server := Server.create app host.codecs host.config | assembled; return ⟨errorReply .internal, none, none⟩
+      assembled
+      return ⟨← server.dispatch context request.method request.path request.body trace, none, none⟩
     let result ← match host.snapshotFactory with
-      | none => host.auth.withAuthenticated token (some csrf) "application" fun conn context _ => do
+      | none => host.auth.withAuthenticated token (some csrf) requestId (trace := trace) fun conn context _ => do
+          let entered ← IO.monoMsNow
           let .ok app := host.factory conn | return ⟨errorReply .internal, none, none⟩
-          dispatch context app
-      | some factory => host.auth.withAuthenticatedTransaction token csrf "protected-application" <|
+          dispatch entered context app
+      | some factory => host.auth.withAuthenticatedTransaction token csrf requestId (trace := trace) <|
           fun conn context user now expiresAt => do
+            let entered ← IO.monoMsNow
             let alive ← IO.mkRef true
             try
               let .ok app := factory conn user now expiresAt alive | return ⟨errorReply .internal, none, none⟩
-              dispatch context app
+              dispatch entered context app
             finally alive.set false
     return match result with | .ok response => response | .error e => ⟨errorReply e, none, none⟩
-  catch _ => return ⟨errorReply .internal, none, none⟩
+  catch e =>
+    trace.failure "auth-host" "auth.failed" e
+    return ⟨errorReply .internal, none, none⟩
 
 private def respond (response : Response) : Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
   let status := (Std.Http.Status.ofCode none response.reply.status.toUInt16).getD .internalServerError
@@ -221,23 +257,42 @@ private def respond (response : Response) : Std.Async.ContextAsync (Std.Http.Res
     headers := headers.insert (Std.Http.Header.Name.ofString! "retry-after") (Std.Http.Header.Value.ofString! (toString seconds))
   pure { line := { base.line with headers }, body := Std.Http.Body.Any.ofBody base.body, extensions := base.extensions }
 
+private def isLoopback : Std.Net.SocketAddress → Bool
+  | .v4 addr => addr.addr == Std.Net.IPv4Addr.ofParts 127 0 0 1
+  | .v6 addr => toString addr.addr == "::1"
+
+private def metricsResponse (host : Host) : Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
+  let base ← (Std.Http.Response.withStatus .ok).text (← host.metrics)
+  let headers := base.line.headers.insert (Std.Http.Header.Name.ofString! "cache-control") (Std.Http.Header.Value.ofString! "no-store")
+  pure { line := { base.line with headers }, body := Std.Http.Body.Any.ofBody base.body, extensions := base.extensions }
+
+/-- `GET /internal/metrics` is answered only for loopback peers and never proxied by the gateway;
+every other request is dispatched off the event loop and logged as one JSON line. -/
 def Host.handler (host : Host) (request : Std.Http.Request Std.Http.Body.Stream) :
     Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
+  let started ← IO.monoMsNow
   let path := literalPath request.line.uri
+  let method := toString request.line.method
+  let trace ← IO.mkRef ({ requestId := ← Log.requestId (requestHeader request "x-request-id") } : Log.Trace)
+  let finish := fun (response : Response) (bodyBytes : Nat) => do
+    logRequest trace method path response.reply.status started bodyBytes response.reply.body.compress.utf8ByteSize
+    respond response
+  if path == "/internal/metrics" && method == "GET" then
+    let peer := (request.extensions.get Std.Http.Server.RemoteAddr).map (·.addr)
+    -- Loopback scrapes are not logged; a refused scrape is, since it names an unexpected peer.
+    if peer.any isLoopback then return ← metricsResponse host
+    return ← finish ⟨⟨404, Http.protocolResponse "route.not_found"⟩, none, none⟩ 0
   let bytes ← try Std.Http.Body.Stream.readAll request.body (some (bodyLimitFor host.approved host.config path).toUInt64)
-    catch _ => return ← respond ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩
-  let some body := String.fromUTF8? bytes | return ← respond ⟨errorReply .invalidCredentials, none, none⟩
-  let input : Request := ⟨toString request.line.method, path,
+    catch _ => return ← finish ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩ 0
+  let some body := String.fromUTF8? bytes | return ← finish ⟨errorReply .invalidCredentials, none, none⟩ bytes.size
+  let input : Request := ⟨method, path,
     request.line.headers.toList.map (fun (name, value) => (toString name, toString value)), body⟩
-  let task ← IO.asTask (host.dispatch input) (prio := .dedicated)
-  respond (← Std.Async.Async.ofAsyncTask task)
+  let task ← IO.asTask (host.dispatch input (some trace)) (prio := .dedicated)
+  finish (← Std.Async.Async.ofAsyncTask task) bytes.size
 
 /-- TLS must terminate at a configured trusted ingress. Development is loopback-only. -/
 def Host.serve (host : Host) (address : Std.Net.SocketAddress) : Std.Async.Async Std.Http.Server := do
-  let loopback := match address with
-    | .v4 addr => addr.addr == Std.Net.IPv4Addr.ofParts 127 0 0 1
-    | .v6 addr => toString addr.addr == "::1"
-  if host.development && !loopback then throw (IO.userError "development auth requires loopback binding")
+  if host.development && !isLoopback address then throw (IO.userError "development auth requires loopback binding")
   Std.Http.Server.serve address (Std.Http.Server.Handler.ofFn (host.handler ·))
     { generateDate := false, maxBodySize := wireBodyLimitFor host.approved host.config
       maxConnections := host.config.maxConnections }

@@ -61,6 +61,33 @@ The application uses `RAILWAY_PUBLIC_DOMAIN` for its exact HTTPS origin and `RAI
 
 The image listens on `PORT` (8080) and starts Lean on `LEANAPP_BACKEND_PORT` (4181). Health checks use `/health/ready`. A missing configured origin or persistent path fails startup. Production cookies are Secure/HttpOnly/SameSite=Strict; no CORS allowance is emitted.
 
+## Operations
+
+The Lean process writes one JSON line per request to stderr (`LEANAPP_LOG_FILE=<path>` appends to a file instead; `LEANAPP_LOG=off` silences it). The format is versioned with `v: 1`:
+
+| Field | Meaning |
+| --- | --- |
+| `ts` | Unix time in milliseconds. |
+| `requestId` | The client's `X-Request-Id` when it is 1–64 URL-safe characters, else a generated `r<ms>-<n>`. It also reaches `RequestContext.requestId`. |
+| `method`, `path`, `status` | Literal request path (no decoding) and the response status. |
+| `operation` | `{namespace, name, version}` of the dispatched Contract operation, or `null` for auth, health and unmatched routes. |
+| `outcome` | `success`, `domainError`, `decode`, `protocol`, `unauthenticated`, `forbidden`, `incompatible`, `failed` or `unavailable`. |
+| `principalHash` | SHA-256 of the actor id truncated to 16 hex characters, or `null`. Never the actor, username or session. |
+| `durations` | Milliseconds: `total` for the whole exchange and the disjoint phases `auth` (session resolution, or KDF work on credential routes), `queueWait` (waiting for the writer), `db` (connection held for application assembly) and `handler` (policy and handler). `auth + queueWait + db + handler ≤ total`; the writer was held for about `db + handler` plus `auth` on authenticated operations. |
+| `bodyBytes`, `replyBytes` | Sizes only. |
+| `error` | Only when an exception was caught: `{class, code}` with the `IO.Error` class and the sanitized code the client saw. `message` is added only with `LEANAPP_LOG_ERRORS=verbose`, which is for development. |
+
+Every field is safe to ship to a log service: bodies, tokens, cookies, CSRF values, usernames and SQL never appear, which `npm run test:auth` and `npm run test:framework:native` check by parsing the lines and searching them for the credentials they used. A caught exception outside a request (dispatch-only hosts) is an `{"event":"error","component",…}` line with the same class/code rule. To check the café yourself, run its browser suite with logging on and grep the file for the suite's password, username and cookie name:
+
+```sh
+LEANAPP_LOG_FILE=/tmp/cafe-log.jsonl npm run build:cafe && LEANAPP_LOG_FILE=/tmp/cafe-log.jsonl npm run test:cafe:browser
+grep -c 'afternoon-oat-test-passphrase\|browser_barista\|leanapp_session=' /tmp/cafe-log.jsonl   # 0
+```
+
+Counters live in process memory (reset on restart) and are exposed in Prometheus text format at `GET /internal/metrics`, answered only to loopback peers and never proxied by the public process (it returns 404 there). Scrape it from a sidecar or the same container: `curl http://127.0.0.1:4181/internal/metrics`. It exposes `leanapp_requests_total{operation,outcome}`, the histograms `leanapp_request_duration_ms`, `leanapp_request_db_ms` (connection-held time) and `leanapp_request_queue_wait_ms`, the counters `leanapp_auth_throttles_total`, `leanapp_rate_limited_total`, `leanapp_request_body_bytes_total` and `leanapp_reply_bytes_total`, and the live gauges `leanapp_writer_queue_depth`, `leanapp_writer_active`, `leanapp_writer_completed_total` and the `leanapp_auth_session_cache_*` counters. Later subsystems register gauges by name through `Metrics.setGauge`.
+
+Saturation heuristics: a rising `queueWait` p95 with flat `db` means the single writer is saturated (add the session cache, shorten handlers or move reads off the writer); `leanapp_writer_queue_depth` approaching the runtime's `maxPending` (128) means `503 application.unavailable` is imminent; a growing `outcome="unavailable"` share confirms it. `auth` dominating `total` on credential routes is expected KDF cost (about 0.1–0.3 s); `leanapp_auth_throttles_total` climbing means the credential gate is refusing work. `leanapp_rate_limited_total` counts declared per-principal limits firing; anonymous traffic is the public process's concern.
+
 ## Operational boundaries
 
 The public process bounds body size and active upstream work. The Lean process bounds simultaneous connections (`LEANAPP_BACKEND_MAX_CONNECTIONS`, default 64), applies each operation's declared body cap before buffering, and enforces declared per-principal rate limits with `429` and `Retry-After`. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.

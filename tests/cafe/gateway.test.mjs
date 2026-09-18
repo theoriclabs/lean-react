@@ -34,6 +34,9 @@ test('rejected anonymous bursts do not burn a global quota; backend crash preser
     }
     const valid = await fetch(origin + '/auth/session', { headers: { 'x-leanapp-request': '1' } });
     assert.equal(valid.status, 200); await valid.text();
+    // The Lean process's loopback-only metrics are never proxied.
+    const metrics = await fetch(origin + '/internal/metrics', { headers: { 'x-leanapp-request': '1' } });
+    assert.equal(metrics.status, 404); await metrics.text();
     slow = createConnection(port, '127.0.0.1'); slow.on('error', () => {}); slow.on('data', () => {});
     await once(slow, 'connect');
     slow.write(`POST /api/recipes/list HTTP/1.1\r\nHost: 127.0.0.1\r\nOrigin: ${origin}\r\nContent-Type: application/json\r\nX-LeanApp-Request: 1\r\nContent-Length: 8000\r\n\r\n{`);

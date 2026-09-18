@@ -51,7 +51,7 @@ async function fixture(env = {}) {
 const wire = { operation: { namespace: 'auth-demo', name: 'whoami', version: '1' }, kind: 'query', input: null };
 
 test('real Lean HTTP signup, session isolation, restart and logout', { timeout: 60000 }, async () => {
-  const { directory, database, start, stop, request, logs } = await fixture();
+  const { origin, directory, database, start, stop, request, logs } = await fixture();
   const credentials = { username: 'alice_http', password: 'correct horse battery staple 🔐' };
   try {
     await start();
@@ -72,7 +72,16 @@ test('real Lean HTTP signup, session isolation, restart and logout', { timeout: 
     assert.deepEqual(wrong.body, unknown.body); assert.equal(wrong.status, 401);
     assert.equal((await request('/api/whoami', { body: wire, cookie })).status, 403);
     assert.equal((await request('/api/whoami', { body: wire, csrf: alice.body.csrf })).status, 401);
-    assert.equal((await request('/api/whoami', { body: wire, cookie, csrf: alice.body.csrf })).body.value, 'alice_http');
+    assert.equal((await request('/api/whoami', { body: wire, cookie, csrf: alice.body.csrf, headers: { 'x-request-id': 'node-req-7' } })).body.value, 'alice_http');
+    // One JSON line per request on stderr: the client request id is honoured, the principal is hashed.
+    const lines = logs().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+    const traced = lines.find(line => line.requestId === 'node-req-7');
+    assert.deepEqual(traced.operation, wire.operation); assert.equal(traced.outcome, 'success'); assert.equal(traced.status, 200);
+    assert.match(traced.principalHash, /^[0-9a-f]{16}$/); assert.equal(traced.v, 1);
+    assert.deepEqual(Object.keys(traced).sort(), ['bodyBytes', 'durations', 'method', 'operation', 'outcome', 'path', 'principalHash', 'replyBytes', 'requestId', 'status', 'ts', 'v']);
+    assert.ok(traced.durations.auth + traced.durations.queueWait + traced.durations.db + traced.durations.handler <= traced.durations.total);
+    assert.equal(lines.find(line => line.path === '/auth/signup' && line.status === 403).outcome, 'forbidden');
+    assert.equal((await fetch(`${origin}/internal/metrics`)).status, 200); // loopback scrape
     const bob = await request('/auth/signup', { body: { ...credentials, username: 'bob_http' } });
     assert.equal(bob.status, 200);
     assert.notEqual(bob.body.user.tenant, alice.body.user.tenant);

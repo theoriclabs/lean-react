@@ -3,6 +3,15 @@ import LeanAppNative.Auth.Store
 /-! Environment parsing for the application executables. The libraries take typed values only. -/
 namespace LeanAppNative.Env
 
+/-- Request logging: one JSON line per request to stderr by default, to `LEANAPP_LOG_FILE` when
+set, or nothing with `LEANAPP_LOG=off`. `LEANAPP_LOG_ERRORS=verbose` adds exception messages. -/
+def logConfig : IO Log.Config := do
+  let sink ← match ← IO.getEnv "LEANAPP_LOG", ← IO.getEnv "LEANAPP_LOG_FILE" with
+    | some "off", _ => pure Log.Sink.none
+    | _, some path => if path.isEmpty then pure .stderr else pure (.file path)
+    | _, none => pure .stderr
+  return { sink, verboseErrors := (← IO.getEnv "LEANAPP_LOG_ERRORS") == some "verbose" }
+
 /-- `LEANAPP_TENANT_POLICY=private|fixed:<name>|invite`; unset means a private tenant per account. -/
 def tenantPolicy : IO Auth.TenantPolicy := do
   match ← IO.getEnv "LEANAPP_TENANT_POLICY" with
