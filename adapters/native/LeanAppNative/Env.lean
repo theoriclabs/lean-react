@@ -23,6 +23,9 @@ def natSetting (name : String) (default : Nat) (max : Nat := 1000000) (min : Nat
     if n < min || n > max then throw (IO.userError s!"invalid {name}")
     pure n
 
+/-- `LEANAPP_BACKEND_MAX_CONNECTIONS`: simultaneous connections the Lean listener accepts (default 64). -/
+def maxConnections : IO Nat := natSetting "LEANAPP_BACKEND_MAX_CONNECTIONS" 64 65535
+
 /-- Authentication service configuration assembled from the environment: `LEANAPP_TENANT_POLICY`,
 `LEANAPP_MAX_SESSIONS` (concurrent sessions per account, default 1) and
 `LEANAPP_SESSION_CACHE_TTL_MS` (in-process session cache, default 0 = off, 30000 recommended). -/

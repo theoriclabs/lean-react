@@ -27,11 +27,12 @@ def application (conn : Conn) : Validation (Application IO) := applicationFor fu
   pure row.val.username
 
 /-- The template has inert handlers. Auth.Host retains only its metadata/configuration. -/
-def host (service : Auth.Service) (origin : String) (development : Bool := false) : IO Auth.Host := do
+def host (service : Auth.Service) (origin : String) (development : Bool := false)
+    (maxConnections : Nat := 64) : IO Auth.Host := do
   let .ok codecs := Http.codecs | throw (IO.userError "invalid codecs")
   let .ok app := applicationFor (fun _ => throw (IO.userError "template is not executable"))
     | throw (IO.userError "invalid application")
-  let .ok template := Server.create app codecs { maxBodyBytes := 8192 }
+  let .ok template := Server.create app codecs { maxBodyBytes := 8192, maxConnections }
     | throw (IO.userError "invalid server")
   let .ok host := Auth.Host.create service template application origin development
     | throw (IO.userError "invalid authentication origin/configuration")

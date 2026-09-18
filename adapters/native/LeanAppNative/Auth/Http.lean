@@ -13,6 +13,7 @@ structure Request where
 structure Response where
   reply : HttpReply
   cookie : Option String := none
+  retryAfter : Option Nat := none
 
 private def errorReply (error : Error) : HttpReply :=
   let (status, code) := match error with
@@ -121,84 +122,92 @@ private def sessionBody (user : User) (csrf : String) : Lean.Json :=
 
 private def Host.issued (host : Host) (result : Except Error Issued) : Response :=
   match result with
-  | .error e => ⟨errorReply e, none⟩
-  | .ok session => ⟨⟨200, sessionBody session.user session.csrf⟩, some (host.cookie session.token)⟩
+  | .error e => ⟨errorReply e, none, none⟩
+  | .ok session => ⟨⟨200, sessionBody session.user session.csrf⟩, some (host.cookie session.token), none⟩
 
 def Host.dispatch (host : Host) (request : Request) : IO Response := do
   try
     if request.path == "/health/ready" && request.method == "GET" then
       let ready ← host.auth.ready
-      return ⟨⟨if ready then 200 else 503, .mkObj [("ready", .bool ready)]⟩, none⟩
+      return ⟨⟨if ready then 200 else 503, .mkObj [("ready", .bool ready)]⟩, none, none⟩
     if request.path == host.config.manifestPath && request.method == "GET" then
-      return ⟨⟨200, host.manifest⟩, none⟩
-    if request.body.utf8ByteSize > host.config.maxBodyBytes then
-      return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
+      return ⟨⟨200, host.manifest⟩, none, none⟩
+    if request.body.utf8ByteSize > bodyLimitFor host.approved host.config request.path then
+      return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩
     -- Custom header plus no CORS support protects even pre-login JSON endpoints.
     -- Authenticated POSTs additionally require the unpredictable session CSRF token.
-    if header request "x-leanapp-request" != some "1" then return ⟨errorReply .forbidden, none⟩
+    if header request "x-leanapp-request" != some "1" then return ⟨errorReply .forbidden, none, none⟩
     if request.method == "POST" then
       if header request "origin" != some host.origin ||
           ((header request "content-type").map (fun v => (v.splitOn ";").head!.trimAscii.toString.toLower)) != some "application/json" then
-        return ⟨errorReply .forbidden, none⟩
+        return ⟨errorReply .forbidden, none, none⟩
     else if let some origin := header request "origin" then
-      if origin != host.origin then return ⟨errorReply .forbidden, none⟩
+      if origin != host.origin then return ⟨errorReply .forbidden, none, none⟩
     if request.path == "/auth/signup" || request.path == "/auth/login" then
-      if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
-      if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
+      if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none, none⟩
+      if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩
       let signup := request.path == "/auth/signup"
       let optional := if signup && host.auth.config.tenantPolicy == .invite then ["invite"] else []
-      let .ok input := credentials request.body optional | return ⟨errorReply .invalidCredentials, none⟩
+      let .ok input := credentials request.body optional | return ⟨errorReply .invalidCredentials, none, none⟩
       return host.issued (← if signup then host.auth.signup input.name input.password input.invite input.label
         else host.auth.login input.name input.password input.label)
-    let some token := host.sessionToken request | return ⟨errorReply .unauthenticated, none⟩
+    let some token := host.sessionToken request | return ⟨errorReply .unauthenticated, none, none⟩
     if request.path == "/auth/session" then
-      if request.method != "GET" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
+      if request.method != "GET" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none, none⟩
       match ← host.auth.session token with
-      | .ok (user, csrf) => return ⟨⟨200, sessionBody user csrf⟩, none⟩
-      | .error e => return ⟨errorReply e, none⟩
+      | .ok (user, csrf) => return ⟨⟨200, sessionBody user csrf⟩, none, none⟩
+      | .error e => return ⟨errorReply e, none, none⟩
     let csrf := (header request "x-csrf-token").getD ""
     if ["/auth/logout", "/auth/logout-all", "/auth/sessions", "/auth/sessions/revoke", "/auth/password"].contains request.path then
-      if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none⟩
-      if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
+      if request.method != "POST" then return ⟨⟨405, Http.protocolResponse "method.not_allowed"⟩, none, none⟩
+      if request.body.utf8ByteSize > 4096 then return ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩
     let cleared := some (host.cookie "" true)
     if request.path == "/auth/logout" then
       match ← host.auth.logout token csrf with
-      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared⟩
-      | .error e => return ⟨errorReply e, none⟩
+      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared, none⟩
+      | .error e => return ⟨errorReply e, none, none⟩
     if request.path == "/auth/logout-all" then
       match ← host.auth.logoutAll token csrf with
-      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared⟩
-      | .error e => return ⟨errorReply e, none⟩
+      | .ok () => return ⟨⟨200, .mkObj [("ok", .bool true)]⟩, cleared, none⟩
+      | .error e => return ⟨errorReply e, none, none⟩
     if request.path == "/auth/sessions" then
       match ← host.auth.sessions token csrf with
-      | .ok sessions => return ⟨⟨200, .mkObj [("sessions", .arr (sessions.map (·.toJson)).toArray)]⟩, none⟩
-      | .error e => return ⟨errorReply e, none⟩
+      | .ok sessions => return ⟨⟨200, .mkObj [("sessions", .arr (sessions.map (·.toJson)).toArray)]⟩, none, none⟩
+      | .error e => return ⟨errorReply e, none, none⟩
     if request.path == "/auth/sessions/revoke" then
-      let .ok ([id], _) := exactFields request.body ["id"] | return ⟨errorReply .sessionNotFound, none⟩
+      let .ok ([id], _) := exactFields request.body ["id"] | return ⟨errorReply .sessionNotFound, none, none⟩
       match ← host.auth.revokeSession token csrf id with
-      | .ok current => return ⟨⟨200, .mkObj [("ok", .bool true), ("current", .bool current)]⟩, if current then cleared else none⟩
-      | .error e => return ⟨errorReply e, none⟩
+      | .ok current => return ⟨⟨200, .mkObj [("ok", .bool true), ("current", .bool current)]⟩, if current then cleared else none, none⟩
+      | .error e => return ⟨errorReply e, none, none⟩
     if request.path == "/auth/password" then
       let .ok ([current, next], _) := exactFields request.body ["currentPassword", "newPassword"]
-        | return ⟨errorReply .invalidCredentials, none⟩
+        | return ⟨errorReply .invalidCredentials, none, none⟩
       return host.issued (← host.auth.changePassword token csrf current next)
+    -- Declared per-principal limits are enforced after authentication and before the handler;
+    -- anonymous traffic is the gateway's business. The limiter state never enters the DB queue.
+    let limited := fun (context : RequestContext) => do
+      let some limit := (host.approved.find? (·.http.path == request.path)).bind (·.http.rateLimit) | return none
+      let some principal := context.principal | return none
+      host.auth.admitRate principal.actor request.path limit
     let dispatch := fun context app => do
-      if app.manifest != host.approved then return errorReply .internal
-      let .ok server := Server.create app host.codecs host.config | return errorReply .internal
-      server.dispatch context request.method request.path request.body
+      if app.manifest != host.approved then return (⟨errorReply .internal, none, none⟩ : Response)
+      if let some retryAfter ← limited context then
+        return ⟨⟨429, Http.protocolResponse "request.rate_limited"⟩, none, some retryAfter⟩
+      let .ok server := Server.create app host.codecs host.config | return ⟨errorReply .internal, none, none⟩
+      return ⟨← server.dispatch context request.method request.path request.body, none, none⟩
     let result ← match host.snapshotFactory with
       | none => host.auth.withAuthenticated token (some csrf) "application" fun conn context _ => do
-          let .ok app := host.factory conn | return errorReply .internal
+          let .ok app := host.factory conn | return ⟨errorReply .internal, none, none⟩
           dispatch context app
       | some factory => host.auth.withAuthenticatedTransaction token csrf "protected-application" <|
           fun conn context user now expiresAt => do
             let alive ← IO.mkRef true
             try
-              let .ok app := factory conn user now expiresAt alive | return errorReply .internal
+              let .ok app := factory conn user now expiresAt alive | return ⟨errorReply .internal, none, none⟩
               dispatch context app
             finally alive.set false
-    return ⟨match result with | .ok reply => reply | .error e => errorReply e, none⟩
-  catch _ => return ⟨errorReply .internal, none⟩
+    return match result with | .ok response => response | .error e => ⟨errorReply e, none, none⟩
+  catch _ => return ⟨errorReply .internal, none, none⟩
 
 private def respond (response : Response) : Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
   let status := (Std.Http.Status.ofCode none response.reply.status.toUInt16).getD .internalServerError
@@ -208,14 +217,17 @@ private def respond (response : Response) : Std.Async.ContextAsync (Std.Http.Res
     headers := headers.insert (Std.Http.Header.Name.ofString! name) (Std.Http.Header.Value.ofString! value)
   if let some cookie := response.cookie then
     headers := headers.insert (Std.Http.Header.Name.ofString! "set-cookie") (Std.Http.Header.Value.ofString! cookie)
+  if let some seconds := response.retryAfter then
+    headers := headers.insert (Std.Http.Header.Name.ofString! "retry-after") (Std.Http.Header.Value.ofString! (toString seconds))
   pure { line := { base.line with headers }, body := Std.Http.Body.Any.ofBody base.body, extensions := base.extensions }
 
 def Host.handler (host : Host) (request : Std.Http.Request Std.Http.Body.Stream) :
     Std.Async.ContextAsync (Std.Http.Response Std.Http.Body.Any) := do
-  let bytes ← try Std.Http.Body.Stream.readAll request.body (some host.config.maxBodyBytes.toUInt64)
-    catch _ => return ← respond ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none⟩
-  let some body := String.fromUTF8? bytes | return ← respond ⟨errorReply .invalidCredentials, none⟩
-  let input : Request := ⟨toString request.line.method, literalPath request.line.uri,
+  let path := literalPath request.line.uri
+  let bytes ← try Std.Http.Body.Stream.readAll request.body (some (bodyLimitFor host.approved host.config path).toUInt64)
+    catch _ => return ← respond ⟨⟨413, Http.protocolResponse "request.body_too_large"⟩, none, none⟩
+  let some body := String.fromUTF8? bytes | return ← respond ⟨errorReply .invalidCredentials, none, none⟩
+  let input : Request := ⟨toString request.line.method, path,
     request.line.headers.toList.map (fun (name, value) => (toString name, toString value)), body⟩
   let task ← IO.asTask (host.dispatch input) (prio := .dedicated)
   respond (← Std.Async.Async.ofAsyncTask task)
@@ -227,6 +239,7 @@ def Host.serve (host : Host) (address : Std.Net.SocketAddress) : Std.Async.Async
     | .v6 addr => toString addr.addr == "::1"
   if host.development && !loopback then throw (IO.userError "development auth requires loopback binding")
   Std.Http.Server.serve address (Std.Http.Server.Handler.ofFn (host.handler ·))
-    { generateDate := false, maxBodySize := host.config.maxBodyBytes, maxConnections := 64 }
+    { generateDate := false, maxBodySize := wireBodyLimitFor host.approved host.config
+      maxConnections := host.config.maxConnections }
 
 end LeanAppNative.Auth

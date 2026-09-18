@@ -305,6 +305,55 @@ private def sessionCache : IO Unit := do
     check "a disabled cache reads the session on every call"
       ((← sessionReads runtime) == before + 1 && (← service.cacheStats) == ⟨0, 0, 0, 0⟩)
 
+/-- A host with one rate-limited and one unlimited operation. -/
+private def limitedHost (service : Auth.Service) : IO Auth.Host := do
+  let .ok codecs := Contract.Http.codecs | throw (IO.userError "codecs")
+  let make := fun (name path : String) (limit : Option RateLimit) => do
+    let op : Contract.Operation .query Unit Nat String ← Contract.Operation.canonical .query ⟨"limited", name, "1"⟩
+    let binding : Binding IO Option Option op := {
+      http := { path, rateLimit := limit }
+      policy := fun context _ _ => pure <| if context.principal.isSome then .ok () else .error .unauthenticated
+      handler := fun _ _ _ => return .ok 1 }
+    pure (binding.approve fun _ => { read := fun value => match value with
+      | some value => pure value | none => throw (IO.userError "unused") })
+  let .ok app := (do
+      Application.create "limited" [{ name := "limited", exports := [
+        ← make "ping" "/api/limited" (some { perPrincipalPerMinute := 1200, burst := 20 }),
+        ← make "free" "/api/free" none] }] : Ontology.Validation (Application IO))
+    | throw (IO.userError "limited application")
+  let .ok template := Server.create app codecs { maxBodyBytes := 8192 } | throw (IO.userError "limited server")
+  let .ok host := Auth.Host.create service template (fun _ => .ok app) "https://example.test"
+    | throw (IO.userError "limited host")
+  pure host
+
+private def rateLimits : IO Unit := withService {} fun service _ now => do
+  let host ← limitedHost service
+  let a ← ok (← service.signup "limited_a" password)
+  let b ← ok (← service.signup "limited_b" password)
+  let call := fun (issued : Auth.Issued) (name path : String) => host.dispatch (post path
+    (Lean.Json.mkObj [("operation", .mkObj [("namespace", .str "limited"), ("name", .str name), ("version", .str "1")]),
+      ("kind", .str "query"), ("input", .null)]).compress s!"__Host-leanapp_session={issued.token}" issued.csrf)
+  let mut statuses : List (Nat × Option Nat) := []
+  for _ in [:25] do
+    let response ← call a "ping" "/api/limited"
+    statuses := statuses ++ [(response.reply.status, response.retryAfter)]
+  check "a burst of 25 admits exactly 20 and refuses 5 with Retry-After"
+    ((statuses.filter (·.1 == 200)).length == 20 && (statuses.filter (· == (429, some 1))).length == 5 &&
+      (statuses.take 20).all (·.1 == 200))
+  check "the refusal is a protocol envelope"
+    (((← call a "ping" "/api/limited").reply.body.getObjValAs? String "code").toOption == some "request.rate_limited")
+  check "another principal is unaffected" ((← call b "ping" "/api/limited").reply.status == 200)
+  check "the same principal is unaffected on an unlimited operation" ((← call a "free" "/api/free").reply.status == 200)
+  now.modify (· + 1)
+  check "one second refills the per-minute rate in whole tokens"
+    ((← call a "ping" "/api/limited").reply.status == 200 &&
+      (← (List.range 19).mapM fun _ => call a "ping" "/api/limited").all (·.reply.status == 200) &&
+      (← call a "ping" "/api/limited").reply.status == 429)
+  now.modify (· + 120)
+  check "the bucket never exceeds its burst"
+    ((← (List.range 20).mapM fun _ => call a "ping" "/api/limited").all (·.reply.status == 200) &&
+      (← call a "ping" "/api/limited").reply.status == 429)
+
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
   let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
@@ -401,3 +450,4 @@ def main : IO Unit := do
   tenantPolicies
   sessions
   sessionCache
+  rateLimits

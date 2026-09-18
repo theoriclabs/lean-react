@@ -24,6 +24,15 @@ private def binding (op : Operation .query Nat Nat String) (path : String) (call
     if input == 9 then return .error "third-domain-error"
     return .ok (input + 10)
 
+/-- A text operation with its own body cap, for the per-binding limit checks. -/
+private def textBinding (op : Operation .query String Nat String) (path : String) (cap : Nat) (calls : IO.Ref Nat) :
+    Binding IO Option Option op where
+  http := { path, maxBodyBytes := some cap }
+  policy := fun _ _ _ => pure (.ok ())
+  handler _ _ input := do
+    calls.modify (· + 1)
+    return .ok input.length
+
 private def noReads : ReadCapability IO Option where
   read value := match value with
     | some value => pure value
@@ -41,9 +50,13 @@ def main : IO Unit := do
   let first ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "one", "1"⟩)
   let second ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "two", "1"⟩)
   let third ← require (Operation.canonical .query (Input := Nat) (Output := Nat) (Error := String) ⟨"fixture", "three", "1"⟩)
+  let small ← require (Operation.canonical .query (Input := String) (Output := Nat) (Error := String) ⟨"fixture", "small", "1"⟩)
+  let large ← require (Operation.canonical .query (Input := String) (Output := Nat) (Error := String) ⟨"fixture", "large", "1"⟩)
   let exports := [(binding first "/first" calls).approve (fun _ => noReads),
     (binding second "/second" calls).approve (fun _ => noReads),
-    (binding third "/third" calls).approve (fun _ => noReads)]
+    (binding third "/third" calls).approve (fun _ => noReads),
+    (textBinding small "/small" (256 * 1024) calls).approve (fun _ => noReads),
+    (textBinding large "/large" (2 * 1024 * 1024) calls).approve (fun _ => noReads)]
   let app ← require (Application.create "generic" [{ name := "fixture", exports }])
   let statuses := [Http.ErrorStatus.ofOperation third (fun _ => 422)]
   let server ← require (Server.create app codecs { errorStatuses := statuses, maxBodyBytes := 512 })
@@ -116,19 +129,43 @@ def main : IO Unit := do
   let reply ← server.dispatch context "POST" "/third" (String.ofList (List.replicate 257 'é'))
   check "body limit counts UTF8 bytes before parsing" (reply.status == 413)
   let issued ← IO.mkRef 0
-  let streamStatus := fun (bytes : ByteArray) => Std.Async.Async.block do
+  let streamStatus := fun (path : String) (bytes : ByteArray) => Std.Async.Async.block do
     let body ← Std.Http.Body.fromBytes bytes
     let request : Std.Http.Request Std.Http.Body.Stream := {
-      line := { method := .post, version := .v11, uri := Std.Http.RequestTarget.parse! "/third" }
+      line := { method := .post, version := .v11, uri := Std.Http.RequestTarget.parse! path }
       body }
     let result ← Std.Async.ContextAsync.run (server.handler (fun _ => do
       issued.modify (· + 1)
       pure context) request)
     return result.line.status.toCode.toNat
   check "streaming body bound enforced before context issuance"
-    ((← streamStatus (String.ofList (List.replicate 513 'x')).toUTF8) == 413 && (← issued.get) == 0)
+    ((← streamStatus "/third" (String.ofList (List.replicate 513 'x')).toUTF8) == 413 && (← issued.get) == 0)
   check "invalid UTF8 rejected before context issuance"
-    ((← streamStatus ⟨#[255]⟩) == 400 && (← issued.get) == 0)
+    ((← streamStatus "/third" ⟨#[255]⟩) == 400 && (← issued.get) == 0)
+  let padded := fun (op : Operation .query String Nat String) (size : Nat) =>
+    (Http.encodeRequest codecs ⟨op.identity, .query, op.inputCodec.encode (String.ofList (List.replicate size 'x'))⟩).compress
+  let oversized := padded small (300 * 1024)
+  let handled ← calls.get
+  check "300 KiB body to a 256 KiB path is 413 before context issuance and dispatch"
+    ((← streamStatus "/small" oversized.toUTF8) == 413 && (← issued.get) == 0 && (← calls.get) == handled)
+  check "the same body to a 2 MiB path succeeds"
+    ((← streamStatus "/large" (padded large (300 * 1024)).toUTF8) == 200 && (← issued.get) == 1 && (← calls.get) == handled + 1)
+  check "buffered dispatch applies the binding cap as well"
+    ((← server.dispatch context "POST" "/small" oversized).status == 413 &&
+      (← server.dispatch context "POST" "/large" (padded large (300 * 1024))).status == 200)
+  check "a path without an override keeps the server default"
+    (bodyLimitFor app.manifest server.config "/third" == 512 && bodyLimitFor app.manifest server.config "/missing" == 512 &&
+      (← server.dispatch context "POST" "/third" (String.ofList (List.replicate 513 'x'))).status == 413)
+  check "the wire limit is the largest cap in effect" (wireBodyLimitFor app.manifest server.config == 2 * 1024 * 1024)
+  check "manifest metadata carries the per-operation cap"
+    (((app.manifest.find? (·.http.path == "/large")).bind (·.http.maxBodyBytes)) == some (2 * 1024 * 1024) &&
+      ((app.manifest.find? (·.http.path == "/third")).bind (·.http.maxBodyBytes)) == none)
+  check "zero and oversized binding caps are rejected"
+    (rejected "http.invalid_body_limit" (Application.create "bad" [{ name := "bad", exports := [
+        (textBinding small "/small" 0 calls).approve (fun _ => noReads)] }]) &&
+      rejected "http.invalid_body_limit" (HttpBinding.validate { path := "/x", maxBodyBytes := some (2^32 + 1) }))
+  check "rate limit burst defaults to a sixth of the per-minute rate"
+    ((⟨1200, 200⟩ : RateLimit) == { perPrincipalPerMinute := 1200 } && ({ perPrincipalPerMinute := 1200, burst := 20 } : RateLimit).burst == 20)
   let result ← transport.interpreter.call third 500
   check "host exception hides details in protocol envelope" (match result with
     | .error (.protocol e) => e.code == "handler.failed" && e.status == some 500 | _ => false)

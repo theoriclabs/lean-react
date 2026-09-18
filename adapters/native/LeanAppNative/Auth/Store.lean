@@ -140,6 +140,11 @@ structure CacheStats where
   size : Nat
   deriving Repr, BEq
 
+/-- Token bucket in sixtieths of a token, so a per-minute rate refills whole units per second. -/
+private structure Bucket where
+  level : Nat
+  updatedAt : Nat
+
 structure Service where
   private mk ::
   private runtime : Runtime.Service
@@ -147,6 +152,7 @@ structure Service where
   private kdf : Std.BaseMutex
   private throttle : Std.Mutex Throttle
   private cache : Std.Mutex Cache
+  private buckets : Std.Mutex (Std.HashMap String Bucket)
   private clock : IO Nat
   config : Service.Config
 
@@ -192,7 +198,8 @@ def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
     unless validTenant tenant do return .error .internal
   try
     let dummy ← Crypto.hashPassword "leanapp-unknown-user-dummy-password"
-    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) (← Std.Mutex.new {}) clock config
+    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) (← Std.Mutex.new {})
+      (← Std.Mutex.new {}) clock config
     let result ← admitted service fun conn => runDb conn <| withTransaction do
       untrackedSqlite fun db => do
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_username ON {quoteIdent (Entity.tableName Account)} (username)"
@@ -256,6 +263,25 @@ def Service.cacheStats (service : Service) : IO CacheStats :=
   service.cache.atomically fun ref => do
     let cache ← ref.get
     return ⟨cache.hits, cache.misses, cache.invalidations, cache.entries.size⟩
+
+/-- Per-(principal, operation) token bucket for a binding's declared `RateLimit`. Returns the
+`Retry-After` seconds when the request is refused. Process-local like the credential throttles;
+the service clock has second resolution, so refills land in whole seconds. -/
+def Service.admitRate (service : Service) (actor path : String) (limit : RateLimit) : IO (Option Nat) := do
+  let now ← service.clock
+  let capacity := max limit.burst 1 * 60
+  service.buckets.atomically fun ref => do
+    let buckets ← ref.get
+    let buckets := if buckets.size ≥ 100000 then {} else buckets
+    let key := actor ++ "\n" ++ path
+    let bucket := (buckets.get? key).getD ⟨capacity, now⟩
+    let level := min capacity (bucket.level + (now - bucket.updatedAt) * limit.perPrincipalPerMinute)
+    if level ≥ 60 then
+      ref.set (buckets.insert key ⟨level - 60, now⟩)
+      return none
+    ref.set (buckets.insert key ⟨level, now⟩)
+    let rate := limit.perPrincipalPerMinute
+    return some (if rate == 0 then 60 else max 1 ((60 - level + rate - 1) / rate))
 
 /-- One KDF at a time, no waiting queue. Throttles are bounded, process-local defense;
 deployments also need ingress/IP limits. Restart does not preserve these counters. -/

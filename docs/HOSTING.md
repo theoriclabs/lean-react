@@ -63,7 +63,7 @@ The image listens on `PORT` (8080) and starts Lean on `LEANAPP_BACKEND_PORT` (41
 
 ## Operational boundaries
 
-The public process bounds body size and active upstream work. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.
+The public process bounds body size and active upstream work. The Lean process bounds simultaneous connections (`LEANAPP_BACKEND_MAX_CONNECTIONS`, default 64), applies each operation's declared body cap before buffering, and enforces declared per-principal rate limits with `429` and `Retry-After`. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.
 
 On SIGTERM, the public process stops admission and drains active HTTP exchanges before terminating Lean. A 20-second deadline forces remaining connections closed. SQLite transactions provide crash recovery; this is not the complete framework migration/drain/outbox lifecycle. Back up the volume before schema changes and qualify restoration before depending on it. Schema mismatch refuses ordinary runtime admission.
 

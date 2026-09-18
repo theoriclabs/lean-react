@@ -8,9 +8,18 @@ inductive HttpMethod where
   | post
   deriving Repr, BEq, DecidableEq
 
+/-- Declarative per-principal limit on one operation; the host enforces it with a token bucket. -/
+structure RateLimit where
+  perPrincipalPerMinute : Nat
+  burst : Nat := perPrincipalPerMinute / 6
+  deriving Repr, BEq
+
 structure HttpBinding where
   path : String
   method : HttpMethod := .post
+  /-- Overrides the server's body limit for this path; enforced before the body is buffered. -/
+  maxBodyBytes : Option Nat := none
+  rateLimit : Option RateLimit := none
   deriving Repr, BEq
 
 /-- Literal, canonical paths only. Adapters must match these exact paths without normalization. -/
@@ -22,6 +31,8 @@ def HttpBinding.validate (http : HttpBinding) : Validation Unit := do
       !http.path.toList.all (fun c => c.isAlphanum && c.toNat < 128 ||
         c == '/' || c == '-' || c == '_' || c == '.') then
     Validation.fail "http.invalid_literal_path" [] [("path", http.path)]
+  if let some limit := http.maxBodyBytes then
+    if limit == 0 || limit > 2^32 then Validation.fail "http.invalid_body_limit" [] [("path", http.path)]
 
 structure PublicMetadata where
   title : String := ""
