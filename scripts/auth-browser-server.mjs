@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 
 const fixture = await mkdtemp(resolve(tmpdir(), 'leanapp-auth-browser-'));
-const backend = spawn(resolve('adapters/native/.lake/build/bin/leanapp_auth_demo'),
+const backend = spawn(process.env.LEANAPP_AUTH_BINARY ?? resolve('adapters/native/.lake/build/bin/leanapp_auth_demo'),
   ['4178', resolve(fixture, 'auth.sqlite'), 'http://127.0.0.1:4177'], { stdio: 'inherit' });
 let frontend, stopping = false;
 function stop(code = 0) {

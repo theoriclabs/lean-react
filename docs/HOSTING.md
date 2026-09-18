@@ -61,6 +61,27 @@ The application uses `RAILWAY_PUBLIC_DOMAIN` for its exact HTTPS origin and `RAI
 
 The image listens on `PORT` (8080) and starts Lean on `LEANAPP_BACKEND_PORT` (4181). Health checks use `/health/ready`. A missing configured origin or persistent path fails startup. Production cookies are Secure/HttpOnly/SameSite=Strict; no CORS allowance is emitted.
 
+## Gateway module
+
+The public process is [engine/gateway/index.mjs](../engine/gateway/index.mjs). `scripts/serve-cafe.mjs`, `scripts/serve-notes.mjs` and `scripts/auth-dev.mjs` are configurations of it; the deployment snapshot and both Dockerfiles ship the module next to the entry script. `createGateway(config)` spawns or attaches to the Lean process, waits for `/health/ready`, reads the public manifest, and only then listens. It resolves once listening and rejects after terminating the child when startup fails.
+
+```js
+await createGateway({
+  name: 'Proof & Pour', port, origin,                  // exact public origin; development binds loopback and omits HSTS
+  backend: { binary, port: backendPort, env: { LEANAPP_DB_PATH } },   // or { attach: { url: 'http://127.0.0.1:4178' } }
+  assets: { dir: 'examples/dist-cafe', spa: false, files: [['/', 'index.html', 'text/html'], /* … */] },
+  routes: { fromManifest: true, extra: ['/auth/*'], bodyBytes: { default: 8192, '/api/ops/submit': 262144 } },
+  limits: { inFlight: 32, maxConnections: 64, upstreamTimeoutMs: 15000, requestTimeoutMs: 10000 },
+  headers: { csp: "default-src 'self'; …" },           // defaults are the café's header set
+  drainMs: 20000, log: 'json',                          // or 'silent'
+  hooks: { onProxied(req, reply) {} },                  // reply: { status, headers, body } after each proxied exchange
+});
+```
+
+The spawned child receives `LEANAPP_ORIGIN` and `LEANAPP_BACKEND_PORT` from the gateway plus `backend.env`. The allowlist is a set of literal paths: every `operations[].http.path` in `GET /api/manifest`, the manifest path, `/health/ready`, and `routes.extra` entries, which are literal paths or `prefix/*`. Manifest paths must satisfy the same literal-path rule as `HttpBinding.validate`; a violation or an unreachable manifest refuses to start. Operations without `http.path` (older binaries) produce one warning and are covered by `routes.extra`. Requests to anything else, or with methods other than GET/POST, are answered 404 before reaching Lean. Per-route `http.maxBodyBytes` from the manifest overrides `routes.bodyBytes`.
+
+Every proxied request keeps the existing gates: duplicate forwarded headers are rejected, `X-LeanApp-Request: 1` is required except for readiness, POSTs need the exact `Origin` and a JSON content type, only `origin, cookie, content-type, x-csrf-token, x-leanapp-request, accept` travel upstream and only `set-cookie, content-type, retry-after` travel back. The in-flight cap answers 429 with `Retry-After`; the body cap answers 413. `npm run test:gateway` exercises each gate against a stub backend, including drain timing and backend crash propagation.
+
 ## Operational boundaries
 
 The public process bounds body size and active upstream work. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.

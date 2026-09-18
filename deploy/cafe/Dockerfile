@@ -26,6 +26,7 @@ COPY --from=build /src/leansqlite/LICENSE /app/licenses/SQLite-LICENSE
 COPY --from=build /src/leanreact/adapters/native/.lake/build/bin/leanapp_cafe /app/bin/leanapp_cafe
 COPY --from=build /src/leanreact/examples/dist-cafe /app/examples/dist-cafe
 COPY --from=build /src/leanreact/scripts/serve-cafe.mjs /app/scripts/serve-cafe.mjs
+COPY --from=build /src/leanreact/engine/gateway /app/engine/gateway
 COPY SOURCE-MANIFEST.json /app/SOURCE-MANIFEST.json
 ENV NODE_ENV=production PORT=8080 LEANAPP_CAFE_BINARY=/app/bin/leanapp_cafe LEANAPP_BACKEND_PORT=4181
 EXPOSE 8080
