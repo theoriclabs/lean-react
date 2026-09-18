@@ -1,6 +1,6 @@
 # LeanApp portable workspace. Preserve the Lake package name for existing consumers.
 name = "leanreact"
-version = "0.1.0"
+version = "0.2.0-rc.1"
 defaultTargets = ["LeanOntology", "LeanContract", "LeanApp", "LeanReact", "LeanJS", "LeanReact.Compiler"]
 
 [[input_file]]

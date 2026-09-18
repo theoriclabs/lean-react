@@ -1,6 +1,6 @@
 # 0.2.0-rc.1 release preparation
 
-This candidate introduces LeanApp's full-stack foundation and the [live Proof & Pour café](https://proof-and-pour-production.up.railway.app). It is experimental and has not been tagged, pushed, or published as a package. The owner selected MIT licensing and approved Railway hosting in Harsh Gupta's Projects. The published v0.1 frontend release remains unchanged. Package version fields stay at 0.1.0 until the release is cut; `0.2.0-rc.1` is the prepared candidate name.
+This candidate introduces LeanApp's full-stack foundation and the [live Proof & Pour café](https://proof-and-pour-production.up.railway.app). It is experimental and has not been tagged, pushed, or published as a package. The owner selected MIT licensing and approved Railway hosting in Harsh Gupta's Projects. The published v0.1 frontend release remains unchanged. Package version fields are aligned to `0.2.0-rc.1` on this candidate branch; it is still experimental and not an npm/GitHub release tag.
 
 ## Candidate contents
 

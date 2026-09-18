@@ -14,7 +14,7 @@ def authCryptoLinkArgs : Array String :=
     | none => #[]) ++ #["-lcrypto"]
 
 package leanapp_native where
-  version := v!"0.1.0"
+  version := v!"0.2.0-rc.1"
   moreLinkArgs := authCryptoLinkArgs
 
 require leanreact from (get_config? leanreact).getD "../.."
