@@ -29,6 +29,9 @@ structure Service.Config where
   tenantPolicy : TenantPolicy := .privatePerAccount
   maxSessions : Nat := 1
   sessionLabel : Bool := true
+  /-- Session cache lifetime in milliseconds; 0 disables it. 30 s is the recommended setting. -/
+  sessionCacheTtlMs : Nat := 0
+  sessionCacheMax : Nat := 10000
   deriving Repr
 
 def username (input : String) : Except Error String := do
@@ -114,12 +117,36 @@ private structure Throttle where
   total : Nat := 0
   names : List (String × Nat) := []
 
+/-- A resolved session keyed by token digest. `cachedAt` is monotonic milliseconds; `expiresAt`
+is the session's own expiry in clock seconds and is rechecked on every hit. -/
+private structure CacheEntry where
+  user : User
+  csrf : String
+  expiresAt : Nat
+  cachedAt : Nat
+
+/-- Process-local; every event that changes session validity happens in this process. -/
+private structure Cache where
+  entries : Std.HashMap String CacheEntry := {}
+  actors : Std.HashMap String (List String) := {}
+  hits : Nat := 0
+  misses : Nat := 0
+  invalidations : Nat := 0
+
+structure CacheStats where
+  hits : Nat
+  misses : Nat
+  invalidations : Nat
+  size : Nat
+  deriving Repr, BEq
+
 structure Service where
   private mk ::
   private runtime : Runtime.Service
   private dummyHash : String
   private kdf : Std.BaseMutex
   private throttle : Std.Mutex Throttle
+  private cache : Std.Mutex Cache
   private clock : IO Nat
   config : Service.Config
 
@@ -165,7 +192,7 @@ def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
     unless validTenant tenant do return .error .internal
   try
     let dummy ← Crypto.hashPassword "leanapp-unknown-user-dummy-password"
-    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) clock config
+    let service := Service.mk runtime dummy (← Std.BaseMutex.new) (← Std.Mutex.new {}) (← Std.Mutex.new {}) clock config
     let result ← admitted service fun conn => runDb conn <| withTransaction do
       untrackedSqlite fun db => do
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_username ON {quoteIdent (Entity.tableName Account)} (username)"
@@ -174,6 +201,61 @@ def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
         db.exec s!"CREATE UNIQUE INDEX IF NOT EXISTS leanapp_auth_invite ON {quoteIdent (Entity.tableName Invite)} (tokenDigest)"
     return result.map (fun _ => service)
   catch _ => return .error .internal
+
+private def Cache.remove (cache : Cache) (digests : List String) : Cache := Id.run do
+  let mut entries := cache.entries
+  let mut actors := cache.actors
+  let mut removed := 0
+  for digest in digests do
+    if let some entry := entries.get? digest then
+      entries := entries.erase digest
+      removed := removed + 1
+      let rest := (actors.getD entry.user.actor []).filter (· != digest)
+      actors := if rest.isEmpty then actors.erase entry.user.actor else actors.insert entry.user.actor rest
+  { cache with entries, actors, invalidations := cache.invalidations + removed }
+
+/-- The cache is consulted only when enabled; a stale or expired entry counts as a miss. -/
+private def Service.cacheLookup (service : Service) (digest : String) : IO (Option CacheEntry) := do
+  let ttl := service.config.sessionCacheTtlMs
+  if ttl == 0 then return none
+  let nowMs ← IO.monoMsNow
+  let now ← service.clock
+  service.cache.atomically fun ref => do
+    let cache ← ref.get
+    match cache.entries.get? digest with
+    | some entry =>
+      if nowMs < entry.cachedAt + ttl && now < entry.expiresAt then
+        ref.set { cache with hits := cache.hits + 1 }
+        return some entry
+      ref.set { cache.remove [digest] with misses := cache.misses + 1 }
+      return none
+    | none =>
+      ref.set { cache with misses := cache.misses + 1 }
+      return none
+
+/-- Bounded by `sessionCacheMax`: a full cache is cleared rather than evicted selectively. -/
+private def Service.cacheStore (service : Service) (digest : String) (entry : CacheEntry) : IO Unit := do
+  if service.config.sessionCacheTtlMs == 0 then return
+  service.cache.atomically fun ref => do
+    let cache ← ref.get
+    let cache := if cache.entries.size ≥ service.config.sessionCacheMax then { cache with entries := {}, actors := {} } else cache
+    let owned := digest :: (cache.actors.getD entry.user.actor []).filter (· != digest)
+    ref.set { cache with entries := cache.entries.insert digest entry, actors := cache.actors.insert entry.user.actor owned }
+
+private def Service.cacheEvict (service : Service) (digests : List String) : IO Unit := do
+  if service.config.sessionCacheTtlMs == 0 || digests.isEmpty then return
+  service.cache.atomically fun ref => ref.modify (·.remove digests)
+
+private def Service.cacheEvictActor (service : Service) (actor : String) : IO Unit := do
+  if service.config.sessionCacheTtlMs == 0 then return
+  service.cache.atomically fun ref => do
+    let cache ← ref.get
+    ref.set (cache.remove (cache.actors.getD actor []))
+
+def Service.cacheStats (service : Service) : IO CacheStats :=
+  service.cache.atomically fun ref => do
+    let cache ← ref.get
+    return ⟨cache.hits, cache.misses, cache.invalidations, cache.entries.size⟩
 
 /-- One KDF at a time, no waiting queue. Throttles are bounded, process-local defense;
 deployments also need ingress/IP limits. Restart does not preserve these counters. -/
@@ -304,7 +386,7 @@ def Service.signup (service : Service) (input password : String)
 /-- Verify a password for a stored account outside the database lock, then run `issue` under one
 admitted transaction against the rechecked account row. Unknown names cost one dummy KDF. -/
 private def verifiedThen (service : Service) (name password : String)
-    (issue : Stored Account → Nat → DbM (TransactionDecision Error Issued)) : IO (Except Error Issued) := do
+    (issue : Stored Account → Nat → DbM (TransactionDecision Error β)) : IO (Except Error β) := do
   let loaded ← admitted service fun conn => runDb conn (accountByName name)
   let candidate ← match loaded with
     | .ok candidate => pure candidate
@@ -333,12 +415,16 @@ def Service.login (service : Service) (input password : String)
     let token ← Crypto.randomToken
     let csrf ← Crypto.randomToken
     let digest ← Crypto.digestToken token
-    verifiedThen service name password fun current now => do
+    let issued ← verifiedThen service name password fun current now => do
       let next := if service.config.maxSessions == 1
         then { current.val with generation := current.val.generation + 1 } else current.val
       if service.config.maxSessions == 1 then discard <| update current next
-      discard <| addSession service next digest csrf now label
-      return .commit (Issued.mk token csrf (userOf next))
+      let evicted ← addSession service next digest csrf now label
+      return .commit (Issued.mk token csrf (userOf next), evicted)
+    let .ok (issued, evicted) := issued | return issued.map (·.1)
+    -- A generation bump invalidates every cached session of the actor; otherwise only the evicted.
+    if service.config.maxSessions == 1 then service.cacheEvictActor issued.user.actor else service.cacheEvict evicted
+    return .ok issued
 
 /-- `lastSeenAt` is refreshed at most once per five minutes to avoid a write per request. -/
 private def touchSession (session : Stored Session) (now : Nat) : DbM Unit := do
@@ -359,22 +445,32 @@ private def resolveSession (digest : String) (now : Nat) : DbM (Except Error (St
   touchSession session now
   return .ok (session, userOf account.val)
 
+private def csrfAccepted (csrf : Option String) (expected : String) : IO Bool := do
+  let some supplied := csrf | return true
+  return tokenShape supplied && (← Crypto.constantTimeEqual supplied expected)
+
 /-- Verification, current membership and application policy execute within one admitted
-callback. Trusted callback must not retain conn or recursively enter this service. -/
+callback. Trusted callback must not retain conn or recursively enter this service.
+A session cache hit skips the database work of the authentication step only; the callback still
+runs under `withConnection`. Cache entries are only ever written inside that same queue, so an
+invalidation issued after a committed change removes every entry that predates it. -/
 def Service.withAuthenticated (service : Service) (token : String) (csrf : Option String)
     (requestId : String) (action : Conn → RequestContext → User → IO α) : IO (Except Error α) := do
   unless tokenShape token do return .error .unauthenticated
   try
     let digest ← Crypto.digestToken token
+    if let some entry ← service.cacheLookup digest then
+      unless ← csrfAccepted csrf entry.csrf do return .error .forbidden
+      let context := TrustedNative.issueContext ⟨entry.user.actor, entry.user.tenant, entry.user.generation⟩ requestId
+      return ← admitted service fun conn => .ok <$> action conn context entry.user
     admitted service fun conn => do
       let now ← service.clock
       let checked ← runDb conn (resolveSession digest now)
       match flatten checked with
       | .error e => return .error e
       | .ok (session, user) =>
-        if let some supplied := csrf then
-          unless tokenShape supplied && (← Crypto.constantTimeEqual supplied session.val.csrf) do
-            return .error .forbidden
+        unless ← csrfAccepted csrf session.val.csrf do return .error .forbidden
+        service.cacheStore digest ⟨user, session.val.csrf, session.val.expiresAt.toInt.toNat, ← IO.monoMsNow⟩
         let context := TrustedNative.issueContext ⟨user.actor, user.tenant, user.generation⟩ requestId
         return .ok (← action conn context user)
   catch _ => return .error .internal
@@ -411,7 +507,9 @@ def Service.withAuthenticatedTransaction (service : Service) (token csrf : Strin
 def Service.logout (service : Service) (token csrf : String) : IO (Except Error Unit) := do
   let result ← service.withAuthenticated token (some csrf) "logout" fun conn _ _ => do
     let digest ← Crypto.digestToken token
-    runDb conn <| withTransaction <| deleteSession digest
+    let deleted ← runDb conn <| withTransaction <| deleteSession digest
+    service.cacheEvict [digest]
+    pure deleted
   return flatten result
 
 /-- The caller's live sessions (current generation, unexpired), newest first. -/
@@ -440,17 +538,20 @@ def Service.revokeSession (service : Service) (token csrf id : String) : IO (Exc
       if ← Crypto.constantTimeEqual (← sessionId s.val) id then target := some s.val.tokenDigest
     let some victim := target | return .error Error.sessionNotFound
     let .ok () ← runDb conn (withTransaction (deleteSession victim)) | throw (IO.userError "revoke failed")
+    service.cacheEvict [victim]
     return .ok (victim == digest)
   return flatten result
 
 /-- Sign out everywhere: bump the generation and delete every session of the caller. -/
 def Service.logoutAll (service : Service) (token csrf : String) : IO (Except Error Unit) := do
   let result ← service.withAuthenticated token (some csrf) "logout-all" fun conn _ user => do
-    runDb conn <| withTransaction do
+    let cleared ← runDb conn <| withTransaction do
       let some account ← accountByActor user.actor | throw (.sqlite "account unavailable")
       if account.val.generation.toInt ≥ 9223372036854775807 then throw (.sqlite "invalid account state")
       discard <| update account { account.val with generation := account.val.generation + 1 }
       deleteSessions user.actor
+    service.cacheEvictActor user.actor
+    pure cleared
   return flatten result
 
 /-- Verify the current password under the KDF gate (same throttles as login), store the new hash,
@@ -463,17 +564,17 @@ def Service.changePassword (service : Service) (token csrf current next : String
   let identified ← service.withAuthenticated token (some csrf) "password" fun conn _ user => do
     let digest ← Crypto.digestToken token
     let .ok (some session) ← runDb conn (sessionByDigest digest) | throw (IO.userError "session unavailable")
-    pure (user.username, session.val.label)
-  let (name, label) ← match identified with
+    pure (user, session.val.label)
+  let (user, label) ← match identified with
     | .ok value => pure value
     | .error e => return .error e
-  withPasswordWork service name do
+  let changed ← withPasswordWork service user.username do
     let hash ← Crypto.hashPassword next
     let fresh ← Crypto.randomToken
     let freshCsrf ← Crypto.randomToken
     let freshDigest ← Crypto.digestToken fresh
     let digest ← Crypto.digestToken token
-    verifiedThen service name current fun account now => do
+    verifiedThen service user.username current fun account now => do
       -- The caller's session must still be live under the generation checked at the start.
       let some session ← sessionByDigest digest | return .abort Error.unauthenticated
       if session.val.generation != account.val.generation || session.val.expiresAt.toInt ≤ now then
@@ -483,14 +584,18 @@ def Service.changePassword (service : Service) (token csrf current next : String
       deleteSessions account.val.actor
       discard <| addSession service updated freshDigest freshCsrf now label
       return .commit (Issued.mk fresh freshCsrf (userOf updated))
+  if changed.isOk then service.cacheEvictActor user.actor
+  return changed
 
 /-- Private administration only. Account disable or tenant changes revoke all sessions. -/
-def Service.setAccess (service : Service) (actor tenant : String) (enabled : Bool) : IO (Except Error Unit) :=
-  admitted service fun conn => runDb conn <| withTransaction do
+def Service.setAccess (service : Service) (actor tenant : String) (enabled : Bool) : IO (Except Error Unit) := do
+  let result ← admitted service fun conn => runDb conn <| withTransaction do
     let some old ← accountByActor actor | throw (.sqlite "account unavailable")
     if tenant.isEmpty || old.val.generation.toInt ≥ 9223372036854775807 then throw (.sqlite "invalid account state")
     discard <| update old { old.val with tenant, enabled, generation := old.val.generation + 1 }
     deleteSessions actor
+  service.cacheEvictActor actor
+  return result
 
 def Service.ready (service : Service) : IO Bool := service.runtime.ready
 

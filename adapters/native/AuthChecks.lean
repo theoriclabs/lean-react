@@ -223,6 +223,88 @@ private def sessions : IO Unit := do
       check "legacy session can be revoked" ((← service.revokeSession token csrf listed.head!.id) == .ok true)
     finally runtime.close
 
+/-- Session-table selects recorded in LeanDB's query log: the statement trace of the auth step. -/
+private def sessionReads (runtime : LeanDb.Runtime.Service) : IO Nat := do
+  let .ok count ← runtime.withConnection fun conn => conn.withAccessIO do
+      let stmt ← conn.raw.prepare "SELECT count(*) FROM _leandb_log WHERE verb = 'select' AND detail LIKE 'session |%'"
+      discard stmt.step
+      return (← stmt.columnInt64 0).toInt.toNat
+    | throw (IO.userError "query log unavailable")
+  return count
+
+private def authenticated (service : Auth.Service) (issued : Auth.Issued) (csrf : Option String := some issued.csrf) :
+    IO (Except Auth.Error Unit) :=
+  service.withAuthenticated issued.token csrf "cached" fun _ _ _ => pure ()
+
+private def sessionCache : IO Unit := do
+  withService { sessionCacheTtlMs := 30000, maxSessions := 3 } fun service runtime now => do
+    let a ← ok (← service.signup "cached" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    let stats ← service.cacheStats
+    let context ← ok (← service.withAuthenticated a.token (some a.csrf) "hit" fun _ context _ => pure context)
+    check "second authenticated call performs no session read and issues the same principal"
+      ((← sessionReads runtime) == before && (← service.cacheStats).hits == stats.hits + 1 &&
+        context.principal == some ⟨a.user.actor, a.user.tenant, a.user.generation⟩)
+    check "cache hits still enforce the CSRF token"
+      (failure (← authenticated service a (some zeros)) .forbidden && (← service.cacheStats).hits == stats.hits + 2)
+    check "cache misses are counted for unknown tokens"
+      (failure (← service.session zeros) .unauthenticated && (← service.cacheStats).misses > stats.misses)
+    let b ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service b)
+    discard <| ok (← service.logout b.token b.csrf)
+    check "logout invalidates the cache immediately" (failure (← authenticated service b) .unauthenticated)
+    let c ← ok (← service.login "cached" password)
+    let d ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service c)
+    discard <| ok (← authenticated service d)
+    let evicted ← ok (← service.login "cached" password)
+    check "session eviction invalidates the evicted entry only"
+      (failure (← authenticated service a) .unauthenticated && (← authenticated service c).isOk && (← authenticated service d).isOk)
+    let ownId := ((← ok (← service.sessions d.token d.csrf)).find? (·.current)).get!.id
+    discard <| ok (← service.revokeSession d.token d.csrf ownId)
+    check "revocation invalidates the cache immediately" (failure (← authenticated service d) .unauthenticated)
+    discard <| ok (← service.logoutAll c.token c.csrf)
+    check "generation bump invalidates every cached session of the actor"
+      (failure (← authenticated service c) .unauthenticated && failure (← authenticated service evicted) .unauthenticated)
+    let e ← ok (← service.login "cached" password)
+    let f ← ok (← service.login "cached" password)
+    discard <| ok (← authenticated service e)
+    discard <| ok (← authenticated service f)
+    let g ← ok (← service.changePassword e.token e.csrf password "a changed password for the cache")
+    check "password change invalidates cached sessions and admits the re-issued one"
+      (failure (← authenticated service e) .unauthenticated && failure (← authenticated service f) .unauthenticated &&
+        (← authenticated service g).isOk)
+    discard <| ok (← authenticated service g)
+    discard <| ok (← service.setAccess g.user.actor "moved" true)
+    check "setAccess invalidates cached sessions" (failure (← authenticated service g) .unauthenticated)
+    let h ← ok (← service.login "cached" "a changed password for the cache")
+    discard <| ok (← authenticated service h)
+    now.set (1000 + 86400)
+    check "expiry is checked on every hit" (failure (← authenticated service h) .unauthenticated)
+    let final ← service.cacheStats
+    check "cache statistics are exposed" (final.hits > 0 && final.misses > 0 && final.invalidations > 0)
+  withService { sessionCacheTtlMs := 1 } fun service runtime _ => do
+    let a ← ok (← service.signup "stale" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    IO.sleep 5
+    discard <| ok (← authenticated service a)
+    check "a stale entry misses and re-reads the session" ((← sessionReads runtime) == before + 1)
+  withService { sessionCacheTtlMs := 30000, sessionCacheMax := 2, maxSessions := 5 } fun service _ _ => do
+    let a ← ok (← service.signup "bounded" password)
+    let b ← ok (← service.login "bounded" password)
+    let c ← ok (← service.login "bounded" password)
+    for s in [a, b, c] do discard <| ok (← authenticated service s)
+    check "cache size stays within its bound" ((← service.cacheStats).size ≤ 2)
+  withService {} fun service runtime _ => do
+    let a ← ok (← service.signup "uncached" password)
+    discard <| ok (← authenticated service a)
+    let before ← sessionReads runtime
+    discard <| ok (← authenticated service a)
+    check "a disabled cache reads the session on every call"
+      ((← sessionReads runtime) == before + 1 && (← service.cacheStats) == ⟨0, 0, 0, 0⟩)
+
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
   let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
@@ -318,3 +400,4 @@ def main : IO Unit := do
   run
   tenantPolicies
   sessions
+  sessionCache
