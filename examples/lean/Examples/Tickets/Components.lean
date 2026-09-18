@@ -16,7 +16,7 @@ def Counter : Component CounterProps := Component.named "Counter" <| component f
   let count ← useCount props.initial
   pure <| DOM.div { className := some "counter" } #[
     DOM.span {} #[text props.label],
-    node "strong" #[] #[text (toString count.value)],
+    DOM.strong {} #[text (toString count.value)],
     DOM.button { ariaLabel := some ("Increment " ++ props.label), onPress := some (count.modify (· + 1)) } #[text "+1"]
   ]
 
@@ -40,7 +40,7 @@ structure CardProps where
 
 def Card : Component CardProps := Component.named "TicketCard" <| component fun props => do
   pure <| DOM.article { className := some (if props.selected then "card selected" else "card") } #[
-    node "h3" #[] #[text props.ticket.value.title.value],
+    DOM.h3 {} #[text props.ticket.value.title.value],
     DOM.span { className := some "badge" } #[text props.ticket.value.status.label],
     props.footer props.ticket,
     DOM.button { onPress := some (props.onOpen props.ticket.id) } #[text "Edit ticket"]
@@ -54,10 +54,11 @@ def TitleInput : LeanReact.Editor String := Component.named "TitleInput" <| comp
   }
 
 def TitleTextarea : LeanReact.Editor String := Component.named "TitleTextarea" <| component fun binding =>
-  pure <| node "textarea" #[
-    .string "id" "ticket-title", .string "value" binding.value,
-    .change (fun event => binding.set event.value)
-  ] #[]
+  pure <| DOM.textarea {
+    id := some "ticket-title"
+    value := some binding.value
+    onChange := some (fun event => binding.set event.value)
+  }
 
 def titleParser : DraftParser String Title :=
   DraftParser.ofExcept Title.parse Title.value fun error =>

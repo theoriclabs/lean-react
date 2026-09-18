@@ -141,6 +141,43 @@ structure KeyEvent where
   ctrl : Bool := false
   metaKey : Bool := false
   shift : Bool := false
+  /-- The key is held down and the browser is auto-repeating it (`«repeat»` in structure instances). -/
+  «repeat» : Bool := false
+  deriving Repr, BEq
+
+/-- Whether a key handler stops the browser default. Only a synchronous result can prevent it. -/
+inductive KeyOutcome where
+  | «continue»
+  | preventDefault
+  deriving Repr, BEq, DecidableEq
+
+/-- A `KeyEvent → Action Unit` handler still type-checks as a key handler and means `.continue`. -/
+instance : Coe Unit KeyOutcome := ⟨fun _ => .continue⟩
+instance : Coe (Action Unit) (Action KeyOutcome) := ⟨Action.map fun _ => .continue⟩
+instance : Coe (KeyEvent → Action Unit) (KeyEvent → Action KeyOutcome) :=
+  ⟨fun handler event => (handler event).map fun _ => .continue⟩
+
+/-- `value` is the control's current value, or `""` for elements without one. -/
+structure FocusEvent where
+  value : String := ""
+  deriving Repr, BEq
+
+/-- Live text input. `isComposing` is true during an IME composition session. -/
+structure InputEvent where
+  value : String
+  isComposing : Bool := false
+  deriving Repr, BEq
+
+/-- Clipboard contents snapshotted synchronously; `html` is absent for plain-text pastes. -/
+structure PasteEvent where
+  text : String
+  html : Option String := none
+  deriving Repr, BEq
+
+/-- Scroll offsets in whole CSS pixels. -/
+structure ScrollEvent where
+  scrollTop : Int := 0
+  scrollLeft : Int := 0
   deriving Repr, BEq
 
 inductive Attribute where
@@ -148,7 +185,19 @@ inductive Attribute where
   | bool (name : String) (value : Bool)
   | press (handler : PressEvent → Action Unit)
   | change (handler : ChangeEvent → Action Unit)
-  | keyDown (handler : KeyEvent → Action Unit)
+  | keyDown (handler : KeyEvent → Action KeyOutcome)
+  | keyUp (handler : KeyEvent → Action Unit)
+  | focus (handler : FocusEvent → Action Unit)
+  | blur (handler : FocusEvent → Action Unit)
+  | input (handler : InputEvent → Action Unit)
+  | paste (handler : PasteEvent → Action Unit)
+  | mouseEnter (handler : PressEvent → Action Unit)
+  | mouseLeave (handler : PressEvent → Action Unit)
+  | scroll (handler : ScrollEvent → Action Unit)
+  /-- The browser default (navigation) is always prevented before the handler runs. -/
+  | submit (handler : Action Unit)
+  /-- Inline style entries with React's camelCase property names. -/
+  | style (entries : Array (String × String))
 
 /-- A fully evaluated native inspection tree. It is not the browser representation. -/
 inductive RenderedTree where

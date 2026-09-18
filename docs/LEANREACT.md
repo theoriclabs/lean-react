@@ -67,12 +67,17 @@ The playground includes:
 - A ticket workspace with interchangeable layouts and field editors.
 - Collection forms that keep each row’s state when you reorder them and preserve invalid input while you edit.
 - A context provider and consumer built in separate libraries that share live updates.
+- A feedback form built from typed `form`, `textarea` and `select` helpers: blur validation, paste handling, Enter-to-submit without a reload, and a key handler that decides whether the browser default runs.
 
 ![Ticket workspace with a saved edit and replaceable layouts and editors](images/workspace.png)
 
 ![Collection form with keyed rows, validation errors, and the Lean source that composes the editor](images/collections.png)
 
 Shared domain definitions, called *ontologies* in this project, describe application data and its rules. For example, the same title validator can run in your form and on a Lean backend. Start with a type and a parsing function; add richer descriptions when your application needs them.
+
+## DOM, forms and accessibility
+
+`DOM.*` helpers cover the ordinary HTML surface with typed props: headings through `h6`, landmarks (`nav header footer main aside`), text (`strong em code pre kbd`), tables, `img`, `dialog`, `details`/`summary`, and the controls `input`, `textarea`, `select`/`«option»`, `button` and `form`. Shared props include `tabIndex`, `hidden`, `data` (rendered as `data-*`), the common `aria*` attributes and an inline `style` array keyed by a closed `StyleProp` enum, so a misspelled CSS property is a compile error. Every event arrives as a small immutable Lean record: `PressEvent`, `ChangeEvent`, `KeyEvent`, `FocusEvent`, `InputEvent`, `PasteEvent`, `ScrollEvent`. A `form` never navigates: its submit default is always prevented before `onSubmit` runs. `onKeyDown` returns a `KeyOutcome` (`.continue` or `.preventDefault`); handlers returning `Action Unit` still compile and mean `.continue`. See the [API reference](../engine/LeanReact/API.md#dom-helpers-and-events) for the full table and accessibility notes.
 
 ## CSS and existing React libraries
 

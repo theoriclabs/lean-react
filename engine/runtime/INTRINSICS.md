@@ -30,7 +30,8 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 
 - `LeanReact.State`: `{value, set, modify, read}`. `value` is already a backend value; `set` and `modify` have already been wrapped with `abi.closure`; `read` is an opaque Action handle. Encode the record layout, not these values again.
 - `LeanReact.PressEvent`: `{alt, ctrl, metaKey, shift}`. These are host booleans: encode them as backend Bool values.
-- `LeanReact.ChangeEvent`: `{value, checked}` with a host string and boolean. `LeanReact.KeyEvent`: `{key, alt, ctrl, metaKey, shift}` with a host string and booleans. Encode each primitive before constructing the backend record.
+- `LeanReact.ChangeEvent`: `{value, checked}` with a host string and boolean. `LeanReact.KeyEvent`: `{key, alt, ctrl, metaKey, shift, repeat}` with a host string and booleans. Encode each primitive before constructing the backend record.
+- `LeanReact.FocusEvent`: `{value}` (host string, `""` for elements without a value). `LeanReact.InputEvent`: `{value, isComposing}`. `LeanReact.PasteEvent`: `{text, html}` where `html` is a host string or `null` (encode as `Option String`). `LeanReact.ScrollEvent`: `{scrollTop, scrollLeft}` as host integers (encode as `Int`).
 
 `attribute` produces exactly one of:
 
@@ -39,10 +40,17 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 { kind: "bool", name: "disabled", value: false }
 { kind: "press", handler: encodedLeanClosure }
 { kind: "change", handler: encodedLeanClosure }
-{ kind: "keyDown", handler: encodedLeanClosure }
+{ kind: "keyDown", handler: encodedLeanClosure }        // handler returns Action KeyOutcome
+{ kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll", handler: encodedLeanClosure }
+{ kind: "submit", action: encodedAction }               // Action Unit; the runtime always prevents the default first
+{ kind: "style", entries: [["backgroundColor", "red"], ...] }  // React camelCase names, string values
 ```
 
+`keyDown` handlers return `Action KeyOutcome`. The adapter additionally requires `keyOutcome(encoded)`, decoding `LeanReact.KeyOutcome` to the host string `"preventDefault"` or `"continue"`; the runtime calls `preventDefault()` only for a **synchronous** `"preventDefault"` result and reports an asynchronous one through `onActionError`, because the browser default cannot be prevented after the event has dispatched. `mouseEnter`/`mouseLeave` receive `PressEvent` modifier payloads.
+
 This is a host protocol defined by P03; it is **not** a guess about the compiler's constructor encoding. Unknown variants should fail decoding.
+
+The integrated adapter (`leanjs-react.mjs`) maps the Lean `Attribute` constructors directly: `LeanReact.Attribute.keyDown` (fields `[handler]`) through `LeanReact.Attribute.style` (fields `[Array (String × String)]`), with `LeanReact.KeyEvent.mk` fields `[key, alt, ctrl, metaKey, shift, repeat]`, `LeanReact.FocusEvent.mk [value]`, `LeanReact.InputEvent.mk [value, isComposing]`, `LeanReact.PasteEvent.mk [text, Option html]`, `LeanReact.ScrollEvent.mk [scrollTop, scrollLeft]` and `LeanReact.KeyOutcome.continue | preventDefault`. DOM helpers such as `DOM.form`, `DOM.textarea`, `DOM.select` and `Props.attributes` are ordinary compiled Lean; only `LeanReact.node` crosses the boundary, so no arity changes were needed for the added surface.
 
 ## Required intrinsic declarations
 

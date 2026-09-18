@@ -89,4 +89,42 @@ def main : IO Unit := do
     let _ ← Reference.render <| keyedEach #[1, 1] Key.nat (fun n => text (toString n))
   catch _ => duplicateRejected := true
   assertTrue duplicateRejected "duplicate sibling keys accepted"
-  IO.println "LeanReact reference checks passed (state/actions, hooks, effects, context, callbacks, slots, keys)."
+
+  -- Typed form surface: the reference renderer records the new attributes and dispatches their events.
+  let submitted ← IO.mkRef (#[] : Array String)
+  let nameError ← IO.mkRef ""
+  let kept ← IO.mkRef false
+  let legacyPresses ← IO.mkRef 0
+  let formTree ← Reference.render <| DOM.form { onSubmit := Action.ofIO (submitted.modify (·.push "sent")) } #[
+    DOM.input {
+      id := some "name", tabIndex := some 0, data := #[("testid", "name")], autoComplete := some "name",
+      onBlur := some fun event => Action.ofIO (nameError.set (if event.value.isEmpty then "required" else "")) },
+    DOM.select { id := some "topic", value := some "a" } #[DOM.option { value := "a" } #[text "Topic A"]],
+    DOM.textarea {
+      id := some "message", rows := some 3, style := #[(.resize, "vertical")],
+      onKeyDown := some fun event => Action.ofIO do
+        if event.ctrl && event.key == "s" then kept.set true; pure .preventDefault else pure .continue },
+    -- An `Action Unit` handler still type-checks as a key handler and records `.continue`.
+    DOM.div { id := some "legacy", onKeyDown := some fun _ => Action.ofIO (legacyPresses.modify (· + 1)) } #[],
+    DOM.button { type := .submit } #[text "Send"]]
+  let some formAttributes := Reference.RenderedTree.byTag? formTree.value "form" | throw <| IO.userError "missing form"
+  Reference.dispatchSubmit formAttributes
+  assertTrue ((← submitted.get) == #["sent"]) "form submit handler"
+  let some nameAttributes := Reference.RenderedTree.byTestId? formTree.value "name" | throw <| IO.userError "missing data-testid"
+  assertTrue (Reference.attribute? nameAttributes "tabIndex" == some "0") "tabIndex recorded"
+  assertTrue (Reference.attribute? nameAttributes "autoComplete" == some "name") "autoComplete recorded"
+  Reference.dispatchBlur nameAttributes
+  assertTrue ((← nameError.get) == "required") "blur validation"
+  Reference.dispatchBlur nameAttributes { value := "Ada" }
+  assertTrue ((← nameError.get) == "") "blur validation cleared"
+  assertTrue ((Reference.RenderedTree.byTag? formTree.value "option").isSome && Reference.RenderedTree.textContent formTree.value == "Topic ASend") "select options rendered"
+  let some messageAttributes := Reference.RenderedTree.byId? formTree.value "message" | throw <| IO.userError "missing textarea"
+  assertTrue (Reference.attribute? messageAttributes "rows" == some "3") "rows recorded"
+  assertTrue (messageAttributes.any fun attr => match attr with | .style entries => entries == #[("resize", "vertical")] | _ => false) "style recorded"
+  assertTrue ((← Reference.dispatchKeyDown messageAttributes { key := "s", ctrl := true }) == .preventDefault) "Ctrl+S recorded as preventDefault"
+  assertTrue (← kept.get) "key handler action ran"
+  assertTrue ((← Reference.dispatchKeyDown messageAttributes { key := "s" }) == .continue) "plain key continues"
+  let some legacyAttributes := Reference.RenderedTree.byId? formTree.value "legacy" | throw <| IO.userError "missing legacy node"
+  assertTrue ((← Reference.dispatchKeyDown legacyAttributes { key := "a" }) == .continue) "Action Unit key handler continues"
+  assertTrue ((← legacyPresses.get) == 1) "Action Unit key handler ran"
+  IO.println "LeanReact reference checks passed (state/actions, hooks, effects, context, callbacks, slots, keys, forms)."

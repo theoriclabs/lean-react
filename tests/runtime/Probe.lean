@@ -17,3 +17,4 @@ example (hook : Hook α) (layout : α → Element) : Component Unit :=
 #check_failure DOM.input { onChange := some (fun (_ : PressEvent) => pure ()) }
 #check_failure DOM.button { onPress := some (pure "wrong result" : Action String) }
 #check_failure (show State Nat → Action Unit from fun state => state.set "wrong state")
+#check_failure DOM.div { style := #[(.colour, "red")] }

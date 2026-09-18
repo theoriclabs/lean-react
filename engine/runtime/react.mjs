@@ -96,19 +96,47 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   }
   const dom = (tag, props = {}, children = []) => React.createElement(tag, props, ...children);
   const modifiers = event => ({ alt: !!event.altKey, ctrl: !!event.ctrlKey, metaKey: !!event.metaKey, shift: !!event.shiftKey });
-  function event(callback, project) {
+  // `settle(result, raw, async)` observes the action result; only a synchronous result can still affect `raw`.
+  function event(callback, project, settle) {
     return raw => {
       try {
         const payload = Object.freeze(project(raw));
         const result = runAction(callback(payload));
-        if (result != null && typeof result.then === "function") Promise.resolve(result).catch(report);
+        if (result != null && typeof result.then === "function") {
+          Promise.resolve(result).then(value => settle?.(value, raw, true)).catch(report);
+        } else settle?.(result, raw, false);
       } catch (error) { report(error); }
     };
   }
   const onPress = work => event(() => work, () => ({}));
   const onClick = callback => event(callback, modifiers);
   const onChange = callback => event(callback, e => ({ value: String(e.currentTarget.value), checked: !!e.currentTarget.checked }));
-  const onKeyDown = callback => event(callback, e => ({ key: String(e.key), ...modifiers(e) }));
+  const keyPayload = e => ({ key: String(e.key), ...modifiers(e), repeat: !!e.repeat });
+  /** The action resolves to the host outcome `"preventDefault"` or `"continue"`; the browser default can only
+   * be prevented synchronously, so an asynchronous `"preventDefault"` is reported as an error. */
+  const onKeyDown = callback => event(callback, keyPayload, (outcome, raw, async) => {
+    if (outcome !== "preventDefault") return;
+    if (async) throw new Error("LeanReact KeyOutcome.preventDefault resolved asynchronously; decide it before awaiting host work");
+    raw.preventDefault();
+  });
+  const onKeyUp = callback => event(callback, keyPayload);
+  const focusPayload = e => ({ value: e.currentTarget?.value == null ? "" : String(e.currentTarget.value) });
+  const onFocus = callback => event(callback, focusPayload);
+  const onBlur = callback => event(callback, focusPayload);
+  const onInput = callback => event(callback, e => ({ value: String(e.currentTarget.value ?? ""), isComposing: !!e.nativeEvent?.isComposing }));
+  // Clipboard data is only readable during dispatch, so it is copied before any deferred work.
+  const onPaste = callback => event(callback, e => {
+    const data = e.clipboardData;
+    const html = data?.getData("text/html") ?? "";
+    return { text: data?.getData("text/plain") ?? "", html: html === "" ? null : html };
+  });
+  const onMouseEnter = callback => event(callback, modifiers);
+  const onMouseLeave = callback => event(callback, modifiers);
+  const onScroll = callback => event(callback, e => ({
+    scrollTop: Math.floor(Number(e.currentTarget.scrollTop) || 0), scrollLeft: Math.floor(Number(e.currentTarget.scrollLeft) || 0),
+  }));
+  /** A form submit never navigates: the default is prevented before the action runs. */
+  const onSubmit = work => raw => { raw.preventDefault(); event(() => work, () => ({}))(raw); };
   function useState(initial, site = "") {
     return hook(() => {
       mark("state", site);
@@ -184,6 +212,7 @@ export function createRuntime(React, { onActionError = error => { throw error; }
     });
   }
   return Object.freeze({ component, nameComponent, element, foreignElement, text, fragment, empty: null, keyed, keyedEach,
-    dom, event, onPress, onClick, onChange, onKeyDown, useState, createContext, provide, provider, useContext, useEffect,
+    dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
+    onScroll, onSubmit, useState, createContext, provide, provider, useContext, useEffect,
     runHook, bindHook, mapHook, namedHook, primitiveHook });
 }

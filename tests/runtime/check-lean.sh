@@ -19,7 +19,7 @@ if ! lean tests/runtime/Probe.lean > "$build_dir/typechecks.log" 2>&1; then
   cat "$build_dir/typechecks.log"
   exit 1
 fi
-echo "LeanReact typechecks passed (generic APIs and 5 expected rejections)."
+echo "LeanReact typechecks passed (generic APIs and 6 expected rejections)."
 lean tests/runtime/Examples.lean
 lean --run tests/runtime/Reference.lean
 lean --run tests/runtime/Forms.lean

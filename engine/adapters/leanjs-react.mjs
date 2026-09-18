@@ -97,8 +97,15 @@ export const keyedEach = (_type, items, key, row) => runtime.keyedEach(items, it
 function eventPayload(tag, value) {
   if (tag === 'LeanReact.ChangeEvent.mk') return ctor(tag, [value.value, bool(value.checked)]);
   const flags = [bool(value.alt), bool(value.ctrl), bool(value.metaKey), bool(value.shift)];
-  return ctor(tag, tag === 'LeanReact.KeyEvent.mk' ? [value.key, ...flags] : flags);
+  return ctor(tag, tag === 'LeanReact.KeyEvent.mk' ? [value.key, ...flags, bool(value.repeat)] : flags);
 }
+// LR-02 DOM surface: payload codecs for the added event records (field order follows Core.lean).
+const focusPayload = value => ctor('LeanReact.FocusEvent.mk', [value.value]);
+const inputPayload = value => ctor('LeanReact.InputEvent.mk', [value.value, bool(value.isComposing)]);
+const pastePayload = value => ctor('LeanReact.PasteEvent.mk', [value.text,
+  value.html == null ? ctor('Option.none') : ctor('Option.some', [value.html])]);
+const scrollPayload = value => ctor('LeanReact.ScrollEvent.mk', [BigInt(value.scrollTop), BigInt(value.scrollLeft)]);
+const keyOutcome = value => value?.tag === 'LeanReact.KeyOutcome.preventDefault' ? 'preventDefault' : 'continue';
 export function node(tag, attributes, children) {
   const props = {};
   for (const attribute of attributes) {
@@ -108,7 +115,18 @@ export function node(tag, attributes, children) {
       case 'LeanReact.Attribute.bool': props[name] = fromBool(value); break;
       case 'LeanReact.Attribute.press': props.onClick = runtime.onClick(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
       case 'LeanReact.Attribute.change': props.onChange = runtime.onChange(payload => name(eventPayload('LeanReact.ChangeEvent.mk', payload))); break;
-      case 'LeanReact.Attribute.keyDown': props.onKeyDown = runtime.onKeyDown(payload => name(eventPayload('LeanReact.KeyEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.keyDown': props.onKeyDown = runtime.onKeyDown(payload => mapAction(keyOutcome, name(eventPayload('LeanReact.KeyEvent.mk', payload)))); break;
+      // LR-02 DOM surface: added attribute constructors. `name` holds the handler (or style entries) slot.
+      case 'LeanReact.Attribute.keyUp': props.onKeyUp = runtime.onKeyUp(payload => name(eventPayload('LeanReact.KeyEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.focus': props.onFocus = runtime.onFocus(payload => name(focusPayload(payload))); break;
+      case 'LeanReact.Attribute.blur': props.onBlur = runtime.onBlur(payload => name(focusPayload(payload))); break;
+      case 'LeanReact.Attribute.input': props.onInput = runtime.onInput(payload => name(inputPayload(payload))); break;
+      case 'LeanReact.Attribute.paste': props.onPaste = runtime.onPaste(payload => name(pastePayload(payload))); break;
+      case 'LeanReact.Attribute.mouseEnter': props.onMouseEnter = runtime.onMouseEnter(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.mouseLeave': props.onMouseLeave = runtime.onMouseLeave(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
+      case 'LeanReact.Attribute.scroll': props.onScroll = runtime.onScroll(payload => name(scrollPayload(payload))); break;
+      case 'LeanReact.Attribute.submit': props.onSubmit = runtime.onSubmit(name); break;
+      case 'LeanReact.Attribute.style': props.style = Object.fromEntries(name.map(entry => [entry.fields[0], entry.fields[1]])); break;
       default: throw new TypeError(`Unknown LeanReact attribute: ${attribute.tag}`);
     }
   }

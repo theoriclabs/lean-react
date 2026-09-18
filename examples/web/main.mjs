@@ -8,6 +8,7 @@ import counterSource from '../lean/Examples/Showcase.lean';
 import ticketsSource from '../lean/Examples/Tickets/Components.lean';
 import collectionsSource from '../lean/Examples/Collections.lean';
 import librariesSource from '../lean/Examples/Libraries/App.lean';
+import feedbackSource from '../lean/Examples/Feedback.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
 import { createTicketsService } from '../adapters/tickets-service.mjs';
 
@@ -28,6 +29,11 @@ const examples = {
     description: 'Change the provider heading. A consumer compiled in another library receives the update through one shared context.',
     file: 'Libraries/App.lean', source: librariesSource,
     start: 'def App', end: '-- Only this component',
+  },
+  forms: {
+    description: 'Leave the name empty and tab away, paste into the message, then press Enter or Ctrl+S. Typed controls, typed event payloads, no page reload.',
+    file: 'Feedback.lean', source: feedbackSource,
+    start: 'def App', end: 'end Examples.Feedback',
   },
 };
 const requestedExample = parameters.get('example');
@@ -93,7 +99,8 @@ document.getElementById('copy-install').addEventListener('click', async event =>
   }
 });
 const element = example === 'collections' ? mountElement(collections['Examples.Collections.App'])
-  : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App']) : remote
+  : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
+  : example === 'forms' ? mountElement(smoke['Examples.Feedback.App']) : remote
   ? mountElement(tickets['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [
     'native-tickets', createTicketsService(),
   ]))

@@ -342,7 +342,7 @@ Wrap a foreign component with a typed Lean function and a named intrinsic. The m
 
 Use `runtime.onPress(action)` to adapt a deferred action to an event handler. Do not execute the action while creating the element. The foreign component's own React hooks stay inside its React component boundary.
 
-A shadcn component would use the same binding pattern, plus its actual CSS/theme setup. shadcn is not installed or qualified here. A simple Button needs a much smaller contract than a Dialog with refs, portals, focus management, or `asChild`. Implement and test those capabilities explicitly for the component you choose. The Lean DOM API currently supplies click/change/keydown snapshots; it does not provide general refs or arbitrary browser events.
+A shadcn component would use the same binding pattern, plus its actual CSS/theme setup. shadcn is not installed or qualified here. A simple Button needs a much smaller contract than a Dialog with refs, portals, focus management, or `asChild`. Implement and test those capabilities explicitly for the component you choose. The Lean DOM API supplies typed click/change/input/paste/focus/blur/key/mouse/scroll/submit snapshots; it does not provide general refs or arbitrary browser events.
 
 ### JavaScript and TypeScript consumers
 

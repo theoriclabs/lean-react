@@ -86,6 +86,31 @@ def LocalPicker : Component Unit := component fun _ => do
   let selection ← useState false (site := "selection")
   pure <| element Picker { selected := selection.value, onChange := selection.set }
 
+structure SignupProps where
+  submit : String → Action Unit
+
+-- A form never navigates; blur validates; Ctrl+S keeps the browser's save dialog closed.
+def Signup : Component SignupProps := component fun props => do
+  let email ← useState "" (site := "email")
+  let error ← useState "" (site := "error")
+  pure <| DOM.form { onSubmit := props.submit email.value } #[
+    DOM.label { htmlFor := "signup-email" } #[text "Email"],
+    DOM.input {
+      id := some "signup-email"
+      type := .email
+      value := some email.value
+      autoComplete := some "email"
+      ariaDescribedBy := some "signup-error"
+      data := #[("testid", "signup-email")]
+      onChange := some fun event => email.set event.value
+      onBlur := some fun event => error.set (if event.value.isEmpty then "Email is required." else "")
+      onKeyDown := some fun event =>
+        if event.ctrl && event.key == "s" then pure .preventDefault else pure .continue
+    },
+    DOM.p { id := some "signup-error", role := some "alert" } #[text error.value],
+    DOM.button { type := .submit } #[text "Sign up"]
+  ]
+
 structure Theme where
   label : String
   deriving TypeName
@@ -118,7 +143,7 @@ end LeanReactExamples
 | API | Semantics |
 | --- | --- |
 | `component`, `Component.named`, `element` | Construct/reuse a typed component definition, give it a diagnostic name, and create a deferred child. |
-| `text`, `empty`, `fragment`, `node` | Function-based tree construction. `node` is the explicit low-level tag/attribute escape hatch. |
+| `text`, `empty`, `fragment`, `node` | Function-based tree construction. `node` is the explicit low-level tag/attribute escape hatch; the typed `DOM` helpers below cover ordinary application screens. |
 | `keyed`, `keyedEach`, `Key.string`, `Key.nat`, `Key.inSpace` | Stable sibling identity. `Key.inSpace` length-prefixes the namespace; `keyedEach` diagnoses duplicate keys in both renderers. |
 | `Hook.pure`, `Hook.bind`, `Hook.map` | `do` notation and reusable hook composition. |
 | `Action.pure`, `Action.bind`, `Action.map` | Deferred action composition; state setters and supplied service callbacks return Actions. |
@@ -135,11 +160,32 @@ Effect dependencies are `Array Dependency`, with `.string`, `.nat`, `.int`, and 
 
 ## DOM helpers and events
 
-`DOM.Props` provides optional `id`, `className`, `title`, `role`, `ariaLabel`, `onClick`, and `onKeyDown`. Ordinary helpers are `div`, `span`, `p`, `h1`, `h2`, `section` (escaped as `«section»` in its declaration), `article`, `ul`, and `li`; they accept props then an Array of children.
+`DOM.Props` provides optional `id`, `className`, `title`, `role`, `tabIndex : Option Int`, `hidden`, the ARIA strings `ariaLabel`, `ariaDescribedBy`, `ariaLabelledBy`, `ariaLive`, the ARIA booleans `ariaExpanded`, `ariaSelected`, `ariaPressed`, `ariaDisabled`, `data : Array (String × String)` (rendered as `data-<key>`), `style : Array (StyleProp × String)`, and the handlers `onClick`, `onKeyDown`, `onKeyUp`, `onFocus`, `onBlur`, `onMouseEnter`, `onMouseLeave`, `onScroll`. `StyleProp` is a closed enum of React's camelCase property names, so a misspelled property is a compile error while values remain strings.
 
-`DOM.button` accepts `ButtonProps`, adding `disabled`, typed `type` (`.button`, `.submit`, `.reset`), and `onPress : Option (Action Unit)`. Its default type is `.button`; `onPress` takes precedence if both click forms are supplied. `DOM.input` accepts `InputProps`, adding typed input kind, optional `value`/`defaultValue`, optional `checked`/`defaultChecked`, `placeholder`, `disabled`, `readOnly`, and `onChange`. `DOM.label` takes `LabelProps` with `htmlFor`; `DOM.a` takes `AnchorProps` with `href`.
+| Helper | Props | Notes |
+| --- | --- | --- |
+| `div span p h1`–`h6 «section» article nav header footer main aside ul li strong em code pre kbd summary table thead tbody tr` | `Props` | Props then an Array of children. |
+| `th td` | `CellProps` | Adds `colSpan`, `rowSpan`, `scope`. |
+| `dialog details` | `DisclosureProps` | Adds `«open»`. |
+| `img` | `ImgProps` | Requires `src` and `alt`; optional `width`/`height`. |
+| `button` | `ButtonProps` | `disabled`, `type` (`.button` default, `.submit`, `.reset`), `autoFocus`, `onPress : Option (Action Unit)`; `onPress` takes precedence over `onClick`. |
+| `input` | `InputProps` | `type` (`.text .email .password .search .checkbox .number .url .tel .date .time .range .radio`), `value`/`defaultValue`, `checked`/`defaultChecked`, `min`/`max`/`step` strings, `onChange`, plus the shared field props. |
+| `textarea` | `TextAreaProps` | `value`/`defaultValue`, `rows`, `cols`, `onChange`, plus the shared field props. |
+| `select` | `SelectProps` | `value`/`defaultValue`, `name`, `disabled`, `required`, `autoFocus`, `onChange` (the option `value`); children are `«option»` elements. |
+| `«option»` | `OptionProps` | Required `value`, `disabled`. |
+| `form` | `FormProps` | `onSubmit : Action Unit := pure ()`, `name`, `autoComplete`, `noValidate`. The browser's submit default is **always** prevented, so Enter in a field or a `.submit` button runs the action without navigating; use `node "form"` for native submission. |
+| `label` | `LabelProps` | `htmlFor`. |
+| `a` | `AnchorProps` | `href`, `target`, `rel`. |
 
-`PressEvent` contains `alt`, `ctrl`, `metaKey`, `shift`. `ChangeEvent` contains `value : String` and `checked : Bool`. `KeyEvent` contains `key : String` and the same modifier fields. The browser snapshots these values before calling the Lean callback, including before async work. The raw mutable browser event is not passed through. Input props permit controlled and uncontrolled use; applications should consistently select one mode. This is a small typed DOM subset, not a complete schema or an accessibility checker.
+`FieldProps`, shared by `input` and `textarea`, adds `name`, `placeholder`, `disabled`, `readOnly`, `required`, `autoFocus`, `autoComplete`, `spellCheck`, `maxLength`, `onInput`, and `onPaste`.
+
+`PressEvent` contains `alt`, `ctrl`, `metaKey`, `shift`; `onMouseEnter`/`onMouseLeave` reuse it. `ChangeEvent` contains `value : String` and `checked : Bool`. `KeyEvent` contains `key : String`, the modifier fields, and `«repeat»`. `FocusEvent` contains the control's current `value` (`""` elsewhere), which makes blur validation a one-liner. `InputEvent` contains `value` and `isComposing` for IME-safe live text. `PasteEvent` contains `text` and `html : Option String`, copied from `clipboardData` during dispatch. `ScrollEvent` contains `scrollTop` and `scrollLeft`. The browser snapshots these values before calling the Lean callback, including before async work. The raw mutable browser event is not passed through. Input props permit controlled and uncontrolled use; applications should consistently select one mode. This is a small typed DOM subset, not a complete schema or an accessibility checker.
+
+`onKeyDown` handlers return `Action KeyOutcome`, where `KeyOutcome` is `.continue` or `.preventDefault`. Only a synchronous result can prevent the browser default; decide before awaiting host work (an asynchronous `.preventDefault` is reported through `onActionError`). The native reference records the outcome through `Reference.dispatchKeyDown`. **Migration:** existing `KeyEvent → Action Unit` handlers keep type-checking, because `Unit`, `Action Unit` and `KeyEvent → Action Unit` coerce to their `KeyOutcome` forms meaning `.continue`; `DOM.onKeyDown' handler` is the explicit spelling. A `do` block that ends in an `if` without `else` needs a final `pure .continue`.
+
+Accessibility: roles alone are not enough. Pair inputs with `label`/`htmlFor` or `ariaLabel`, link error text through `ariaDescribedBy`, announce status with `role := some "status"` or `ariaLive`, keep custom controls reachable with `tabIndex`, and give `img` a meaningful `alt`. The helpers make these attributes typed; they do not check them.
+
+Native tests can inspect and drive a rendered form: `Reference.RenderedTree.byId?`, `byTag?`, `byTestId?` and `findNode?` return a node's recorded attributes, `Reference.attribute?` reads a string attribute, and `Reference.dispatchPress/Change/Input/Paste/Focus/Blur/KeyUp/Submit` run the matching handlers; `dispatchKeyDown` returns the recorded `KeyOutcome`.
 
 ## Reference execution and limits
 

@@ -20,6 +20,7 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Share a context across compiled libraries | One shared ESM dependency, independently compiled provider and consumer | Mounted/SSR integration and browser tests |
 | Compose a collection form with nested field validation | `Editor.list`, `DraftParser.list/product`, focused fields, stateful keyed rows | Generated validation and browser tests |
 | Call a foreign React component | A named intrinsic with a typed Lean reference, callback, and child element | Generated-component integration tests |
+| Build a form from typed controls | `DOM.form`, `textarea`, `select`, blur validation, paste snapshots, `KeyOutcome` | Generated-component integration, reference and browser tests |
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |
 
@@ -47,7 +48,7 @@ The current styling path is ordinary CSS. The demo loads `examples/web/style.css
 DOM.div { className := some "card" } #[text "A styled Lean component"]
 ```
 
-There is no typed CSS value API, React `style` object adapter, CSS module integration, or Tailwind build step yet. Composable Lean rules, tokens, and variants with static CSS extraction are the intended next styling layer. They should remain optional and compose with stylesheets and utility classes.
+Inline styles use `style : Array (StyleProp × String)`, a closed enum of React's camelCase property names mapped to a React `style` object; values remain strings. There is no typed CSS value API, CSS module integration, or Tailwind build step yet. Composable Lean rules, tokens, and variants with static CSS extraction are the intended next styling layer. They should remain optional and compose with stylesheets and utility classes.
 
 Interop works in both directions, through explicit adapters. `examples/lean/Examples/Foreign.lean` gives a foreign React component typed props, an action callback, and an element slot; `examples/adapters/example-foreign.mjs` maps them into an ordinary React component. The mounted integration suite exercises it. Conversely, `examples/consumer/typescript.tsx` wraps a generated Lean component with `asReactComponent` and checks the generated declaration types. The standalone domain module can also be imported from Node without React.
 
@@ -94,7 +95,7 @@ The browser wire adapter is explicit JavaScript glue tested against the native L
 ## Current limits
 
 - The compiler is pinned to Lean 4.33.0 and supports a documented subset. Arbitrary IO/FFI, unsafe or partial definitions, unregistered native primitives, general Float/fixed-width operations, and advanced dependent eliminations are outside that subset. Recursion uses the JavaScript stack, except the iterative List host builtins (`length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, including `*TR` names). `Repr`/`reprStr` are not portable (`Std.Format.pretty` is partial and reaches `String.Internal.*`); `toString` on `Nat` is.
-- The function-based DOM API is implemented. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
+- The function-based DOM API is implemented, including form controls, focus/blur/input/paste/key/mouse/scroll payloads, `tabIndex`, `data-*`, common `aria*` attributes and a typed inline `style`. Elements or events outside that surface still go through `node` and `Attribute.string`/`.bool`. JSX-like `view%` syntax, automatic ontology derivation, incremental code generation, and source-level JavaScript maps are not implemented. The bundler emits ordinary JavaScript source maps.
 - Native `TypeName` instances used only by context reference semantics need explicit erased intrinsic bindings. Context export ordering is automatic; contexts created inside render still need to be hoisted.
 - There is no shared query cache, distributed subscription protocol, optimistic mutation framework, router, hydration qualification, or React Server Components integration. React server rendering is exercised as a workload check.
 - The native server is a local fixture adapter. Authentication, authorization, deployment, and package publication are separate work. It binds loopback by default.
