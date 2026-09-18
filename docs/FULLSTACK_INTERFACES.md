@@ -41,4 +41,4 @@ SQLite INTEGER is signed 64-bit. `LeanAppNative.Storage.SqlNat` checks that rang
 
 The baseline contract is [Examples.Tickets.Contracts](../examples/lean/Examples/Tickets/Contracts.lean). Its public paths are `GET /api/manifest`, `POST /api/tickets/list`, and `POST /api/tickets/save`. Requests contain `operation`, `kind` and `input`. Replies preserve success, domain error, decode error, protocol error and incompatibility as distinct outcomes. Native and browser clients decode declared domain errors even on non-2xx responses.
 
-The generic HTTP integration must pass existing fixtures in `tests/native`, `tests/integration/wire.test.mjs`, and the native browser tests before replacing those adapters. The local Tickets policy remains explicitly unauthenticated until the identity milestone passes.
+The generic HTTP integration must pass existing fixtures in `tests/native`, `tests/integration/wire.test.mjs`, and the native browser tests before replacing those adapters. The local Tickets policy is a fixture role table behind `Policy.requireRole` (owner/editor/viewer per tenant actor), checked by the ACL matrix in `tickets_checks`; it is not authentication.

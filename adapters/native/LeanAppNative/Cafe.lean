@@ -114,17 +114,14 @@ private def applicationFor (conn : Option Conn) : Validation (Application IO) :=
   let listOp : Operation .query Unit (Array Recipe) String ← Operation.canonical .query ⟨"cafe", "list", "1"⟩
   let saveOp : Operation .command Save Recipe String ← Operation.canonical .command ⟨"cafe", "save", "1"⟩
   let deleteOp : Operation .command String Unit String ← Operation.canonical .command ⟨"cafe", "delete", "1"⟩
-  let listBinding : Binding IO Read Write listOp := {
+  let listBinding : Binding IO Read Write listOp := { Policy.authenticated with
     http := { path := "/api/recipes/list" }
-    policy := fun context _ _ => pure <| if context.principal.isSome then .ok () else .error .unauthenticated
     handler := fun _ cap _ => return .ok (← cap.read .recipes) }
-  let saveBinding : Binding IO Read Write saveOp := {
+  let saveBinding : Binding IO Read Write saveOp := { Policy.authenticated with
     http := { path := "/api/recipes/save" }
-    policy := fun context _ _ => pure <| if context.principal.isSome then .ok () else .error .unauthenticated
     handler := fun _ cap input => cap.write (.save input) }
-  let deleteBinding : Binding IO Read Write deleteOp := {
+  let deleteBinding : Binding IO Read Write deleteOp := { Policy.authenticated with
     http := { path := "/api/recipes/delete" }
-    policy := fun context _ _ => pure <| if context.principal.isSome then .ok () else .error .unauthenticated
     handler := fun _ cap input => cap.write (.delete input) }
   let read := fun (context : RequestContext) => {
     read := fun .recipes => do

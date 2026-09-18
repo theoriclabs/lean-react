@@ -9,24 +9,39 @@ inductive TicketRead : Type → Type where
 inductive TicketWrite : Type → Type where
   | save (input : SaveTicket) : TicketWrite (Except SaveError TicketSummary)
 
-/-- Explicit local fixture authority only. Never use this issuer as production authentication. -/
+/-- Fixture roles on the tickets, ordered viewer < editor < owner. -/
+inductive Role where
+  | viewer | editor | owner
+  deriving Repr, BEq, DecidableEq, Ord
+
+instance : ToString Role := ⟨fun | .viewer => "viewer" | .editor => "editor" | .owner => "owner"⟩
+
+def localTenant := "tickets-local"
+
+/-- Explicit local fixture membership only. Never use this table as production authentication. -/
+def fixtureRoles : List (String × Role) :=
+  [("local-fixture", .owner), ("fixture-editor", .editor), ("fixture-viewer", .viewer)]
+
 def localFixtureContext : RequestContext :=
-  TrustedNative.issueContext ⟨"local-fixture", "tickets-local", 0⟩ "local-fixture"
+  TrustedNative.issueContext ⟨"local-fixture", localTenant, 0⟩ "local-fixture"
 
-def localFixturePolicy [Monad m] (op : Operation k Input Output Error) : Policy m TicketRead op :=
-  fun context _ _ => pure <| match context.principal with
-    | none => .error .unauthenticated
-    | some principal => if principal.tenant == "tickets-local" then .ok () else .error .forbidden
+/-- Declared once for every binding. A caller outside the tenant or the table has no role; missing
+tickets stay the handler's typed `notFound`, so responses remain uniform. -/
+def roleOf [Monad m] (context : RequestContext) (_ : ReadCapability m TicketRead) (_ : Input) :
+    m (Option Role) :=
+  pure do
+    let principal ← context.principal
+    if principal.tenant != localTenant then none else fixtureRoles.lookup principal.actor
 
-def listBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.list where
-  http := { path := "/api/tickets/list" }
-  policy := localFixturePolicy ops.list
-  handler _ cap _ := return .ok (← cap.read .list)
+def listBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.list :=
+  { Policy.requireRole Role.viewer roleOf with
+    http := { path := "/api/tickets/list" }
+    handler := fun _ cap _ => return .ok (← cap.read .list) }
 
-def saveBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.save where
-  http := { path := "/api/tickets/save" }
-  policy := localFixturePolicy ops.save
-  handler _ cap input := cap.write (.save input)
+def saveBinding (ops : PublicOperations) : Binding IO TicketRead TicketWrite ops.save :=
+  { Policy.requireRole Role.editor roleOf with
+    http := { path := "/api/tickets/save" }
+    handler := fun _ cap input => cap.write (.save input) }
 
 def application (ops : PublicOperations) (service : TicketService IO) : Validation (Application IO) := do
   let read : ReadCapability IO TicketRead := { read := fun op => match op with | .list => service.list }
@@ -37,8 +52,8 @@ def application (ops : PublicOperations) (service : TicketService IO) : Validati
 
 /-- Client metadata comes from the same typed bindings used by registration. -/
 def approvedMetadata (ops : PublicOperations) : List PublicOperation :=
-  [⟨ops.list.describe, (listBinding ops).http, (listBinding ops).metadata⟩,
-   ⟨ops.save.describe, (saveBinding ops).http, (saveBinding ops).metadata⟩]
+  [⟨ops.list.describe, (listBinding ops).http, (listBinding ops).publicMetadata⟩,
+   ⟨ops.save.describe, (saveBinding ops).http, (saveBinding ops).publicMetadata⟩]
 
 def makeServer (ops : PublicOperations) (service : TicketService IO) : Validation LeanAppNative.Server := do
   let app ← application ops service

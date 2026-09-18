@@ -39,6 +39,10 @@ test('native café persistence, authoritative pricing, bounded recipes and accou
   const draft = { temperature: 'hot', size: 'large', milk: 'oat', shots: 'double', decaf: false };
   try {
     await start(); assert.equal((await call('list', null)).status, 401);
+    const manifest = await (await fetch(origin + '/api/manifest')).json();
+    assert.deepEqual(manifest.operations.map(op => [op.name, op.metadata.describePolicy, op.http.path]),
+      [['list', 'authenticated', '/api/recipes/list'], ['save', 'authenticated', '/api/recipes/save'],
+        ['delete', 'authenticated', '/api/recipes/delete']]);
     const a = await send('/auth/signup', { username: 'cafe_alice', password: 'cafe-alice-safe-passphrase' });
     const b = await send('/auth/signup', { username: 'cafe_bob', password: 'cafe-bob-safe-passphrase' });
     assert.equal(a.status, 200); assert.equal(b.status, 200);

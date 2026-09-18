@@ -1,4 +1,5 @@
 import LeanApp
+import AclFixture
 
 open LeanApp Contract Ontology
 
@@ -45,7 +46,7 @@ def queryBinding (op : Operation .query Nat Nat String) : Binding Fixture ReadOp
     if input == 42 then return .error "missing"
     return .ok ((← cap.read .value) + input)
   http := { path := "/value" }
-  metadata := ⟨"Read value", "Approved projection"⟩
+  metadata := { title := "Read value", description := "Approved projection" }
 
 def commandBinding (op : Operation .command Nat Nat String) : Binding Fixture ReadOp WriteOp op where
   policy := localPolicy op
@@ -143,3 +144,34 @@ def main : IO Unit := do
   for path in ["value", "/value/", "/a//b", "/a/../b", "/:id", "/%76alue", "/x?q=1"] do
     reject s!"noncanonical path {path}" "http.invalid_literal_path" (HttpBinding.validate { path })
   check "shared mapping and order-independent dependencies accepted" (app.modules.length == 2)
+  let acl ← require AclFixture.application
+  let cases := AclFixture.matrix acl
+  check "exhaustive matrix covers 3 roles × 2 operations × {anonymous, other tenant}" (cases.size == 10)
+  check "role model admits exactly the declared minimums" (AclFixture.failures acl).isEmpty
+  check "manifest publishes the intended rule"
+    ((acl.manifest.map (·.metadata.describePolicy)) == ["role ≥ viewer", "role ≥ editor"])
+  check "published rule agrees with the declared minimum" (acl.manifest.all fun info =>
+    Testing.describedMinimum AclFixture.roles info == AclFixture.minimums info.operation.identity)
+  let weakened ← require (AclFixture.application (weakened := true))
+  let failures := AclFixture.failures weakened
+  check "a removed role check fails the matrix for the viewer and the other tenant"
+    (failures.size == 2 && failures.all fun f => f.case.operation == AclFixture.editIdentity &&
+      f.case.expect == .forbidden && f.observed == "allow")
+  check "the weakened rule is visible in the manifest"
+    (weakened.manifest.any (·.metadata.describePolicy == "authenticated"))
+  let combined : Rule AclFixture.Fixture AclFixture.ReadOp
+      (← require (Operation.canonical .query (Input := Unit) (Output := String) (Error := String) ⟨"doc", "probe", "1"⟩)) :=
+    Policy.either (Policy.requireRole .owner AclFixture.roleOf) Policy.deny
+  check "combinator descriptions compose" (combined.describePolicy == "role ≥ owner or deny")
+  let editor := AclFixture.contexts.context (.role .editor)
+  let decide := fun (rule : Rule AclFixture.Fixture AclFixture.ReadOp _) (context : RequestContext) =>
+    (Id.run ((rule.policy context AclFixture.reads ()).run' {}) : CallResult Unit Empty)
+  check "either admits the first passing rule and reports the first refusal"
+    (decide combined (AclFixture.contexts.context .owner) == .ok () &&
+      decide combined editor == .error .forbidden &&
+      decide combined (.anonymous "x") == .error .unauthenticated)
+  let strict : Rule AclFixture.Fixture AclFixture.ReadOp _ :=
+    Policy.both Policy.authenticated (Policy.requireRole .editor AclFixture.roleOf (onMissing := .unauthenticated))
+  check "both requires every rule and onMissing is configurable"
+    (decide strict editor == .ok () &&
+      decide strict (AclFixture.contexts.context .otherTenant) == .error .unauthenticated)
