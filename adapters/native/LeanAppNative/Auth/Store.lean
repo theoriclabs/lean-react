@@ -10,6 +10,7 @@ open LeanDb LeanApp
 inductive Error where
   | invalidUsername | invalidPassword | usernameUnavailable | invalidCredentials
   | unauthenticated | forbidden | throttled | unavailable | internal | inviteRequired
+  | sessionNotFound
   deriving BEq, Repr
 
 /-- How signup assigns a tenant. `.fixed` lets any signup share the workspace, so pair it with
@@ -20,9 +21,14 @@ inductive TenantPolicy where
   | invite
   deriving Repr, BEq
 
+/-- `maxSessions := 1` keeps one session per account and lets login bump the generation, as before.
+With more, login only evicts the oldest sessions beyond the cap; the generation stays the
+revoke-everything switch (password change, logout-all, `setAccess`). -/
 structure Service.Config where
   ttl : Nat := 86400
   tenantPolicy : TenantPolicy := .privatePerAccount
+  maxSessions : Nat := 1
+  sessionLabel : Bool := true
   deriving Repr
 
 def username (input : String) : Except Error String := do
@@ -48,12 +54,16 @@ structure Account where
   enabled : Bool
   deriving LeanDb.Entity
 
+/-- The three trailing columns are `Option` so an existing instance migrates additively. -/
 structure Session where
   tokenDigest : String
   csrf : String
   actor : String
   generation : Int64
   expiresAt : Int64
+  createdAt : Option Int64
+  lastSeenAt : Option Int64
+  label : Option String
   deriving LeanDb.Entity
 
 /-- Single-use signup invitation under `TenantPolicy.invite`. Only the token digest is stored. -/
@@ -84,6 +94,20 @@ structure Issued where
   token : String
   csrf : String
   user : User
+
+/-- Public view of one session. `id` is a salted digest, never the bearer digest. -/
+structure SessionInfo where
+  id : String
+  label : Option String
+  createdAt : Option Nat
+  lastSeenAt : Option Nat
+  current : Bool
+  deriving BEq, Repr, Inhabited
+
+def SessionInfo.toJson (info : SessionInfo) : Lean.Json :=
+  let stamp := fun (value : Option Nat) => (value.map fun n => Lean.Json.str (toString n)).getD .null
+  .mkObj [("id", .str info.id), ("label", (info.label.map .str).getD .null),
+    ("createdAt", stamp info.createdAt), ("lastSeenAt", stamp info.lastSeenAt), ("current", .bool info.current)]
 
 private structure Throttle where
   window : Nat := 0
@@ -136,7 +160,7 @@ private def validTenant (tenant : String) : Bool := !tenant.isEmpty && tenant.le
 
 def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
     (config : Service.Config := {}) : IO (Except Error Service) := do
-  if config.ttl == 0 || config.ttl > 604800 then return .error .internal
+  if config.ttl == 0 || config.ttl > 604800 || config.maxSessions == 0 then return .error .internal
   if let .fixed tenant := config.tenantPolicy then
     unless validTenant tenant do return .error .internal
   try
@@ -178,11 +202,42 @@ private def deleteSessions (actor : String) : DbM Unit :=
     stmt.bindText 1 actor
     discard stmt.step
 
+private def deleteSession (digest : String) : DbM Unit :=
+  untrackedSqlite fun db => do
+    let stmt ← db.prepare s!"DELETE FROM {quoteIdent (Entity.tableName Session)} WHERE tokenDigest = ?"
+    stmt.bindText 1 digest
+    discard stmt.step
+
+private def sessionsByActor (actor : String) : DbM (Array (Stored Session)) :=
+  selectP [Session] (.eq (.here Session.Field.actor) .eq actor)
+
+private def createdAt (session : Stored Session) : Int :=
+  (session.val.createdAt.map (·.toInt)).getD 0
+
+/-- Client-supplied device label: printable ASCII only, trimmed, at most 64 characters. -/
+def sanitizeLabel (label : Option String) : Option String := do
+  let clean := (String.ofList ((← label).toList.filter fun c => ' ' ≤ c && c ≤ '~')).trimAscii.toString
+  if clean.isEmpty then none else some (clean.take 64).toString
+
+/-- The public session id: a digest salted with the session's own CSRF secret, so it neither equals
+nor reveals the stored bearer digest. Legacy rows without new columns get an id the same way. -/
+def sessionId (session : Session) : IO String :=
+  Crypto.digestToken (session.tokenDigest ++ "." ++ session.csrf)
+
+/-- Keep the newest `maxSessions - 1` sessions by `createdAt`, evict the rest, insert the new one.
+Returns the evicted digests so a caller can invalidate caches. -/
 private def addSession (service : Service) (account : Account)
-    (digest csrf : String) (now : Nat) : DbM Unit := do
+    (digest csrf : String) (now : Nat) (label : Option String := none) : DbM (List String) := do
   if now + service.ttl > 9223372036854775807 then throw (.sqlite "invalid authentication clock")
-  deleteSessions account.actor
-  discard <| insert Session ⟨digest, csrf, account.actor, account.generation, Int64.ofInt (now + service.ttl)⟩
+  let existing ← sessionsByActor account.actor
+  let ordered := existing.qsort fun a b => createdAt a > createdAt b ||
+    (createdAt a == createdAt b && a.id.toInt64.toInt > b.id.toInt64.toInt)
+  let evicted := (ordered.toList.drop (service.config.maxSessions - 1)).map (·.val.tokenDigest)
+  for old in evicted do deleteSession old
+  let label := if service.config.sessionLabel then sanitizeLabel label else none
+  discard <| insert Session ⟨digest, csrf, account.actor, account.generation, Int64.ofInt (now + service.ttl),
+    some (Int64.ofNat now), some (Int64.ofNat now), label⟩
+  return evicted
 
 /-- Trusted native issuance only; there is no public endpoint. The token is returned once. -/
 def Service.createInvite (service : Service) (tenant : String) (ttl : Nat)
@@ -217,7 +272,7 @@ private def assignTenant (service : Service) (actor : String) (inviteDigest : Op
 /-- `invite` is accepted only under `TenantPolicy.invite`; malformed or missing tokens fail before
 password work so they cannot spend the KDF budget. -/
 def Service.signup (service : Service) (input password : String)
-    (invite : Option String := none) : IO (Except Error Issued) := do
+    (invite : Option String := none) (label : Option String := none) : IO (Except Error Issued) := do
   let .ok name := username input | return .error .invalidUsername
   unless validPassword password do return .error .invalidPassword
   let inviteDigest ← match service.config.tenantPolicy, invite with
@@ -242,39 +297,58 @@ def Service.signup (service : Service) (input password : String)
         if (← accountByName name).isSome then return .abort Error.usernameUnavailable
         let account : Account := ⟨name, hash, actor, tenant, 1, true⟩
         discard <| insert Account account
-        addSession service account digest csrf now
+        discard <| addSession service account digest csrf now label
         return .commit (Issued.mk token csrf (userOf account))
     return flatten result
 
-/-- Login replaces the account's previous session. The password hash and account state
-are rechecked after the KDF under the same transaction as generation/session issuance. -/
-def Service.login (service : Service) (input password : String) : IO (Except Error Issued) := do
+/-- Verify a password for a stored account outside the database lock, then run `issue` under one
+admitted transaction against the rechecked account row. Unknown names cost one dummy KDF. -/
+private def verifiedThen (service : Service) (name password : String)
+    (issue : Stored Account → Nat → DbM (TransactionDecision Error Issued)) : IO (Except Error Issued) := do
+  let loaded ← admitted service fun conn => runDb conn (accountByName name)
+  let candidate ← match loaded with
+    | .ok candidate => pure candidate
+    | .error e => return .error e
+  let hash := (candidate.map (·.val.passwordHash)).getD service.dummyHash
+  let verified ← Crypto.verifyPassword password hash
+  let some old := candidate | return .error .invalidCredentials
+  unless verified do return .error .invalidCredentials
+  let result ← admitted service fun conn => do
+    let now ← service.clock
+    runDb conn <| transaction do
+      let some current ← accountByActor old.val.actor | return .abort Error.invalidCredentials
+      if !current.val.enabled || current.val.passwordHash != hash ||
+          current.val.generation.toInt < 0 || current.val.generation.toInt ≥ 9223372036854775807 then
+        return .abort Error.invalidCredentials
+      issue current now
+  return flatten result
+
+/-- With one allowed session, login replaces it and bumps the generation. Otherwise it evicts only
+sessions beyond the cap. Account state is rechecked after the KDF inside the issuing transaction. -/
+def Service.login (service : Service) (input password : String)
+    (label : Option String := none) : IO (Except Error Issued) := do
   let .ok name := username input | return .error .invalidCredentials
   unless validPassword password do return .error .invalidCredentials
   withPasswordWork service name do
-    let loaded ← admitted service fun conn => runDb conn (accountByName name)
-    let candidate ← match loaded with
-      | .ok candidate => pure candidate
-      | .error e => return .error e
-    let hash := (candidate.map (·.val.passwordHash)).getD service.dummyHash
-    let verified ← Crypto.verifyPassword password hash
-    let some old := candidate | return .error .invalidCredentials
-    unless verified do return .error .invalidCredentials
     let token ← Crypto.randomToken
     let csrf ← Crypto.randomToken
     let digest ← Crypto.digestToken token
-    let result ← admitted service fun conn => do
-      let now ← service.clock
-      runDb conn <| transaction do
-        let some current ← accountByActor old.val.actor | return .abort Error.invalidCredentials
-        if !current.val.enabled || current.val.passwordHash != hash ||
-            current.val.generation.toInt < 0 || current.val.generation.toInt ≥ 9223372036854775807 then
-          return .abort Error.invalidCredentials
-        let next := { current.val with generation := current.val.generation + 1 }
-        discard <| update current next
-        addSession service next digest csrf now
-        return .commit (Issued.mk token csrf (userOf next))
-    return flatten result
+    verifiedThen service name password fun current now => do
+      let next := if service.config.maxSessions == 1
+        then { current.val with generation := current.val.generation + 1 } else current.val
+      if service.config.maxSessions == 1 then discard <| update current next
+      discard <| addSession service next digest csrf now label
+      return .commit (Issued.mk token csrf (userOf next))
+
+/-- `lastSeenAt` is refreshed at most once per five minutes to avoid a write per request. -/
+private def touchSession (session : Stored Session) (now : Nat) : DbM Unit := do
+  let seen : Int := (session.val.lastSeenAt.map (·.toInt)).getD 0
+  if seen + 300 ≤ (now : Int) then
+    untrackedSqlite fun db => do
+      let stmt ← db.prepare s!"UPDATE {quoteIdent (Entity.tableName Session)} SET lastSeenAt = ? WHERE tokenDigest = ?"
+      stmt.bindInt64 1 (Int64.ofNat now)
+      stmt.bindText 2 session.val.tokenDigest
+      discard stmt.step
 
 private def resolveSession (digest : String) (now : Nat) : DbM (Except Error (Stored Session × User)) := do
   let some session ← sessionByDigest digest | return .error .unauthenticated
@@ -282,6 +356,7 @@ private def resolveSession (digest : String) (now : Nat) : DbM (Except Error (St
   if !account.val.enabled || session.val.expiresAt.toInt ≤ now ||
       account.val.generation != session.val.generation || account.val.generation.toInt < 0 then
     return .error .unauthenticated
+  touchSession session now
   return .ok (session, userOf account.val)
 
 /-- Verification, current membership and application policy execute within one admitted
@@ -336,11 +411,78 @@ def Service.withAuthenticatedTransaction (service : Service) (token csrf : Strin
 def Service.logout (service : Service) (token csrf : String) : IO (Except Error Unit) := do
   let result ← service.withAuthenticated token (some csrf) "logout" fun conn _ _ => do
     let digest ← Crypto.digestToken token
-    runDb conn <| withTransaction <| untrackedSqlite fun db => do
-      let stmt ← db.prepare s!"DELETE FROM {quoteIdent (Entity.tableName Session)} WHERE tokenDigest = ?"
-      stmt.bindText 1 digest
-      discard stmt.step
+    runDb conn <| withTransaction <| deleteSession digest
   return flatten result
+
+/-- The caller's live sessions (current generation, unexpired), newest first. -/
+def Service.sessions (service : Service) (token csrf : String) : IO (Except Error (List SessionInfo)) := do
+  let result ← service.withAuthenticated token (some csrf) "sessions" fun conn _ user => do
+    let digest ← Crypto.digestToken token
+    let now ← service.clock
+    let .ok rows ← runDb conn (sessionsByActor user.actor) | throw (IO.userError "sessions unavailable")
+    let live := rows.filter fun s => s.val.generation.toInt == (user.generation : Int) && (now : Int) < s.val.expiresAt.toInt
+    let ordered := live.qsort fun a b => createdAt a > createdAt b
+    ordered.toList.mapM fun s => do
+      let stamp := fun (value : Option Int64) => value.map (·.toInt.toNat)
+      pure (SessionInfo.mk (← sessionId s.val) s.val.label (stamp s.val.createdAt) (stamp s.val.lastSeenAt)
+        (s.val.tokenDigest == digest))
+  return result
+
+/-- Revoke one of the caller's sessions by public id. Returns whether it was the current session,
+which the HTTP host turns into a cookie clear. -/
+def Service.revokeSession (service : Service) (token csrf id : String) : IO (Except Error Bool) := do
+  unless tokenShape id do return .error .sessionNotFound
+  let result ← service.withAuthenticated token (some csrf) "revoke" fun conn _ user => do
+    let digest ← Crypto.digestToken token
+    let .ok rows ← runDb conn (sessionsByActor user.actor) | throw (IO.userError "sessions unavailable")
+    let mut target : Option String := none
+    for s in rows do
+      if ← Crypto.constantTimeEqual (← sessionId s.val) id then target := some s.val.tokenDigest
+    let some victim := target | return .error Error.sessionNotFound
+    let .ok () ← runDb conn (withTransaction (deleteSession victim)) | throw (IO.userError "revoke failed")
+    return .ok (victim == digest)
+  return flatten result
+
+/-- Sign out everywhere: bump the generation and delete every session of the caller. -/
+def Service.logoutAll (service : Service) (token csrf : String) : IO (Except Error Unit) := do
+  let result ← service.withAuthenticated token (some csrf) "logout-all" fun conn _ user => do
+    runDb conn <| withTransaction do
+      let some account ← accountByActor user.actor | throw (.sqlite "account unavailable")
+      if account.val.generation.toInt ≥ 9223372036854775807 then throw (.sqlite "invalid account state")
+      discard <| update account { account.val with generation := account.val.generation + 1 }
+      deleteSessions user.actor
+  return flatten result
+
+/-- Verify the current password under the KDF gate (same throttles as login), store the new hash,
+bump the generation so every other session dies, and re-issue the caller's session with a new token
+and CSRF so it stays signed in. The session's label carries over. -/
+def Service.changePassword (service : Service) (token csrf current next : String) : IO (Except Error Issued) := do
+  unless tokenShape token do return .error .unauthenticated
+  unless validPassword current do return .error .invalidCredentials
+  unless validPassword next do return .error .invalidPassword
+  let identified ← service.withAuthenticated token (some csrf) "password" fun conn _ user => do
+    let digest ← Crypto.digestToken token
+    let .ok (some session) ← runDb conn (sessionByDigest digest) | throw (IO.userError "session unavailable")
+    pure (user.username, session.val.label)
+  let (name, label) ← match identified with
+    | .ok value => pure value
+    | .error e => return .error e
+  withPasswordWork service name do
+    let hash ← Crypto.hashPassword next
+    let fresh ← Crypto.randomToken
+    let freshCsrf ← Crypto.randomToken
+    let freshDigest ← Crypto.digestToken fresh
+    let digest ← Crypto.digestToken token
+    verifiedThen service name current fun account now => do
+      -- The caller's session must still be live under the generation checked at the start.
+      let some session ← sessionByDigest digest | return .abort Error.unauthenticated
+      if session.val.generation != account.val.generation || session.val.expiresAt.toInt ≤ now then
+        return .abort Error.unauthenticated
+      let updated := { account.val with passwordHash := hash, generation := account.val.generation + 1 }
+      discard <| update account updated
+      deleteSessions account.val.actor
+      discard <| addSession service updated freshDigest freshCsrf now label
+      return .commit (Issued.mk fresh freshCsrf (userOf updated))
 
 /-- Private administration only. Account disable or tenant changes revoke all sessions. -/
 def Service.setAccess (service : Service) (actor tenant : String) (enabled : Bool) : IO (Except Error Unit) :=

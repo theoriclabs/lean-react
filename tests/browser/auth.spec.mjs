@@ -28,6 +28,44 @@ test('signup, reload, protected request, logout and login use real server sessio
   await expect(page.getByRole('heading', { name: 'Signed in as browser_alice' })).toBeVisible();
 });
 
+test('two devices: revoking one session from the other signs out only the revoked side', async ({ browser }) => {
+  const password = 'a two device password with spaces 🔐';
+  const laptop = await (await browser.newContext()).newPage();
+  const phone = await (await browser.newContext()).newPage();
+  await laptop.goto('/');
+  await laptop.getByRole('button', { name: 'Sign up', exact: true }).click();
+  await laptop.getByLabel('Username', { exact: true }).fill('browser_carol');
+  await laptop.getByLabel('Password', { exact: true }).fill(password);
+  await laptop.getByRole('button', { name: 'Create account', exact: true }).click();
+  await expect(laptop.getByRole('heading', { name: 'Signed in as browser_carol' })).toBeVisible();
+  await phone.goto('/');
+  await phone.getByLabel('Username', { exact: true }).fill('browser_carol');
+  await phone.getByLabel('Password', { exact: true }).fill(password);
+  await phone.locator('form').getByRole('button', { name: 'Log in', exact: true }).click();
+  await expect(phone.getByRole('heading', { name: 'Signed in as browser_carol' })).toBeVisible();
+  // The laptop session survived the second login and both devices are listed.
+  await laptop.getByRole('button', { name: 'Check who I am' }).click();
+  await expect(laptop.getByText('Server confirmed: browser_carol')).toBeVisible();
+  await phone.getByRole('button', { name: 'Refresh sessions' }).click();
+  const items = phone.getByRole('list', { name: 'Sessions' }).getByRole('listitem');
+  await expect(items).toHaveCount(2);
+  await expect(items.filter({ hasText: '(this device)' })).toHaveCount(1);
+  await items.filter({ hasNotText: '(this device)' }).getByRole('button', { name: /^Revoke/ }).click();
+  await expect(items).toHaveCount(1);
+  // Revoked side: the next protected request is 401 and the client drops the identity.
+  await laptop.getByRole('button', { name: 'Check who I am' }).click();
+  await expect(laptop.getByRole('heading', { name: 'Signed in as browser_carol' })).toBeHidden();
+  await expect(laptop.getByLabel('Password', { exact: true })).toBeVisible();
+  await laptop.reload();
+  await expect(laptop.getByRole('heading', { name: 'Log in', exact: true })).toBeVisible();
+  // Revoker keeps working.
+  await phone.getByRole('button', { name: 'Check who I am' }).click();
+  await expect(phone.getByText('Server confirmed: browser_carol')).toBeVisible();
+  await phone.getByRole('button', { name: 'Sign out everywhere' }).click();
+  await expect(phone.getByRole('heading', { name: 'Log in', exact: true })).toBeVisible();
+  await expect(phone.getByRole('status')).toContainText('signed out everywhere');
+});
+
 test('invalid signup preserves username and focuses password without storing credentials', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign up', exact: true }).click();
