@@ -1,12 +1,12 @@
 # Demonstration: private notes with proof-carrying access
 
-[Documentation](README.md) · [Implementation design](AUTHORIZATION_DESIGN.md) · [Current authentication](AUTH.md)
+[Documentation](README.md) · [Private Notes guide](PRIVATE_NOTES.md) · [Current authentication](AUTH.md)
 
 Alice's private notes should remain private when a developer adds search, a count, or an export endpoint. The demonstration shows that requirement becoming a checked contract between the API server and its database access layer.
 
 Status: original demonstration specification, written before implementation. A bounded implementation now exists: use the [Private Notes guide](PRIVATE_NOTES.md) for the actual app, nine audited theorem dependencies, eight rejected candidate patches and native/browser checks. The broader scenes below remain acceptance targets, not a claim that every proposed API or race test is implemented. Code-shaped excerpts in this document are still illustrative; actual source and diagnostics are linked from the guide. The café's deployment and its proof claims are unchanged.
 
-The hosted slice creates per-account synthetic fixtures and provides direct API probes. Its native tests also use two real accounts in the same tenant. It uses a concrete proof-carrying read family, an IO lease and `BEGIN IMMEDIATE`; it does not yet provide a generic query DSL, generative native scope proof or the WAL-reader revocation race in scene 6. [The design checkpoint](AUTHORIZATION_DESIGN.md#implemented-slice) records these differences.
+The hosted slice creates per-account synthetic fixtures and provides direct API probes. Its native tests also use two real accounts in the same tenant. It uses a concrete proof-carrying read family, an IO lease and `BEGIN IMMEDIATE`; it does not yet provide a generic query DSL, generative native scope proof or the WAL-reader revocation race in scene 6.
 
 ## The claim the audience should remember
 

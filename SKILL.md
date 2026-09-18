@@ -9,7 +9,7 @@ Build the behavior the user requested using ordinary Lean functions, typed props
 
 ## Locate the implementation
 
-Resolve the links in this skill relative to the LeanReact checkout. Confirm the current working tree and read the relevant source before changing it; the vision and historical receipts are not the current API contract.
+Resolve the links in this skill relative to the LeanReact checkout. Confirm the current working tree and read the relevant source before changing it; older design notes are not the current API contract.
 
 | Location | Purpose |
 | --- | --- |

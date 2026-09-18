@@ -100,7 +100,7 @@ Only LeanJS's supported subset compiles for browser execution. Native IO, arbitr
 
 The [Private Notes example](PRIVATE_NOTES.md) carries a checked grant from authenticated request assembly into a typed database read. Its pure model proves authorized row provenance, exact scoped selection and response noninterference across list, lookup, search, count and export. Removing the owner or tenant check breaks the executable predicate's proof against a separate policy definition.
 
-The native integration resolves session facts and reads SQLite within one transaction, checks decoded row ownership, then uses Lean's shared response semantics. HTTP/browser tests qualify this path; the database, authentication-to-model mapping and native compiler remain trusted. The [guide](PRIVATE_NOTES.md#the-honest-boundary) explains the exact proof boundary and shows what happens when an agent submits an unsafe patch. The [earlier walkthrough](AUTHORIZATION_DEMO.md) and [backward design](AUTHORIZATION_DESIGN.md) retain the broader design, including work not implemented in this slice.
+The native integration resolves session facts and reads SQLite within one transaction, checks decoded row ownership, then uses Lean's shared response semantics. HTTP/browser tests qualify this path; the database, authentication-to-model mapping and native compiler remain trusted. The [guide](PRIVATE_NOTES.md#the-honest-boundary) explains the exact proof boundary and shows what happens when an agent submits an unsafe patch. The [earlier walkthrough](AUTHORIZATION_DEMO.md) retains the broader design, including work not implemented in this slice.
 
 ## Build an application around the model
 

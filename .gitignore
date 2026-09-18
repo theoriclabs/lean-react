@@ -6,6 +6,7 @@ generated/
 .npm-cache/
 *.log
 .DS_Store
+.openai/
 test-results/
 playwright-report/
 tests/compiler/.build/

@@ -1,12 +1,12 @@
 # LeanApp interface contract
 
-[Documentation](README.md) · [Architecture](ARCHITECTURE.md) · [Current status](LEANAPP_STATUS.md)
+[Documentation](README.md) · [Architecture](ARCHITECTURE.md)
 
 LeanApp is developed in this monorepo alongside its LeanReact frontend library and LeanJS compiler. The root Lake package remains `leanreact` for compatibility. LeanDB and LeanHttp are independent dependencies; their baseline entries below are not new internal monorepo packages.
 
 LeanApp keeps the domain and operation contracts in the portable root package. SQLite, outbound HTTP, and the server belong to the optional `adapters/native` package. A browser-only consumer does not need to build that package.
 
-This is the implementation contract for FS00. The release gates remain in [the implementation plan](../FULLSTACK_IMPLEMENTATION_PLAN.md); passing a local fixture does not qualify a production deployment.
+This is the implementation contract for application assembly. Passing a local fixture does not qualify a production deployment.
 
 ## Source and dependency identities
 

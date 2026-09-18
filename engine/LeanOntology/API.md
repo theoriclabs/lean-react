@@ -7,8 +7,8 @@ All library functions are pure or parameterized by a caller-supplied monad.
 Only executable tests use `IO`. There are no native HTTP, database, React, or
 compiler dependencies.
 
-These are the actual explicit APIs. The proposed `Ontology.Record`,
-`Ontology.Variant`, and `Ontology.Wire` deriving handlers from `VISION.md` are
+These are the actual explicit APIs. Proposed `Ontology.Record`,
+`Ontology.Variant`, and `Ontology.Wire` deriving handlers are
 **not implemented**. The canonical type class here is `Ontology.Wire`, whose
 single field is `codec : Codec α`.
 

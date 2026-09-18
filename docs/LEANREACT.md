@@ -86,4 +86,4 @@ This is an experimental release for trying Lean-authored frontends. The examples
 
 To build your own screen, follow the [how-to guide](HOW_TO.md). If you’re using a coding agent, ask it to read [SKILL.md](../SKILL.md) first.
 
-Application code lives in [examples/](../examples/README.md); reusable framework code lives in [engine/](../engine/README.md). Contributor checks, optional backend setup, and architecture details are in the [development guide](HOW_TO.md#check-and-debug-your-work), [backend guide](NATIVE.md), and [vision](../VISION.md).
+Application code lives in [examples/](../examples/README.md); reusable framework code lives in [engine/](../engine/README.md). Contributor checks, optional backend setup, and architecture details are in the [development guide](HOW_TO.md#check-and-debug-your-work) and [backend guide](NATIVE.md).

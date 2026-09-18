@@ -1,6 +1,6 @@
 # Private Notes: make an authorization mistake fail a check
 
-[Documentation](README.md) · [Original demonstration](AUTHORIZATION_DEMO.md) · [Implementation design](AUTHORIZATION_DESIGN.md)
+[Documentation](README.md) · [Original demonstration](AUTHORIZATION_DEMO.md)
 
 A developer asks an agent to add an export endpoint. The agent removes an ownership check while reusing the query. In an ordinary application, that change might pass the type checker and a happy-path test. Here, the query has to satisfy a separately stated ownership policy. Removing the check breaks its proof.
 
@@ -88,7 +88,7 @@ Timing, logs, resource usage, infrastructure failures, arbitrary handler IO, adm
 
 Fixture provisioning is a separate authenticated command. It intentionally creates synthetic decoys and discloses their IDs for the probes; that command is outside the five-read-operation noninterference claim. The public app offers no editor, sharing, admin or arbitrary SQL endpoint. The native test suite additionally provisions two real accounts into the same tenant and checks that their readable IDs remain disjoint.
 
-Compared with the original design, this slice uses a concrete read family and in-Lean search over bounded scoped rows, rather than a general query DSL/SQL refinement proof. It uses `BEGIN IMMEDIATE`, not the proposed two-connection WAL-reader/revocation race. That race, generic scope generation and formal native refinement remain follow-up work. See [the design checkpoint](AUTHORIZATION_DESIGN.md#implemented-slice).
+Compared with the original design, this slice uses a concrete read family and in-Lean search over bounded scoped rows, rather than a general query DSL/SQL refinement proof. It uses `BEGIN IMMEDIATE`, not the proposed two-connection WAL-reader/revocation race. That race, generic scope generation and formal native refinement remain follow-up work.
 
 ## Build and verify locally
 

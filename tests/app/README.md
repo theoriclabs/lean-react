@@ -55,7 +55,7 @@ operation is provided by `ReadCapability`.
 Command capability is an interface, not a transaction executor. This fixture uses
 `StateM` and a deliberately supplied local policy only. Native transactions and
 authentication are separate implemented adapters; idempotency and durable effects
-remain unfinished. See [framework status](../../docs/LEANAPP_STATUS.md) for current
+remain unfinished. See [architecture](../../docs/ARCHITECTURE.md#what-is-qualified) for current
 coverage. No skeleton Command/Policy/Effect modules were added.
 
 HTTP paths are exact ASCII literals; parameter patterns, percent escapes, query

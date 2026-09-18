@@ -1,9 +1,0 @@
-# P06: Composable forms and resources
-
-Continue after your P03 receipt. Read the current examples/lean/Examples/Tickets/Domain.lean and Components.lean plus LeanOntology APIs. Own only engine/LeanReact/, engine/LeanReact.lean, engine/runtime/, tests/runtime/. Parent owns adapters/ and integration, compiler worker owns engine/LeanJS/. Do not edit those.
-
-Implement composable parser-driven drafts, typed field bindings with map/focus operations, optional and list editor combinators, and a reusable form hook. Use actual Lean types with reference semantics. Raw invalid input must stay in the draft; typed parsed values/errors are separate. Make field editors ordinary Component props or functions, not a closed widget enum. A Hook draft may be used in multiple layouts. Include controlled/uncontrolled selection primitive if useful. Test composition and validation. Use existing Ontology lenses/Validation where useful, while keeping basics simple.
-
-Implement a practical resource primitive: typed idle/loading/success/failure state, stable request key, request generations, action-based loader, stale-result suppression, unmount/dependency cleanup, refresh. Keep asynchronous host scheduling in runtime and native reference semantics honest. Document exactly the LeanJS intrinsic signatures (including erased type slots) needed; parent will wire the concrete adapter. Add meaningful React mounted tests with deliberately reordered promises, refresh, errors and cleanup. Build changed Lean modules using your isolated test build tree to avoid concurrent parent lake build races.
-
-Extend tests/runtime/check-lean.sh and API docs. No broad rewrite of existing tested core; add narrowly. No hand-authored JS domain rules. No commits/pushes/deleting files/secrets/network/spending/publishing/external messages/sibling modifications or more agents. Report changed files, test outcomes, exact new signatures and limitations.

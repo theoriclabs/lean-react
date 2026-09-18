@@ -99,4 +99,4 @@ The hosted café has native/browser model parity, real HTTP isolation checks and
 
 The ordering library also models revision-bound quotes, inventory and typed payment/cancellation states. It is a portable reference model; the café persists recipes rather than implementing that full ordering workflow.
 
-Durable command receipts, outbox delivery, schema evolution/restore qualification, complete application-host shutdown and a general scaffold/distribution workflow remain unfinished. Native FFI, cryptography, the JavaScript compiler/runtime and hosting are trust boundaries. [Implementation status](LEANAPP_STATUS.md) records coverage; [release evidence](RELEASE.md) names the deployed artifact rather than assuming the current dirty checkout is identical to it.
+Durable command receipts, outbox delivery, schema evolution/restore qualification, complete application-host shutdown and a general scaffold/distribution workflow remain unfinished. Native FFI, cryptography, the JavaScript compiler/runtime and hosting are trust boundaries. [Release evidence](RELEASE.md) names the deployed artifact rather than assuming the current dirty checkout is identical to it.

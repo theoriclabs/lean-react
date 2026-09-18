@@ -9,12 +9,12 @@ import { run, capture } from './process.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const documents = [
   'README.md', 'engine/README.md', 'examples/README.md',
-  'engine/LeanReact/API.md', 'engine/runtime/README.md', 'docs/ABI.md',
+  'engine/LeanReact/API.md', 'engine/runtime/README.md',
   'docs/README.md', 'docs/GETTING_STARTED.md', 'docs/DOMAIN_MODELING.md',
   'docs/ARCHITECTURE.md', 'docs/LEANREACT.md', 'docs/HOW_TO.md',
   'docs/FULLSTACK_INTERFACES.md', 'docs/NATIVE.md', 'docs/IMPLEMENTED.md',
-  'docs/AUTH.md', 'docs/HOSTING.md', 'docs/RELEASE.md', 'docs/LEANAPP_STATUS.md',
-  'docs/AUTHORIZATION_DEMO.md', 'docs/AUTHORIZATION_DESIGN.md',
+  'docs/AUTH.md', 'docs/HOSTING.md', 'docs/RELEASE.md',
+  'docs/AUTHORIZATION_DEMO.md',
   'docs/PRIVATE_NOTES.md', 'deploy/notes/README.md',
   'docs/whatbugs_can_we_prevent/checkout_state_explosion.md',
 ];

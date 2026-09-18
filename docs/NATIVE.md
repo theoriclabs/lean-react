@@ -5,8 +5,8 @@
 This guide is for the local Tickets compatibility fixture. For LeanApp's authenticated full-stack app, start with [getting started](GETTING_STARTED.md) and [authentication](AUTH.md). The Tickets protocol and its `leanreact.tickets` namespace remain unchanged by the LeanApp product name.
 
 Tickets now uses the reusable LeanApp registry and optional native HTTP adapter.
-The [implementation status](LEANAPP_STATUS.md) records the current qualification
-and remaining release gates. The local fixture still has no production authentication.
+[Release evidence](RELEASE.md) records the hosted café qualification.
+The local fixture still has no production authentication.
 
 The optional package in `examples/native` implements the shared
 [`Examples.Tickets.Domain`](../examples/lean/Examples/Tickets/Domain.lean) using real LeanDB
@@ -394,4 +394,4 @@ LeanDB runtime. It rebuilds handlers from the current connection inside admissio
 checks their public manifest against frozen metadata, and keeps readiness outside
 the database queue. The native framework check includes 44 assertions for this
 adapter. Tickets' Store-based listener has not yet moved onto that lifecycle;
-see [implementation status](LEANAPP_STATUS.md) for the qualification boundary.
+see [architecture](ARCHITECTURE.md#what-is-qualified) for the qualification boundary.

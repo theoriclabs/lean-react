@@ -1,10 +1,10 @@
 # LeanReact implementation and limits
 
-[Documentation](README.md) · [LeanReact](LEANREACT.md) · [LeanApp framework status](LEANAPP_STATUS.md)
+[Documentation](README.md) · [LeanReact](LEANREACT.md)
 
-This page covers the frontend library, compiler/runtime integrations and local Tickets fixture. Authentication and the hosted café are separate LeanApp integrations; their qualification is recorded in the framework status and [release evidence](RELEASE.md).
+This page covers the frontend library, compiler/runtime integrations and local Tickets fixture. Authentication and the hosted café are separate LeanApp integrations; their qualification is recorded in [release evidence](RELEASE.md).
 
-The implementation compiles real Lean declarations to JavaScript and runs them through React. The public source API uses `Component Props`, `Hook α`, and `Action α`. The [vision](../VISION.md) describes the larger direction; this document describes the current boundary.
+The implementation compiles real Lean declarations to JavaScript and runs them through React. The public source API uses `Component Props`, `Hook α`, and `Action α`. This document describes the current boundary.
 
 ## Composition exercised by the examples
 
@@ -47,7 +47,7 @@ The current styling path is ordinary CSS. The demo loads `examples/web/style.css
 DOM.div { className := some "card" } #[text "A styled Lean component"]
 ```
 
-There is no typed CSS value API, React `style` object adapter, CSS module integration, or Tailwind build step yet. Composable Lean rules, tokens, and variants with static CSS extraction are the intended next styling layer. They should remain optional and compose with stylesheets and utility classes; the [vision](../VISION.md#navigation-accessibility-and-styling) describes that design.
+There is no typed CSS value API, React `style` object adapter, CSS module integration, or Tailwind build step yet. Composable Lean rules, tokens, and variants with static CSS extraction are the intended next styling layer. They should remain optional and compose with stylesheets and utility classes.
 
 Interop works in both directions, through explicit adapters. `examples/lean/Examples/Foreign.lean` gives a foreign React component typed props, an action callback, and an element slot; `examples/adapters/example-foreign.mjs` maps them into an ordinary React component. The mounted integration suite exercises it. Conversely, `examples/consumer/typescript.tsx` wraps a generated Lean component with `asReactComponent` and checks the generated declaration types. The standalone domain module can also be imported from Node without React.
 
