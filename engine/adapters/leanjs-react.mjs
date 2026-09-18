@@ -1,6 +1,6 @@
 // Explicit adapter between LeanJS ABI v0 and the host-only React runtime.
 import * as React from 'react';
-import { createRuntime, pureHook, pureAction, bindAction, mapAction, catchAction, runAction } from '../runtime/react.mjs';
+import { createRuntime, pureHook, pureAction, bindAction, mapAction, catchAction, runAction, isCallFailure } from '../runtime/react.mjs';
 import { createResourceHooks } from '../runtime/resources.mjs';
 import { createCellHooks } from '../runtime/cells.mjs';
 import { createRouterHooks, splitLocation, segments, parseQuery, encodeQuery, parseNat } from '../runtime/router.mjs';
@@ -65,9 +65,28 @@ function resourceState(value) {
   if (value.status === 'success') return ctor(tag, [token, value.value]);
   const failure = value.error.kind === 'loader'
     ? ctor('LeanReact.ResourceFailure.loader', [value.error.error])
-    : ctor('LeanReact.ResourceFailure.exception', [value.error.message]);
+    : callFailure(value.error.error) ?? ctor('LeanReact.ResourceFailure.exception', [value.error.message]);
   return ctor(tag, [token, failure]);
 }
+// LR-07: the host `CallFailure` class (Fetch.mjs) as the portable `Contract.CallFailure`, wrapped in
+// `ResourceFailure.call`. Returns null for anything that is not a recognised CallFailure.
+const operationId = value => ctor('Contract.OperationId.mk', [String(value?.namespace ?? ''), String(value?.name ?? ''), String(value?.version ?? '')]);
+export function callFailure(error) {
+  if (!isCallFailure(error)) return null;
+  const wrap = failure => ctor('LeanReact.ResourceFailure.call', [failure]);
+  switch (error.kind) {
+    case 'unauthenticated': return wrap(ctor('Contract.CallFailure.unauthenticated'));
+    case 'forbidden': return wrap(ctor('Contract.CallFailure.forbidden'));
+    case 'cancelled': return wrap(ctor('Contract.CallFailure.cancelled'));
+    case 'incompatible': return wrap(ctor('Contract.CallFailure.incompatible', [operationId(error.detail?.expected), operationId(error.detail?.received)]));
+    case 'decode': return wrap(ctor('Contract.CallFailure.decode', [String(error.code)]));
+    case 'protocol': return wrap(ctor('Contract.CallFailure.protocol', [String(error.code)]));
+    case 'transport': return wrap(ctor('Contract.CallFailure.transport', [String(error.code)]));
+    default: return null;
+  }
+}
+/** Replace the adapter runtime's `onActionError` / `onCallFailure` handlers (see `createRuntime`). */
+export const configureRuntime = options => runtime.configure(options);
 export const resourceSignal = request => requestSignals.get(request);
 export function useResource(_valueType, _errorType, key, loader, dependencies, enabled, site) {
   const load = request => {

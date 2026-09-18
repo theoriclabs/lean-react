@@ -150,11 +150,15 @@ test("typed loader errors and host exceptions remain distinct and refresh can re
     assert.equal(f.current.state.error.kind, "loader");
     assert.equal(f.current.state.error.error, domainError);
     await f.refresh();
-    await act(async () => { bad.calls[1].reject(new Error("transport broke")); await bad.calls[1].promise.catch(() => {}); });
-    assert.deepEqual(f.current.state.error, { kind: "exception", message: "transport broke" });
+    const thrown = new Error("transport broke");
+    await act(async () => { bad.calls[1].reject(thrown); await bad.calls[1].promise.catch(() => {}); });
+    // The thrown value rides along so an adapter can recognise typed transport failures.
+    assert.deepEqual(f.current.state.error, { kind: "exception", message: "transport broke", error: thrown });
     await f.render({ key: "errors", load: () => action(() => { throw new Error("sync broke"); }) });
     await f.refresh();
-    assert.deepEqual(f.current.state.error, { kind: "exception", message: "sync broke" });
+    assert.equal(f.current.state.error.kind, "exception");
+    assert.equal(f.current.state.error.message, "sync broke");
+    assert.equal(f.current.state.error.error.message, "sync broke");
     await f.render({ key: "errors", load: () => action(() => ({ ok: true, value: "recovered" })) });
     await f.refresh();
     assert.equal(f.current.state.value, "recovered");

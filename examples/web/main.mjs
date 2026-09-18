@@ -11,7 +11,7 @@ import librariesSource from '../lean/Examples/Libraries/App.lean';
 import feedbackSource from '../lean/Examples/Feedback.lean';
 import sparklineSource from '../lean/Examples/Sparkline.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
-import { createTicketsService } from '../adapters/tickets-service.mjs';
+import { createTicketsService, createTicketsLoader } from '../adapters/tickets-service.mjs';
 import '../adapters/example-sparkline.mjs';
 
 const parameters = new URLSearchParams(location.search);
@@ -111,7 +111,7 @@ const element = example === 'collections' ? mountElement(collections['Examples.C
   : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
     ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']])) : remote
   ? mountElement(tickets['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [
-    'native-tickets', createTicketsService(),
+    'native-tickets', createTicketsService(), createTicketsLoader(),
   ]))
   : mountElement(tickets['Examples.Tickets.App']);
 const root = createRoot(document.getElementById('root'));

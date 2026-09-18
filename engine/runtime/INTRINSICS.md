@@ -216,8 +216,14 @@ The host state union is:
 { status: "loading", token: { key: "tickets", generation: 1n } }
 { status: "success", token, value: encodedValue }
 { status: "failure", token, error: { kind: "loader", error: encodedError } }
-{ status: "failure", token, error: { kind: "exception", message: "host error text" } }
+{ status: "failure", token, error: { kind: "exception", message: "host error text", error: thrownValue } }
 ```
+
+The `exception` entry retains the thrown value. The integrated adapter recognises the `CallFailure` class from `engine/LeanContract/Fetch.mjs` structurally (`name === "CallFailure"`, string `kind`) and encodes it as `LeanReact.ResourceFailure.call [Contract.CallFailure.*]` instead of `.exception`: `unauthenticated`/`forbidden`/`cancelled` have no fields, `decode`/`protocol`/`transport` carry `[codeString]`, and `incompatible` carries `[Contract.OperationId.mk [namespace, name, version]` for `detail.expected`, then `detail.received]`. `callFailure(error)` is exported for other adapters and returns `null` for anything else. Before a rejected loader is published, the runtime calls `onCallFailure` (see below); superseded generations stay silent.
+
+`createRuntime(React, { onActionError, onCallFailure })` and `runtime.configure({ ... })` (re-exported as `configureRuntime` by the adapter) install a global hook: every recognised CallFailure surfacing from an event action, an effect, or a published resource failure is passed to `onCallFailure(failure)` once. Returning `true` marks an action error as handled so `onActionError` does not run; resource failures still reach the typed state either way. This is how an application reacts to `unauthenticated` in one place instead of in every component.
+
+`engine/LeanContract/Service.mjs` exports `resourceLoader(client, identity, encodeArgs)`, returning `(request, args) => Action` that calls `client.call(identity, encodeArgs(args), { signal: resourceSignal(request) })`. `resourceSignal` is this adapter's WeakMap lookup from the Lean `ResourceRequest` descriptor to the request's AbortSignal, so loaders built this way abort their `fetch` on refresh, scope change, disable, and unmount.
 
 The host request is `{token, signal, cancelled, onCleanup}`. `signal` is an AbortSignal for direct host loaders; it is not a Lean record field. `cancelled` is an Action returning a host boolean, so the request codec must map its result to the tagged Lean Bool. `onCleanup` takes one opaque cleanup Action and returns an Action whose result must be mapped to Lean Unit. The Lean callback field has arity 1. The source can cooperate through `cancelled` and `onCleanup`; a specific foreign service adapter may retain the corresponding AbortSignal in its own host mapping.
 
@@ -238,6 +244,7 @@ The current ABI omits constructor parameters from `fields`, while constructor *f
 | `LeanReact.ResourceState.failure` | 4 / `Value, Error` | `[encodedToken, encodedFailure]` |
 | `LeanReact.ResourceFailure.loader` | 2 / `Error` | `[encodedError]` |
 | `LeanReact.ResourceFailure.exception` | 2 / `Error` | `[messageString]` |
+| `LeanReact.ResourceFailure.call` | 2 / `Error` | `[encodedCallFailure]` (see below) |
 
 Each is `{tag: fullyQualifiedConstructorName, fields: [...]}` as specified in engine/LeanJS/ABI.md. A nested Key uses `LeanReact.Key.mk` with `[string]`. `Except.ok` has `[encodedValue]`; `Except.error` has `[encodedError]`; both omit their constructor type parameters. Use the actual constructor metadata when integrating instead of applying a generic record-field guess.
 

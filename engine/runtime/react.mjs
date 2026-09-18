@@ -14,12 +14,28 @@ export function validateHookTrace(expected, actual, name = "component") {
   }
 }
 
-/** Explicit host bridge. React is injected; all props, callbacks and slots are live JS values. */
-export function createRuntime(React, { onActionError = error => { throw error; } } = {}) {
+/** A transport failure raised by `engine/LeanContract/Fetch.mjs`, recognised structurally so the runtime
+ * does not import the contract layer. */
+export const isCallFailure = error => error != null && typeof error === "object" && error.name === "CallFailure" && typeof error.kind === "string";
+
+/** Explicit host bridge. React is injected; all props, callbacks and slots are live JS values.
+ * `onCallFailure(failure)` observes every recognised CallFailure surfacing from an action, effect, or resource
+ * loader once, before the ordinary error path; returning `true` from it marks an action error as handled.
+ * Both handlers can be replaced later through `runtime.configure`. */
+export function createRuntime(React, { onActionError = error => { throw error; }, onCallFailure = null } = {}) {
   let active = null;
   const ownComponents = new WeakSet();
   const ownContexts = new WeakSet();
-  const report = error => onActionError(error);
+  const handlers = { onActionError, onCallFailure };
+  const notifyCallFailure = error => {
+    if (!isCallFailure(error) || typeof handlers.onCallFailure !== "function") return false;
+    return handlers.onCallFailure(error) === true;
+  };
+  const report = error => { if (!notifyCallFailure(error)) handlers.onActionError(error); };
+  function configure(next = {}) {
+    if (next.onActionError !== undefined) handlers.onActionError = next.onActionError;
+    if (next.onCallFailure !== undefined) handlers.onCallFailure = next.onCallFailure;
+  }
   function runHook(work) {
     if (!active) throw new HookPlacementError("Hook executed outside a component render");
     if (!work?.[hookTag]) throw new TypeError("Expected a LeanReact Hook");
@@ -262,5 +278,5 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   return Object.freeze({ component, nameComponent, element, foreignElement, handleElement, text, fragment, empty: null, keyed, keyedEach,
     dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
     onScroll, onSubmit, onNavigate, useState, createContext, provide, provider, useContext, useEffect,
-    runHook, bindHook, mapHook, namedHook, primitiveHook });
+    runHook, bindHook, mapHook, namedHook, primitiveHook, configure, notifyCallFailure });
 }

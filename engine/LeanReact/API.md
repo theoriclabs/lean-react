@@ -350,6 +350,7 @@ def TicketResource : Component TicketResourceProps := component fun props => do
     | .success _ tickets => text s!"{tickets.size} tickets"
     | .failure _ (.loader .notFound) => text "Missing"
     | .failure _ (.loader (.conflict _)) => text "Changed on the server"
+    | .failure _ (.call failure) => text failure.code
     | .failure _ (.exception message) => text message
   pure <| DOM.div {} #[content,
     DOM.button { onPress := some result.refresh } #[text "Refresh"]]
@@ -361,7 +362,9 @@ end P06Examples
 
 `useResource key loader dependencies enabled site` returns a `Hook (Resource Value Error)` where `loader : ResourceRequest → Action (Except Error Value)`. A stable Key plus a fixed-length Array of Dependency values defines request scope. `enabled := false` keeps the resource idle. Loader closure identity is not a dependency; refresh uses the latest committed loader. Include all restart-worthy inputs in the key or explicit dependencies.
 
-`ResourceState Value Error` has `.idle`, `.loading token`, `.success token value`, and `.failure token reason`. `ResourceToken` has `key` and an exact natural `generation`. Failure reasons distinguish `.loader error` (the original typed domain error) from `.exception message` (a host throw or rejected promise).
+`ResourceState Value Error` has `.idle`, `.loading token`, `.success token value`, and `.failure token reason`. `ResourceToken` has `key` and an exact natural `generation`. Failure reasons distinguish `.loader error` (the original typed domain error), `.call failure` (a transport failure the host bridge recognised, as the portable `Contract.CallFailure`), and `.exception message` (any other host throw or rejected promise).
+
+`Contract.CallFailure` is closed: `unauthenticated`, `forbidden`, `incompatible expected received`, `decode code`, `protocol code`, `transport code`, `cancelled`, with `CallFailure.code`, `.kind`, and `.toCallError`. `Resource.failureAs : ResourceFailure ε → Except CallFailure ε` collapses the three shapes into the loader's typed error or a call failure (`.exception message` becomes `.transport message`). This helper was chosen over routing transport failures into the loader error type: loaders keep returning plain `Except Error Value`, existing `.loader` matches stay valid, and one function per component decides how each transport case renders. In the browser, `createRuntime({ onCallFailure })` (or the adapter's `configureRuntime`) additionally observes every recognised failure once, so an application can redirect on `unauthenticated` in one place. Host loaders built with `resourceLoader` from `engine/LeanContract/Service.mjs` forward the resource's AbortSignal to `fetch`.
 
 A Resource exposes `state`, `refresh : Action Unit`, and `read : Action (ResourceState Value Error)`. In the browser, refresh starts a new generation and returns without waiting for completion. `read` observes the controller state immediately; rendering catches up through React. Every completion is checked against active ownership, token, and scope. Dependency/key changes, disable, refresh, and unmount suppress stale results; they also clear the prior result. Refresh after unmount or while disabled does nothing.
 

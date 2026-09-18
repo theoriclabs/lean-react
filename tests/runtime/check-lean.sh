@@ -2,11 +2,19 @@
 set -eu
 cd "$(dirname "$0")/../.."
 build_dir="$PWD/tests/runtime/lean-build"
-mkdir -p "$build_dir/LeanReact" "$build_dir/LeanOntology" "$build_dir/Examples/Tickets"
+mkdir -p "$build_dir/LeanReact" "$build_dir/LeanOntology" "$build_dir/LeanContract" "$build_dir/Examples/Tickets"
 export LEAN_PATH="$build_dir${LEAN_PATH:+:$LEAN_PATH}"
 lean -R engine -o "$build_dir/LeanOntology/Path.olean" engine/LeanOntology/Path.lean
 lean -R engine -o "$build_dir/LeanOntology/Validation.olean" engine/LeanOntology/Validation.lean
 lean -R engine -o "$build_dir/LeanOntology/Identity.olean" engine/LeanOntology/Identity.lean
+lean -R engine -o "$build_dir/LeanOntology/Schema.olean" engine/LeanOntology/Schema.lean
+lean -R engine -o "$build_dir/LeanOntology/Codec.olean" engine/LeanOntology/Codec.lean
+lean -R engine -o "$build_dir/LeanOntology/Descriptor.olean" engine/LeanOntology/Descriptor.lean
+lean -R engine -o "$build_dir/LeanOntology/Query.olean" engine/LeanOntology/Query.lean
+lean -R engine -o "$build_dir/LeanOntology.olean" engine/LeanOntology.lean
+# Resources carry the portable Contract.CallFailure, so the contract's operation identities are needed too.
+lean -R engine -o "$build_dir/LeanContract/Operation.olean" engine/LeanContract/Operation.lean
+lean -R engine -o "$build_dir/LeanContract/CallFailure.olean" engine/LeanContract/CallFailure.lean
 lean -R examples/lean -o "$build_dir/Examples/Tickets/Domain.olean" examples/lean/Examples/Tickets/Domain.lean
 lean -R engine -o "$build_dir/LeanReact/Core.olean" engine/LeanReact/Core.lean
 lean -R engine -o "$build_dir/LeanReact/Cell.olean" engine/LeanReact/Cell.lean

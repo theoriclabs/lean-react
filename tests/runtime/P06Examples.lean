@@ -81,6 +81,7 @@ def TicketResource : Component TicketResourceProps := component fun props => do
     | .success _ tickets => text s!"{tickets.size} tickets"
     | .failure _ (.loader .notFound) => text "Missing"
     | .failure _ (.loader (.conflict _)) => text "Changed on the server"
+    | .failure _ (.call failure) => text failure.code
     | .failure _ (.exception message) => text message
   pure <| DOM.div {} #[content,
     DOM.button { onPress := some result.refresh } #[text "Refresh"]]

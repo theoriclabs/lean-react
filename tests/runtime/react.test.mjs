@@ -343,6 +343,28 @@ test("async event and effect errors go through the configured error boundary", a
   finally { await f.close(); }
 });
 
+test("onCallFailure observes CallFailure-shaped action errors once and can mark them handled", async () => {
+  const failures = [], errors = [];
+  const local = createRuntime(React, { onActionError: error => errors.push(error.message), onCallFailure: failure => { failures.push(failure.kind); return failure.kind === "unauthenticated"; } });
+  const callFailure = (kind, code) => Object.assign(new Error(code), { name: "CallFailure", kind, code });
+  const Child = local.component(() => pureHook(local.dom("div", {}, [
+    local.dom("button", { id: "auth", onClick: local.onPress(action(async () => { throw callFailure("unauthenticated", "auth.required"); })) }, ["auth"]),
+    local.dom("button", { id: "net", onClick: local.onPress(action(() => { throw callFailure("transport", "request.failed"); })) }, ["net"]),
+    local.dom("button", { id: "plain", onClick: local.onPress(action(() => { throw new Error("plain"); })) }, ["plain"]),
+  ])));
+  const f = await fixture(local.element(Child, null));
+  try {
+    await f.click("#auth"); await f.click("#net"); await f.click("#plain");
+    await act(async () => { await Promise.resolve(); });
+    assert.deepEqual(failures, ["unauthenticated", "transport"]);
+    assert.deepEqual(errors, ["request.failed", "plain"]);
+    local.configure({ onCallFailure: null });
+    await f.click("#auth");
+    await act(async () => { await Promise.resolve(); });
+    assert.deepEqual(errors, ["request.failed", "plain", "auth.required"]);
+  } finally { await f.close(); }
+});
+
 test("intrinsic adapter requires explicit codecs and preserves closures and encoded records through React", async () => {
   const { createIntrinsicAdapter } = await import("../../engine/runtime/intrinsics.mjs");
   assert.throws(() => createIntrinsicAdapter(rt, {}), /abi.call/);
