@@ -29,7 +29,7 @@ const digestNats = (h, xs) => xs.reduce(digestNat, h);
 const digestString = (h, s) => digestNats(h, Array.from(s, c => BigInt(c.codePointAt(0))));
 const random = () => {
   let seed = 20250918n;
-  const out = {strings: 7n, lists: 7n, arrays: 7n, stringSamples: [], listSamples: [], arraySamples: []};
+  const out = {strings: 7n, lists: 7n, arrays: 7n, loops: 7n, stringSamples: [], listSamples: [], arraySamples: []};
   for (let round = 0; round < 10000; round++) {
     let len; [len, seed] = next(seed, 25n);
     let scalars = '';
@@ -44,6 +44,7 @@ const random = () => {
     let i, m; [i, seed] = next(seed, count + 2n); [m, seed] = next(seed, count + 3n);
     const listed = array(f('listOps')(list(xs), m)), arrayed = f('arrayOps')(xs, i, n);
     out.lists = digestNats(out.lists, listed); out.arrays = digestNats(out.arrays, arrayed);
+    out.loops = digestNats(out.loops, [f('sumAcc')(list(xs), n), f('countLoop')(n, m), f('sumEven')(list(xs), m), f('sumWhere')(list(xs))]);
     if (out.listSamples.length < 32) out.listSamples.push(natArray(listed));
     if (out.arraySamples.length < 32) out.arraySamples.push(natArray(arrayed));
   }
@@ -94,6 +95,9 @@ test('native Lean / generated Node parity across composed functions', () => {
     randomStrings: str(sampled.strings), randomStringSamples: sampled.stringSamples,
     randomLists: str(sampled.lists), randomListSamples: sampled.listSamples,
     randomArrays: str(sampled.arrays), randomArraySamples: sampled.arraySamples,
+    randomLoops: str(sampled.loops),
+    loops: (xs => natArray([f('sumAcc')(xs, 5n), f('countLoop')(12000n, 0n), f('sumEven')(xs, 0n), f('sumWhere')(xs)]))
+      (list(Array.from({length: 12000}, (_, i) => BigInt(i)))),
     arrayWork: arrays.map(xs => natArray(f('arrayWork')(xs,4n))),
     arrayRead: arrays.map(xs => [0n,1n,50n].map(i => str(f('arrayRead')(xs,i)))),
     arraySet: natArray(f('arraySet')([1n,2n,3n],1n,99n))
@@ -153,6 +157,19 @@ test('scalar string and List builtins iterate at 100k elements without stack gro
   const xs = Array.from({length: 100000}, (_, i) => BigInt(i));
   assert.doesNotThrow(() => f('listSlices')(xs, 50000n));
   assert.equal(array(f('listOps')(list(xs.slice(0, 20)), 3n)).length, 20 + 2 + 19 + 20 + 20 + 3 + 3 + 0 + 4);
+});
+
+test('self tail calls compile to loops that run on one million elements', () => {
+  const million = Array.from({length: 1000000}, (_, i) => BigInt(i));
+  const xs = list(million);
+  assert.equal(f('sumAcc')(xs, 0n), 499999500000n);
+  assert.equal(f('countLoop')(1000000n, 0n), 499999500000n);
+  assert.equal(f('sumEven')(xs, 0n), 249999500000n);
+  assert.equal(f('sumWhere')(xs), 499999500000n);
+  // The non-tail original still uses the JavaScript stack, as its compile-time note says.
+  assert.throws(() => f('sum')(xs), RangeError);
+  const source = readFileSync(new URL('./generated.mjs', import.meta.url), 'utf8');
+  assert.match(source, /class \$Tail/);
 });
 
 test('scalar string builtins index code points and reject lone surrogates', () => {

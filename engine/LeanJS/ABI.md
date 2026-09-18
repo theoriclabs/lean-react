@@ -158,8 +158,9 @@ contracts; the compiler cannot prove they agree with the native reference.
   `replicate`, `range`, `range'`, `foldr`, `getLast?`/`getLast`, `all` and `any`
   (including the `*TR` / auxiliary names Lean's LCNF actually calls). These walk
   cons cells in a JavaScript loop, so a 12,000-element list does not overflow the
-  JS stack; the suite also slices 100,000 elements. User-written recursive List
-  functions still use the JavaScript stack.
+  JS stack; the suite also slices 100,000 elements. User-written recursion whose
+  self calls are all tail calls compiles to a `while (true)` loop (see below);
+  other user-written recursion still uses the JavaScript stack and is reported.
 - Exact Nat addition/subtraction/multiplication/division/modulus/power and
   comparisons; subtraction saturates, division by zero returns zero and modulus
   by zero returns its dividend.
@@ -193,8 +194,10 @@ reflection and unsupported recursors/quotients are not admitted. Raw String
 construction and raw matches or projections on String/Array are rejected; use
 supported operations instead.
 Advanced dependent eliminations beyond Lean's successful pure-LCNF lowering are
-not claimed. No async scheduler, stack-safe trampoline, tail-call optimization,
-source maps, incremental compiler cache or bundler is included. Recursive programs use the JavaScript stack and can exhaust resources, except the iterative List host builtins above.
+not claimed. No async scheduler, general trampoline, mutual tail-call
+optimization, source maps, incremental compiler cache or bundler is included.
+Recursive programs use the JavaScript stack and can exhaust resources, except
+the iterative host builtins above and self tail calls, which become loops.
 
 Unsupported native operations fail **before output is written**, with an
 executable dependency path and guidance to register an adapter, for example:
@@ -256,6 +259,57 @@ builtins. The native/Node corpus compares digests of 10,000 random strings
 (ASCII, Latin-1, CJK, emoji, ZWJ sequences, variation selectors, U+10000,
 U+10FFFF, private use, NUL), lists and arrays, plus `String.dropScalars` on a
 100,000-scalar string and `List.take 50_000` on a 100,000-element list.
+
+## Stack safety: self tail calls and recursion diagnostics
+
+Before emitting a declaration, the compiler classifies every call of the
+declaration to itself in its pure LCNF body. A self call is a **tail call** when
+it is fully applied, its result is returned immediately, and it sits in tail
+position: directly in the body, in a match alternative, in a join point, or in a
+local function that is itself only ever tail-called from tail position. The last
+case covers the shape Lean produces for structural recursion, where each
+equation becomes a local `_f.N` bound to `_alt.N` and called from one `cases`
+branch, as well as `let rec`/`where` locals, which are separate declarations.
+
+When every self call is a tail call, the declaration is emitted as
+
+```js
+$fn(2, (v0, v1) => {
+while (true) {
+  ... [v0, v1] = [v7, v12]; continue; ...   // self call in the body
+  ... return new $Tail([v7, v12]); ...      // self call inside a join point or alternative
+  const $r = $app(v14, [v16, v17, v1]);      // tail call of such a local
+  if ($r instanceof $Tail) { [v0, v1] = $r.args; continue; }
+  return $r;
+}})
+```
+
+Parameters are rebound simultaneously; locals are re-created per iteration, so
+captured values are never stale. `$Tail` requests only travel through tail
+positions and never escape as values. Declarations without a self tail call are
+emitted exactly as before (the deterministic-output test asserts byte identity
+for them), so the lowering is additive and semantics-preserving. Mutual
+recursion and calls under a monadic `bind` (for example `Array.forIn'.loop`
+with a generic `Monad` dictionary) are not lowered.
+
+Remaining non-tail self-recursion produces an **info** note at compile time:
+
+```text
+LeanJS: Corpus.sum (tests.compiler.Corpus:49:0) recurses on the JavaScript stack; 1 self call is not a tail call:
+  case List.cons > fun _f.12 > let _x.10 (generated variable v13)
+Type: List Nat → Nat
+Dependency path: Corpus.observation -> Corpus.sum
+Prefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), ...
+```
+
+Each site is described from the outermost match alternative down to the LCNF
+binding of the call, with the generated JavaScript variable so it can be found
+in the output. `set_option leanjs.recursion.warn true` reports it as a warning
+and `set_option leanjs.recursion.error true` rejects the compilation before any
+output is written (the options are registered by `LeanJS.Compiler`). The suite
+fixes the exact text with `#guard_msgs`, compiles `sumAcc : List Nat → Nat → Nat`,
+a `Nat` countdown, a join-point shape and a `where` local to loops, runs them on
+1,000,000 elements in Node, and compares them with native Lean on random inputs.
 
 ## Checks and integration notes
 

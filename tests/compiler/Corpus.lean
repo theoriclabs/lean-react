@@ -103,6 +103,27 @@ def scalarOps (s : String) (n k : Nat) : String :=
 
 def scalarDrop (s : String) (n : Nat) : String := s.dropScalars n
 
+/-- Accumulator recursion: every self call is a tail call, so LeanJS emits a loop. -/
+def sumAcc : List Nat → Nat → Nat
+  | [], acc => acc
+  | x :: xs, acc => sumAcc xs (acc + x)
+
+/-- A `Nat` countdown in the same shape. -/
+def countLoop : Nat → Nat → Nat
+  | 0, acc => acc
+  | n+1, acc => countLoop n (acc + n)
+
+/-- The tail call sits behind a join point produced for the conditional argument. -/
+def sumEven : List Nat → Nat → Nat
+  | [], acc => acc
+  | x :: xs, acc => sumEven xs (if x % 2 == 0 then acc + x else acc)
+
+/-- A `where` local compiles as its own loop. -/
+def sumWhere (xs : List Nat) : Nat := go xs 0 where
+  go : List Nat → Nat → Nat
+  | [], acc => acc
+  | x :: xs, acc => go xs (acc + x)
+
 def fibonacci : Nat → Nat
   | 0 => 0
   | 1 => 1

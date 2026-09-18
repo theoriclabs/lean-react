@@ -18,6 +18,9 @@ const $app = (f, args) => {
   // Foreign callbacks use their declared JS parameter count as the Lean arity.
   return f.leanArity === undefined ? $fn(f.length, f)(...args) : f(...args);
 };
+// A self tail call made inside a join point or match alternative returns this
+// request; the enclosing `while (true)` loop rebinds its parameters from `args`.
+class $Tail { constructor(args) { this.args = args; } }
 const $lazy = body => {
   let state = 0, value;
   return () => {

@@ -38,6 +38,54 @@ run_meta do
   logInfo message
 end Rejected
 
+namespace Rejected
+def nonTail : List Nat → Nat
+  | [] => 0
+  | x :: xs => x + nonTail xs
+
+def tailSum : List Nat → Nat → Nat
+  | [], acc => acc
+  | x :: xs, acc => tailSum xs (acc + x)
+end Rejected
+
+-- Non-tail self-recursion is reported with its call sites; the options escalate the note.
+/--
+info: LeanJS: Rejected.nonTail (42:0) recurses on the JavaScript stack; 1 self call is not a tail call:
+  case List.cons > fun _f.12 > let _x.10 (generated variable v13)
+Type: List Nat → Nat
+Dependency path: Rejected.nonTail
+Prefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), or an accumulator so that every self call is a tail call and compiles to a loop; otherwise chunk the input. set_option leanjs.recursion.warn or leanjs.recursion.error escalates this note.
+-/
+#guard_msgs in
+run_meta do let _ ← LeanJS.compile #[`Rejected.nonTail]
+
+/--
+warning: LeanJS: Rejected.nonTail (42:0) recurses on the JavaScript stack; 1 self call is not a tail call:
+  case List.cons > fun _f.12 > let _x.10 (generated variable v13)
+Type: List Nat → Nat
+Dependency path: Rejected.nonTail
+Prefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), or an accumulator so that every self call is a tail call and compiles to a loop; otherwise chunk the input. set_option leanjs.recursion.warn or leanjs.recursion.error escalates this note.
+-/
+#guard_msgs in
+set_option leanjs.recursion.warn true in
+run_meta do let _ ← LeanJS.compile #[`Rejected.nonTail]
+
+/--
+error: LeanJS: Rejected.nonTail (42:0) recurses on the JavaScript stack; 1 self call is not a tail call:
+  case List.cons > fun _f.12 > let _x.10 (generated variable v13)
+Type: List Nat → Nat
+Dependency path: Rejected.nonTail
+Prefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), or an accumulator so that every self call is a tail call and compiles to a loop; otherwise chunk the input. set_option leanjs.recursion.warn or leanjs.recursion.error escalates this note.
+-/
+#guard_msgs in
+set_option leanjs.recursion.error true in
+run_meta do let _ ← LeanJS.compile #[`Rejected.nonTail]
+
+-- Accumulator recursion compiles to a loop without a note, even under the error option.
+#guard_msgs in
+set_option leanjs.recursion.error true in
+run_meta do let _ ← LeanJS.compile #[`Rejected.tailSum]
+
 -- Reference-body support does not admit the unsafe native replacement itself.
 run_meta do
   let result ← try

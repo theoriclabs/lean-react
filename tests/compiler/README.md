@@ -26,9 +26,12 @@ alone checks 100,000-element slicing for stack safety.
 trusted foreign primitive; its deliberately distinguishable result tests that
 registration overrides the native reference and receives a live callback.
 `Negative.lean` checks dependency paths and rejects native IO/externs,
-implemented_by, unsafe/partial definitions and mismatched intrinsic arities.
-`Deterministic.lean` checks repeated compilation in one environment; the runner
-also compares output across two processes. `Inspect.lean` is an optional LCNF
+implemented_by, unsafe/partial definitions and mismatched intrinsic arities, and
+fixes the exact non-tail recursion note with `#guard_msgs`, including its
+`leanjs.recursion.warn`/`error` escalation. `Deterministic.lean` checks repeated
+compilation in one environment and that self tail calls (`sumAcc`, `countLoop`,
+`sumEven`, `sumWhere.go`) emit `while (true)` loops while other declarations are
+untouched; the runner also compares output across two processes. `Inspect.lean` is an optional LCNF
 inspection tool.
 
 The compiler and adapter contract is [LeanJS/ABI.md](../../engine/LeanJS/ABI.md).

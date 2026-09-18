@@ -154,12 +154,206 @@ private structure State where
   initializers : Array Name := #[]
   usedLibraries : Array Nat := #[]
 
+/-- Emission context of a declaration whose self tail calls become one `while (true)` loop. -/
+private structure Loop where
+  name : Name
+  /-- JavaScript parameter names, rebound by each self tail call. -/
+  params : Array String
+  /-- Local functions, join points and aliases whose bodies are in tail position. -/
+  tail : Std.HashSet FVarId
+  /-- Tail locals whose result may be a `$Tail` request for the enclosing loop. -/
+  carriers : IO.Ref (Std.HashSet FVarId)
+  /-- Set while emitting a body that produced or forwarded a `$Tail`. -/
+  hit : IO.Ref Bool
+  /-- Inside a tail local: `continue` is out of reach, so return `$Tail` instead. -/
+  nested : Bool := false
+
 private structure Context where
   options : Options
   exports : Array Name := #[]
   vars : Std.HashMap FVarId String := {}
+  loop : Option Loop := none
 
 private abbrev M := ReaderT Context (StateRefT State CoreM)
+
+register_option leanjs.recursion.warn : Bool := {
+  defValue := false
+  descr := "LeanJS: report non-tail self-recursion, which grows the JavaScript stack, as a warning" }
+
+register_option leanjs.recursion.error : Bool := {
+  defValue := false
+  descr := "LeanJS: reject non-tail self-recursion, which grows the JavaScript stack" }
+
+/-- How a local function, join point or alias is referenced. -/
+private inductive UseKind where
+  | tailCall (arity : Nat)
+  | alias (target : FVarId)
+  | other
+
+private structure Use where
+  fvar : FVarId
+  kind : UseKind
+  /-- The innermost enclosing local body; `none` is the declaration body. -/
+  context : Option FVarId
+
+private structure SelfCall where
+  context : Option FVarId
+  binder : FVarId
+  /-- Fully applied and immediately returned. -/
+  tail : Bool
+  /-- Match alternatives and lets from the enclosing local body down to the call. -/
+  site : String
+
+private structure Recursion where
+  /-- Local functions/join points with their parameter counts. -/
+  locals : Std.HashMap FVarId Nat := {}
+  /-- Where each local is declared, and how the diagnostics label it. -/
+  declared : Std.HashMap FVarId (Option FVarId × String) := {}
+  /-- The first tail call of each local/alias: its context and site prefix. -/
+  callers : Std.HashMap FVarId (Option FVarId × String) := {}
+  aliases : Std.HashMap FVarId FVarId := {}
+  aliasOf : Std.HashMap FVarId FVarId := {}
+  uses : Array Use := #[]
+  selfCalls : Array SelfCall := #[]
+
+private structure RecursionInfo where
+  /-- Every self call is a tail call, so the declaration compiles to a loop. -/
+  lower : Bool
+  tail : Std.HashSet FVarId
+  nonTail : Array SelfCall
+  /-- Human-readable location of a self call, from the outermost match alternative. -/
+  describe : SelfCall → String
+
+private def recordArgs (args : Array (Arg .pure)) (context : Option FVarId) : StateM Recursion Unit :=
+  for a in args do
+    if let .fvar f := a then modify fun s => { s with uses := s.uses.push ⟨f, .other, context⟩ }
+
+private def recordTailCall (f : FVarId) (arity : Nat) (context : Option FVarId) (site : String) :
+    StateM Recursion Unit := do
+  modify fun s => { s with uses := s.uses.push ⟨f, .tailCall arity, context⟩ }
+  unless (← get).callers.contains f do modify fun s => { s with callers := s.callers.insert f (context, site) }
+
+/-- Collect every self call of `n` and every use of a local function or join point.
+`site` is relative to the innermost local body. -/
+private partial def collectRecursion (n : Name) (arity : Nat) (code : Code .pure) (context : Option FVarId)
+    (site : String) : StateM Recursion Unit := do
+  match code with
+  | .let d k =>
+    let returned := match k with | .return r => r == d.fvarId | _ => false
+    match d.value with
+    | .const c _ args =>
+      recordArgs args context
+      if c == n then
+        let call : SelfCall := ⟨context, d.fvarId, returned && args.size == arity, s!"{site}let {d.binderName}"⟩
+        modify fun s => { s with selfCalls := s.selfCalls.push call }
+    | .fvar f args =>
+      recordArgs args context
+      if args.isEmpty then
+        modify fun s => { s with
+          uses := s.uses.push ⟨f, .alias d.fvarId, context⟩
+          aliases := s.aliases.insert d.fvarId f
+          aliasOf := s.aliasOf.insert f d.fvarId }
+      else if returned then recordTailCall f args.size context site
+      else modify fun s => { s with uses := s.uses.push ⟨f, .other, context⟩ }
+    | .proj _ _ f => modify fun s => { s with uses := s.uses.push ⟨f, .other, context⟩ }
+    | .lit .. | .erased => pure ()
+    collectRecursion n arity k context site
+  | .fun d k => collectLocal d k "fun"
+  | .jp d k => collectLocal d k "jp"
+  | .jmp f args =>
+    recordArgs args context
+    recordTailCall f args.size context site
+  | .return f => modify fun s => { s with uses := s.uses.push ⟨f, .other, context⟩ }
+  | .unreach _ => pure ()
+  | .cases c =>
+    modify fun s => { s with uses := s.uses.push ⟨c.discr, .other, context⟩ }
+    for alt in c.alts do
+      match alt with
+      | .alt ctor _ k => collectRecursion n arity k context s!"{site}case {ctor} > "
+      | .default k => collectRecursion n arity k context s!"{site}default > "
+where
+  collectLocal (d : FunDecl .pure) (k : Code .pure) (kind : String) : StateM Recursion Unit := do
+    modify fun s => { s with
+      locals := s.locals.insert d.fvarId d.params.size
+      declared := s.declared.insert d.fvarId (context, s!"{kind} {d.binderName}") }
+    collectRecursion n arity d.value (some d.fvarId) ""
+    collectRecursion n arity k context site
+
+private def resolveAlias (aliases : Std.HashMap FVarId FVarId) : FVarId → Nat → FVarId
+  | f, fuel + 1 => match aliases[f]? with | some g => resolveAlias aliases g fuel | none => f
+  | f, 0 => f
+
+/-- Prefix `site` with the path to the local `context`: where that local (or its alias) is
+tail-called, or failing that where it is declared. -/
+private def describeSite (r : Recursion) : Option FVarId → String → Nat → String
+  | some g, site, fuel + 1 =>
+    let (declaredIn, label) := r.declared[g]?.getD (none, "local")
+    match r.callers[g]? <|> (r.aliasOf[g]? >>= (r.callers[·]?)) with
+    | some (context, before) => describeSite r context s!"{before}{label} > {site}" fuel
+    | none => describeSite r declaredIn s!"{label} > {site}" fuel
+  | _, site, _ => site
+
+/-- Decide which locals are only ever tail-called from tail positions, then classify self calls. -/
+private def analyzeRecursion (n : Name) (arity : Nat) (code : Code .pure) : RecursionInfo := Id.run do
+  let (_, r) := (collectRecursion n arity code none "").run {}
+  let target (f : FVarId) : FVarId := resolveAlias r.aliases f r.aliases.size
+  let mut tail : Std.HashSet FVarId := {}
+  for (f, _) in r.locals do tail := tail.insert f
+  for (a, _) in r.aliases do tail := tail.insert a
+  let mut changed := true
+  while changed do
+    changed := false
+    for u in r.uses do
+      if tail.contains u.fvar then
+        let ok := match u.kind with
+          | .tailCall arity => r.locals[target u.fvar]? == some arity && u.context.all tail.contains
+          | .alias a => tail.contains a
+          | .other => false
+        unless ok do
+          tail := tail.erase u.fvar
+          changed := true
+  let nonTail := r.selfCalls.filter fun c => !(c.tail && c.context.all tail.contains)
+  let depth := r.locals.size + r.aliases.size + 1
+  return { lower := arity > 0 && nonTail.isEmpty && !r.selfCalls.isEmpty, tail, nonTail
+           describe := fun c => describeSite r c.context c.site depth }
+
+/-- Non-tail self-recursion runs on the JavaScript stack; say where, and how to escalate. -/
+private def reportRecursion (n : Name) (path : Array Name) (type : String)
+    (vars : Std.HashMap FVarId String) (recursion : RecursionInfo) : M Unit := do
+  let position ← match ← findDeclarationRanges? n with
+    | some ranges =>
+      let env ← getEnv
+      let module := match env.getModuleIdxFor? n >>= (env.header.moduleNames[·]?) with
+        | some m => s!"{m}:" | none => ""
+      pure s!" ({module}{ranges.range.pos.line}:{ranges.range.pos.column})"
+    | none => pure ""
+  let sites := recursion.nonTail.map fun c => s!"\n  {recursion.describe c} (generated variable {varName vars c.binder})"
+  let count := if sites.size == 1 then "1 self call is not a tail call" else s!"{sites.size} self calls are not tail calls"
+  let message := s!"LeanJS: {n}{position} recurses on the JavaScript stack; {count}:{String.join sites.toList}\nType: {type}\nDependency path: {String.intercalate " -> " (path.toList.map toString)}\nPrefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), or an accumulator so that every self call is a tail call and compiles to a loop; otherwise chunk the input. set_option leanjs.recursion.warn or leanjs.recursion.error escalates this note."
+  let options ← getOptions
+  if leanjs.recursion.error.get options then throwError message
+  else if leanjs.recursion.warn.get options then logWarning message
+  else logInfo message
+
+/-- A self tail call: rebind the loop parameters, or ask the enclosing loop to. -/
+private def tailCall (loop : Loop) (args : Array String) : M String := do
+  if loop.nested then
+    loop.hit.set true
+    return s!"return new $Tail([{joined args}]);\n"
+  return s!"{rebind loop.params args}continue;\n"
+where
+  rebind (params args : Array String) : String :=
+    if params.size == 1 then s!"{params[0]!} = {args[0]!};\n"
+    else s!"[{joined params}] = [{joined args}];\n"
+
+/-- A tail call of a local whose result may be a `$Tail` request. -/
+private def forwardTail (loop : Loop) (call : String) : M String := do
+  if loop.nested then
+    loop.hit.set true
+    return s!"return {call};\n"
+  let rebind := if loop.params.size == 1 then s!"{loop.params[0]!} = $r.args[0];"
+    else s!"[{joined loop.params}] = $r.args;"
+  return s!"const $r = {call};\nif ($r instanceof $Tail) \{ {rebind} continue; }\nreturn $r;\n"
 
 private partial def binders (code : Code .pure) : Array FVarId := Id.run do
   match code with
@@ -277,10 +471,18 @@ mutual
     unless d.safe do fail path "partial or unsafe recursive declaration is unsupported"
     let .code code := d.value | fail path "native or opaque declaration has no portable body"
     let vars := nameVars (d.params.map (·.fvarId) ++ binders code)
-    let body ← withReader (fun ctx => { ctx with vars }) (emitCode code path)
     let varName := varName vars
-    let ps := joined (d.params.map (varName ·.fvarId))
-    let value := if d.params.isEmpty then s!"(() => \{\n{body}})()" else s!"$fn({d.params.size}, ({ps}) => \{\n{body}})"
+    let params := d.params.map (varName ·.fvarId)
+    let recursion := analyzeRecursion n d.params.size code
+    unless recursion.nonTail.isEmpty do reportRecursion n path sourceType vars recursion
+    let loop ← if recursion.lower then
+        pure (some { name := n, params, tail := recursion.tail, carriers := ← IO.mkRef {}, hit := ← IO.mkRef false : Loop })
+      else pure none
+    let body ← withReader (fun ctx => { ctx with vars, loop }) (emitCode code path)
+    let ps := joined params
+    let value := if d.params.isEmpty then s!"(() => \{\n{body}})()"
+      else if loop.isSome then s!"$fn({d.params.size}, ({ps}) => \{\nwhile (true) \{\n{body}}\n})"
+      else s!"$fn({d.params.size}, ({ps}) => \{\n{body}})"
     modify fun s => { s with
       initializers := if d.params.isEmpty then s.initializers.push n else s.initializers
       declarations := s.declarations.push s!"const {name} = $lazy(() => {value});"
@@ -309,15 +511,44 @@ mutual
   private partial def emitCode (code : Code .pure) (path : Array Name) : M String := do
     let vars := (← read).vars
     let varName := varName vars
+    let loop := (← read).loop
     match code with
     | .let d k =>
+      -- Inside a loop-lowered declaration, a returned self call rebinds the parameters and
+      -- a returned call of a `$Tail`-carrying local forwards its request.
+      if let some loop := loop then
+        let returned := match k with | .return r => r == d.fvarId | _ => false
+        match d.value with
+        | .const c _ args =>
+          if returned && c == loop.name && args.size == loop.params.size then
+            return ← tailCall loop (args.map (arg vars))
+        | .fvar f args =>
+          if args.isEmpty then
+            if (← loop.carriers.get).contains f then loop.carriers.modify (·.insert d.fvarId)
+          else if returned && (← loop.carriers.get).contains f then
+            return ← forwardTail loop (apply vars (varName f) args)
+        | _ => pure ()
       let value ← emitValue d.value path
       return s!"const {varName d.fvarId} = {value};\n{← emitCode k path}"
     | .fun d k | .jp d k =>
-      let body ← emitCode d.value path
+      let body ← match loop with
+        | some loop =>
+          if loop.tail.contains d.fvarId then
+            let outer ← loop.hit.get
+            loop.hit.set false
+            let body ← withReader (fun ctx => { ctx with loop := some { loop with nested := true } }) (emitCode d.value path)
+            if ← loop.hit.get then loop.carriers.modify (·.insert d.fvarId)
+            loop.hit.set outer
+            pure body
+          else withReader (fun ctx => { ctx with loop := none }) (emitCode d.value path)
+        | none => emitCode d.value path
       let ps := joined (d.params.map (varName ·.fvarId))
       return s!"const {varName d.fvarId} = $fn({d.params.size}, ({ps}) => \{\n{body}});\n{← emitCode k path}"
-    | .jmp f args => return s!"return {varName f}({joined (args.map (arg vars))});\n"
+    | .jmp f args =>
+      let call := s!"{varName f}({joined (args.map (arg vars))})"
+      if let some loop := loop then
+        if (← loop.carriers.get).contains f then return ← forwardTail loop call
+      return s!"return {call};\n"
     | .return f => return s!"return {varName f};\n"
     | .unreach _ => return "throw new Error('LeanJS: reached impossible branch');\n"
     | .cases c =>

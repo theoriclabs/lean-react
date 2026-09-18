@@ -27,6 +27,7 @@ private structure Random where
   strings : Nat := 7
   lists : Nat := 7
   arrays : Nat := 7
+  loops : Nat := 7
   stringSamples : Array Json := #[]
   listSamples : Array Json := #[]
   arraySamples : Array Json := #[]
@@ -63,9 +64,11 @@ private def random : Random := Id.run do
     seed := s8
     let listed := listOps xs.toList m
     let arrayed := arrayOps xs i n
+    let looped := [sumAcc xs.toList n, countLoop n m, sumEven xs.toList m, sumWhere xs.toList]
     out := { out with
       lists := digestNats out.lists listed
       arrays := digestNats out.arrays arrayed.toList
+      loops := digestNats out.loops looped
       listSamples := if out.listSamples.size < 32 then out.listSamples.push (natArray listed.toArray) else out.listSamples
       arraySamples := if out.arraySamples.size < 32 then out.arraySamples.push (natArray arrayed) else out.arraySamples }
   return out
@@ -120,6 +123,8 @@ def main : IO Unit := do
     ("randomStrings", strNat random.strings), ("randomStringSamples", Json.arr random.stringSamples),
     ("randomLists", strNat random.lists), ("randomListSamples", Json.arr random.listSamples),
     ("randomArrays", strNat random.arrays), ("randomArraySamples", Json.arr random.arraySamples),
+    ("randomLoops", strNat random.loops),
+    ("loops", natArray #[sumAcc (List.range 12000) 5, countLoop 12000 0, sumEven (List.range 12000) 0, sumWhere (List.range 12000)]),
     ("arrayWork", Json.arr (arrays.map fun xs => natArray (arrayWork xs 4))),
     ("arrayRead", Json.arr (arrays.map fun xs => Json.arr ((#[0, 1, 50] : Array Nat).map fun i => strNat (arrayRead xs i)))),
     ("arraySet", natArray (arraySet #[1,2,3] 1 99))]
