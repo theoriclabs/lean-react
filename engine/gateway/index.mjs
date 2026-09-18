@@ -4,6 +4,8 @@ import { createServer, request } from 'node:http';
 import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createMetrics, isLoopback } from './metrics.mjs';
 
 /** Same literal-path rule as `HttpBinding.validate` and `defineHttpOperation` (Fetch.mjs). */
 export const literalPath = path => typeof path === 'string' && /^\/[A-Za-z0-9/_.-]*$/.test(path) &&
@@ -58,8 +60,10 @@ export async function createGateway(config) {
     ...(!development && hsts ? { 'strict-transport-security': hsts } : {}), ...extraHeaders };
   const hooks = config.hooks ?? {};
   const name = config.name ?? 'Gateway';
-  const emit = typeof config.log === 'function' ? config.log : config.log === 'silent' ? () => {} :
-    record => process.stdout.write(JSON.stringify({ v: 1, ts: new Date().toISOString(), ...record }) + '\n');
+  // Versioned JSON lines (`v: 1`); a function sink receives the same records.
+  const stamp = record => ({ v: 1, ts: new Date().toISOString(), ...record });
+  const emit = typeof config.log === 'function' ? record => config.log(stamp(record)) : config.log === 'silent' ? () => {} :
+    record => process.stdout.write(JSON.stringify(stamp(record)) + '\n');
 
   const assets = {};
   if (config.assets) {
@@ -148,32 +152,56 @@ export async function createGateway(config) {
   // Bound active work; rejected anonymous traffic cannot consume a global time quota.
   // Credential KDF work has its own native admission gate and work budgets.
   let inFlight = 0;
+  const metrics = createMetrics();
+  const requests = metrics.counter('requests_total', 'Public responses by status');
+  const rejected = metrics.counter('rejected_total', 'Requests answered by the gateway without reaching Lean, by reason');
+  const upstream = metrics.counter('upstream_total', 'Proxied exchanges by upstream status');
+  const upstreamMs = metrics.counter('upstream_ms_total', 'Milliseconds spent waiting for upstream headers');
+  metrics.gauge('in_flight', 'Proxied exchanges currently admitted', () => inFlight);
+  handle.metrics = metrics;
   const proxied = (req, reply) => { try { hooks.onProxied?.(req, reply); } catch { /* hooks never affect the exchange */ } };
   server = createServer(async (req, res) => {
     res.on('error', () => {});
-    const send = (status, body = '') => { if (!res.headersSent) res.writeHead(status, security); res.end(body); };
-    if (stopping) { send(503); return; }
+    // One line per exchange; the path is logged without its query, never cookies or bodies.
+    const started = performance.now(), requestId = randomBytes(12).toString('base64url'), socket = req.socket, written = socket.bytesWritten;
+    const line = { requestId, method: req.method, path: req.url.split('?')[0], status: null, upstreamStatus: null,
+      durations: { total: null, upstream: null }, bytes: { in: 0, out: 0 }, streamEventsPublished: 0 };
+    res.once('close', () => {
+      line.status = res.headersSent ? res.statusCode : null; line.durations.total = Number((performance.now() - started).toFixed(1));
+      line.bytes.out = Math.max(0, socket.bytesWritten - written); requests.inc({ status: line.status ?? 'aborted' }); emit(line);
+    });
+    const base = { ...security, 'x-request-id': requestId };
+    const send = (status, body = '', reason) => { if (reason) rejected.inc({ reason }); if (!res.headersSent) res.writeHead(status, base); res.end(body); };
     const path = req.url;
+    if (path.startsWith('/internal/')) {
+      if (path === '/internal/metrics' && req.method === 'GET' && isLoopback(socket.remoteAddress)) {
+        res.writeHead(200, { ...base, 'content-type': 'text/plain; version=0.0.4; charset=utf-8' }); res.end(metrics.render());
+      } else send(404, '', 'internal');
+      return;
+    }
+    if (stopping) { send(503, '', 'draining'); return; }
     const serve = asset => {
-      res.writeHead(200, { ...security, 'content-type': `${asset.type}; charset=utf-8` });
+      res.writeHead(200, { ...base, 'content-type': `${asset.type}; charset=utf-8` });
       res.end(req.method === 'HEAD' ? undefined : asset.bytes);
     };
     if (assets[path] && ['GET', 'HEAD'].includes(req.method)) { serve(assets[path]); return; }
     if (!allowed(path) || !['GET', 'POST'].includes(req.method)) {
       if (spa && ['GET', 'HEAD'].includes(req.method) && literalPath(path) && !path.split('/').pop().includes('.')) serve(spa);
-      else send(404);
+      else send(404, '', 'not_allowed');
       return;
     }
     const names = req.rawHeaders.filter((_, i) => i % 2 === 0).map(s => s.toLowerCase());
-    if (forward.some(k => names.filter(n => n === k).length > 1)) { send(400); return; }
+    if (forward.some(k => names.filter(n => n === k).length > 1)) { send(400, '', 'duplicate_header'); return; }
     if (path !== routes.health && (req.headers['x-leanapp-request'] !== '1' ||
         (req.method === 'POST' && (req.headers.origin !== origin ||
           req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json')))) {
-      res.writeHead(403, { ...security, 'content-type': 'application/json' });
+      rejected.inc({ reason: 'forbidden' });
+      res.writeHead(403, { ...base, 'content-type': 'application/json' });
       res.end('{"error":"auth.forbidden"}'); return;
     }
     if (path !== routes.health && inFlight >= limits.inFlight) {
-      res.writeHead(429, { ...security, 'content-type': 'application/json', 'retry-after': '60' });
+      rejected.inc({ reason: 'throttled' });
+      res.writeHead(429, { ...base, 'content-type': 'application/json', 'retry-after': '60' });
       res.end('{"error":"auth.throttled"}'); return;
     }
     inFlight++;
@@ -183,24 +211,28 @@ export async function createGateway(config) {
       let size = 0; const chunks = []; const cap = caps.get(path) ?? defaultCap;
       for await (const chunk of req) {
         size += chunk.length;
-        if (size > cap) { res.setHeader('connection', 'close'); send(413); return; }
+        if (size > cap) { res.setHeader('connection', 'close'); send(413, '', 'body_too_large'); return; }
         chunks.push(chunk);
       }
-      const body = Buffer.concat(chunks);
+      const body = Buffer.concat(chunks); line.bytes.in = body.length;
       const headers = Object.fromEntries(forward.filter(k => req.headers[k] !== undefined).map(k => [k, req.headers[k]]));
-      headers['content-length'] = String(body.length);
+      headers['content-length'] = String(body.length); headers['x-request-id'] = requestId;
+      const sent = performance.now();
       const up = request(target, { method: req.method, path, headers, timeout: limits.upstreamTimeoutMs }, reply => {
-        res.writeHead(reply.statusCode, { ...security, ...Object.fromEntries(backward.filter(k => reply.headers[k] !== undefined).map(k => [k, reply.headers[k]])) });
+        line.upstreamStatus = reply.statusCode; line.durations.upstream = Number((performance.now() - sent).toFixed(1));
+        upstream.inc({ status: reply.statusCode }); upstreamMs.inc({}, line.durations.upstream);
+        res.writeHead(reply.statusCode, { ...base, ...Object.fromEntries(backward.filter(k => reply.headers[k] !== undefined).map(k => [k, reply.headers[k]])) });
         const buffered = hooks.onProxied ? [] : null; let replyBytes = 0;
         reply.on('data', chunk => { replyBytes += chunk.length; if (buffered && replyBytes <= (hooks.bodyBytes ?? 1048576)) buffered.push(chunk); });
-        reply.on('end', () => proxied(req, { status: reply.statusCode, headers: reply.headers,
+        reply.on('end', () => proxied(req, { status: reply.statusCode, headers: reply.headers, requestId, line,
           body: buffered && replyBytes <= (hooks.bodyBytes ?? 1048576) ? Buffer.concat(buffered) : null }));
         reply.on('error', () => res.destroy()); reply.pipe(res);
       });
       up.on('timeout', () => up.destroy());
-      up.on('error', () => send(502)); res.on('close', () => up.destroy()); up.end(body);
-    } catch { send(400); }
+      up.on('error', () => send(502, '', 'upstream_error')); res.on('close', () => up.destroy()); up.end(body);
+    } catch { send(400, '', 'bad_request'); }
   });
+  stopped.then(() => metrics.close());
   server.requestTimeout = limits.requestTimeoutMs; server.headersTimeout = limits.headersTimeoutMs; server.keepAliveTimeout = limits.keepAliveTimeoutMs;
   server.maxConnections = limits.maxConnections;
   handle.server = server;
