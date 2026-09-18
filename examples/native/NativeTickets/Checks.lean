@@ -91,9 +91,32 @@ def scenario (ops : PublicOperations) (transport : Transport IO) : IO Unit := do
   check (latest == saved) "rejected calls do not modify storage"
   IO.println "PASS list/save/stale/not-found/invalid/large-revision/contract-version/reference checks"
 
+/-- Every role × operation × {anonymous, another tenant} through the real application transport.
+The save probe names a missing ticket, so admitted callers receive the typed `notFound` unchanged. -/
+def roleMatrix (ops : PublicOperations) (store : Store) : IO Unit := do
+  let app ← requireOk (application ops store.service) "application"
+  let missingId ← requireOk (EntityId.parse "tickets-demo" "matrix-probe") "probe ID"
+  let probe : SaveTicket := ⟨missingId, 0, ⟨"Role matrix probe"⟩, .backlog⟩
+  let cases := LeanApp.Testing.exhaustiveMatrix app [Role.viewer, .editor, .owner]
+    (fun id => if id == listIdentity then some .viewer else if id == saveIdentity then some .editor else none)
+    (fun id => if id == saveIdentity then ops.codecs.saveInput.encode probe else .null)
+  let issue := fun (actor tenant : String) => LeanApp.TrustedNative.issueContext ⟨actor, tenant, 0⟩ "matrix"
+  let contexts : LeanApp.Testing.Fixture Role := { context := fun
+    | .anonymous => .anonymous "matrix"
+    | .role .owner | .owner => localFixtureContext
+    | .role .editor => issue "fixture-editor" localTenant
+    | .role .viewer => issue "fixture-viewer" localTenant
+    | .otherTenant => issue "local-fixture" "another-tenant" }
+  let failures ← LeanApp.Testing.runMatrix app contexts cases
+  unless failures.isEmpty do throw (IO.userError s!"FAIL: role matrix\n{LeanApp.Testing.report failures}")
+  check (cases.size == 10) "matrix covers 3 roles × 2 operations × {anonymous, other tenant}"
+  check (approvedMetadata ops == ops.approved) "bindings publish the portable contract's HTTP metadata"
+  IO.println "PASS role matrix over the native application"
+
 def native (path : System.FilePath) : IO Unit := do
   let ops ← loadOperations
   let store ← initializeFixture path
+  roleMatrix ops store
   scenario ops (localTransport ops store)
   let second ← Store.open path
   let before ← fixture (← second.list)

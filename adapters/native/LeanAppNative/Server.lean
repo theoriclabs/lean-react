@@ -12,8 +12,9 @@ structure HttpReply where
 def HttpReply.toJson (reply : HttpReply) : Lean.Json :=
   .mkObj [("status", Lean.toJson reply.status), ("body", reply.body)]
 
+/-- Each entry carries `http` and `metadata`; the portable emitter keeps generated clients identical. -/
 def publicManifest (operations : List PublicOperation) : Lean.Json :=
-  .mkObj [("operations", .arr (operations.map (·.operation.toJson)).toArray)]
+  PublicOperation.manifest operations
 
 structure ServerConfig where
   manifestPath : String := "/api/manifest"

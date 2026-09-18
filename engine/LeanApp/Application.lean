@@ -29,7 +29,7 @@ def Application.create (name : String) (modules : List (Module m))
         Validation.fail "module.missing_dependency" [] [("module", mod.name), ("dependency", dep)]
     for exported in mod.exports do
       exported.http.validate
-      if paths.contains exported.http then
+      if paths.any (·.path == exported.http.path) then
         Validation.fail "http.ambiguous_path" [] [("path", exported.http.path)]
       paths := exported.http :: paths
     for claim in mod.storage do

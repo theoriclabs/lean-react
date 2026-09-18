@@ -113,8 +113,11 @@ save : Contract.Operation .command SaveTicket TicketSummary SaveError
 `PublicCodecs` exposes `ticket`, `summary`, `saveInput`, `saveError`,
 `operationId`, and `errors`. The explicit scalar codecs `titleCodec`,
 `statusCodec`, `ticketIdCodec`, and `userIdCodec` are also exported.
-There are no competing global codec instances. `PublicOperations.manifest`
-returns the public operation schemas plus protocol and route metadata.
+There are no competing global codec instances. `PublicOperations.approved`
+lists the public HTTP bindings and metadata (`describePolicy` per operation);
+`PublicOperations.manifest` is the standard `/api/manifest` body, one entry per
+operation with its schemas, `http` (`path`, `method`, `maxBodyBytes`) and
+`metadata` (`title`, `description`, `describePolicy`, `publish`, `issuesStreamTicket`).
 
 Stable operation namespace: **`leanreact.tickets`**. Operation names:
 **`list`**, **`save`**. Contract version: **`1`**.

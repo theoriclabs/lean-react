@@ -13,6 +13,12 @@ is required.
   and the typed input, returning the existing `m (DomainResult Output Error)`.
 - `Policy m Read operation` receives context, read capability and typed input;
   it returns `m (CallResult Unit Empty)`. There is deliberately no allow-all default.
+  `Rule` pairs a policy with `describePolicy`; `Binding` extends it, so
+  `{ Policy.authenticated with http := …, handler := … }` supplies both and the
+  description reaches the manifest through `Binding.publicMetadata`. Combinators
+  live in `LeanApp.Policy`; the ACL matrix harness (`AclCase`, `CallerKind`,
+  `Expect`, `runMatrix`, `exhaustiveMatrix`) in `LeanApp.Testing`. `AclFixture.lean`
+  is the role model both `Main.lean` and the expected-failure `RejectWeakenedRole.lean` use.
 - `ReadCapability m Read.read` interprets a selected `Read α` into `m α`.
   `CommandCapability m Read Write` adds `write : Write α → m α` and `toRead`.
   `Binding.executionKind` is the contract kind, so query and command cannot drift.

@@ -1,4 +1,5 @@
 import LeanApp
+import AclFixture
 
 open LeanApp Contract Ontology
 
@@ -45,7 +46,7 @@ def queryBinding (op : Operation .query Nat Nat String) : Binding Fixture ReadOp
     if input == 42 then return .error "missing"
     return .ok ((← cap.read .value) + input)
   http := { path := "/value" }
-  metadata := ⟨"Read value", "Approved projection"⟩
+  metadata := { title := "Read value", description := "Approved projection" }
 
 def commandBinding (op : Operation .command Nat Nat String) : Binding Fixture ReadOp WriteOp op where
   policy := localPolicy op
@@ -143,3 +144,58 @@ def main : IO Unit := do
   for path in ["value", "/value/", "/a//b", "/a/../b", "/:id", "/%76alue", "/x?q=1"] do
     reject s!"noncanonical path {path}" "http.invalid_literal_path" (HttpBinding.validate { path })
   check "shared mapping and order-independent dependencies accepted" (app.modules.length == 2)
+  for cap in [0, 2^32 + 1] do
+    reject s!"body cap {cap}" "http.invalid_body_limit" (HttpBinding.validate { path := "/value", maxBodyBytes := some cap })
+  check "body caps within (0, 2^32] accepted" ((HttpBinding.validate { path := "/value", maxBodyBytes := some (2^32) }).isOk &&
+    (HttpBinding.validate { path := "/value", maxBodyBytes := some 1 }).isOk)
+  check "rate limit burst defaults to a ten-second share" (({ perPrincipalPerMinute := 1200 } : RateLimit).burst == 200 &&
+    ({ perPrincipalPerMinute := 60, burst := 5 } : RateLimit).burst == 5)
+  let capped := ({ queryBinding v2 with http := { path := "/value", maxBodyBytes := some 4096 } }).approve (fun _ => reads)
+  reject "same path with a different cap is still ambiguous" "http.ambiguous_path"
+    (Application.create "bad" [{ base with exports := [exported, capped] }])
+  let published : LeanApp.Module Fixture := { name := "live", exports := [({ commandBinding command with
+    http := { path := "/set", maxBodyBytes := some 262144 }
+    metadata := { publish := some { topicField := "doc", topicPrefix := "doc", eventName := "ops" } } }).approve (fun _ => commands)] }
+  let live ← require (Application.create "live" [published])
+  check "manifest entries carry http and metadata in the agreed shape"
+    ((PublicOperation.manifest live.manifest).compress ==
+      "{\"operations\":[{\"error\":{\"kind\":\"string\"},\"http\":{\"maxBodyBytes\":262144,\"method\":\"POST\",\"path\":\"/set\"},\
+      \"input\":{\"kind\":\"tagged-natural\"},\"kind\":\"command\",\"metadata\":{\"describePolicy\":\"\",\"description\":\"\",\
+      \"issuesStreamTicket\":false,\"publish\":{\"alsoToActorField\":null,\"eventName\":\"ops\",\"topicField\":\"doc\",\
+      \"topicPrefix\":\"doc\"},\"title\":\"\"},\"name\":\"set\",\"namespace\":\"fixture\",\"output\":{\"kind\":\"tagged-natural\"},\
+      \"version\":\"1\"}]}")
+  let defaults := (PublicOperation.manifest app.manifest).compress
+  check "manifest defaults are null and false"
+    ((defaults.splitOn "\"maxBodyBytes\":null").length == 3 && (defaults.splitOn "\"publish\":null,").length == 3 &&
+      (defaults.splitOn "\"issuesStreamTicket\":false").length == 3)
+  let acl ← require AclFixture.application
+  let cases := AclFixture.matrix acl
+  check "exhaustive matrix covers 3 roles × 2 operations × {anonymous, other tenant}" (cases.size == 10)
+  check "role model admits exactly the declared minimums" (AclFixture.failures acl).isEmpty
+  check "manifest publishes the intended rule"
+    ((acl.manifest.map (·.metadata.describePolicy)) == ["role ≥ viewer", "role ≥ editor"])
+  check "published rule agrees with the declared minimum" (acl.manifest.all fun info =>
+    Testing.describedMinimum AclFixture.roles info == AclFixture.minimums info.operation.identity)
+  let weakened ← require (AclFixture.application (weakened := true))
+  let failures := AclFixture.failures weakened
+  check "a removed role check fails the matrix for the viewer and the other tenant"
+    (failures.size == 2 && failures.all fun f => f.case.operation == AclFixture.editIdentity &&
+      f.case.expect == .forbidden && f.observed == "allow")
+  check "the weakened rule is visible in the manifest"
+    (weakened.manifest.any (·.metadata.describePolicy == "authenticated"))
+  let combined : Rule AclFixture.Fixture AclFixture.ReadOp
+      (← require (Operation.canonical .query (Input := Unit) (Output := String) (Error := String) ⟨"doc", "probe", "1"⟩)) :=
+    Policy.either (Policy.requireRole .owner AclFixture.roleOf) Policy.deny
+  check "combinator descriptions compose" (combined.describePolicy == "role ≥ owner or deny")
+  let editor := AclFixture.contexts.context (.role .editor)
+  let decide := fun (rule : Rule AclFixture.Fixture AclFixture.ReadOp _) (context : RequestContext) =>
+    (Id.run ((rule.policy context AclFixture.reads ()).run' {}) : CallResult Unit Empty)
+  check "either admits the first passing rule and reports the first refusal"
+    (decide combined (AclFixture.contexts.context .owner) == .ok () &&
+      decide combined editor == .error .forbidden &&
+      decide combined (.anonymous "x") == .error .unauthenticated)
+  let strict : Rule AclFixture.Fixture AclFixture.ReadOp _ :=
+    Policy.both Policy.authenticated (Policy.requireRole .editor AclFixture.roleOf (onMissing := .unauthenticated))
+  check "both requires every rule and onMissing is configurable"
+    (decide strict editor == .ok () &&
+      decide strict (AclFixture.contexts.context .otherTenant) == .error .unauthenticated)
