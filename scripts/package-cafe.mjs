@@ -7,6 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const dependencies = {
   leandb_v2: resolve(process.env.LEANAPP_LEANDB_SOURCE ?? resolve(root, '../leandb_v2')),
   leanhttp: resolve(process.env.LEANAPP_LEANHTTP_SOURCE ?? resolve(root, '../leanhttp')),
+  leanws: resolve(process.env.LEANAPP_LEANWS_SOURCE ?? resolve(root, '../leanws')),
   leansqlite: resolve(process.env.LEANAPP_LEANSQLITE_SOURCE ?? resolve(root, '../leandb_v2/.lake/packages/leansqlite')),
 };
 const parent = resolve(root, '.lake/releases');
@@ -44,6 +45,7 @@ for (const name of ['adapters/native/lakefile.lean', 'adapters/native/lean-toolc
 for (const [dep, source] of Object.entries(dependencies)) {
   const entries = dep === 'leandb_v2' ? ['LeanDb', 'LeanDb.lean', 'lakefile.toml', 'lean-toolchain', 'LICENSE'] :
     dep === 'leanhttp' ? ['LeanHttp', 'LeanHttp.lean', 'bindings', 'lakefile.lean', 'lean-toolchain', 'LICENSE'] :
+    dep === 'leanws' ? ['LeanWs', 'LeanWs.lean', 'lakefile.lean', 'lean-toolchain', 'LICENSE'] :
       ['SQLite', 'SQLite.lean', 'bindings', 'lakefile.lean', 'lean-toolchain', 'LICENSE'];
   for (const name of entries) await copy(resolve(source, name), resolve(out, dep, name), true);
 }

@@ -8,6 +8,7 @@ RUN curl -fL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.
 ENV PATH="/opt/lean-4.33.0-linux/bin:${PATH}"
 COPY leandb_v2 /src/leandb_v2
 COPY leanhttp /src/leanhttp
+COPY leanws /src/leanws
 COPY leansqlite /src/leansqlite
 COPY leanreact /src/leanreact
 WORKDIR /src/leanreact
@@ -22,6 +23,7 @@ WORKDIR /app
 COPY --from=build /src/leanreact/LICENSE /app/LICENSE
 COPY --from=build /src/leandb_v2/LICENSE /app/licenses/LeanDb-LICENSE
 COPY --from=build /src/leanhttp/LICENSE /app/licenses/LeanHttp-LICENSE
+COPY --from=build /src/leanws/LICENSE /app/licenses/LeanWs-LICENSE
 COPY --from=build /src/leansqlite/LICENSE /app/licenses/SQLite-LICENSE
 COPY --from=build /src/leanreact/adapters/native/.lake/build/bin/leanapp_cafe /app/bin/leanapp_cafe
 COPY --from=build /src/leanreact/examples/dist-cafe /app/examples/dist-cafe
