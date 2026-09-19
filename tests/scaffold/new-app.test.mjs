@@ -44,8 +44,10 @@ test('leanapp new scaffolds a complete, substituted project', { timeout: 120000 
   const pkg = JSON.parse(await readFile(join(dir, 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'demo_notes');
   const lakefile = await readFile(join(dir, 'native/lakefile.lean'), 'utf8');
-  const head = (await run('git', ['rev-parse', 'HEAD'], { cwd: root })).stdout.trim();
-  assert.ok(lakefile.includes(`.git "https://github.com/theoriclabs/lean-react" (some "${head}") none`), 'lean-react pinned to this commit');
+  // The default pin is the release tag when this checkout is exactly at one, else the commit.
+  const head = await run('git', ['describe', '--tags', '--exact-match', 'HEAD'], { cwd: root })
+    .then(r => r.stdout.trim(), () => run('git', ['rev-parse', 'HEAD'], { cwd: root }).then(r => r.stdout.trim()));
+  assert.ok(lakefile.includes(`.git "https://github.com/theoriclabs/lean-react" (some "${head}") none`), `lean-react pinned to ${head}`);
   for (const pin of ['theoriclabs/LeanDB" (some "v0.4.0")', 'theoriclabs/leanhttp" (some "v0.3.1")', 'theoriclabs/leanws" (some "40900ccb', 'leanprover/leansqlite" (some "0be4df90'])
     assert.ok(lakefile.includes(pin), `native pin present: ${pin}`);
   assert.ok((await readFile(join(dir, 'DemoNotes/Contracts.lean'), 'utf8')).includes('def packageId := "demo"'));

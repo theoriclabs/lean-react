@@ -6,7 +6,7 @@
  * `{{name}}` is the package name (lowercase, digits, hyphens or underscores), `{{Name}}` the derived
  * Lean namespace, `{{namespace}}` the wire namespace of the operations. The generated native package
  * pins LeanDB, LeanHttp, leanws and LeanSQLite by Git revision and lean-react by `--pin`, which
- * defaults to the commit this checkout is at; pass `--pin v0.2.0` once such a tag exists. */
+ * defaults to the release tag this checkout is exactly at, else its commit. */
 import { mkdir, readdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -32,7 +32,9 @@ if (!/^[a-z][a-z0-9_.-]*$/.test(namespace)) throw new Error(`--namespace must be
 const Name = name.replace(/(^|[-_])([a-z0-9])/g, (_, __, c) => c.toUpperCase());
 const url = opt('url', 'https://github.com/theoriclabs/lean-react');
 const pin = opt('pin', (() => {
-  try { return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(); }
+  const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  try { return git(['describe', '--tags', '--exact-match', 'HEAD']); } catch {}
+  try { return git(['rev-parse', 'HEAD']); }
   catch { throw new Error('pass --pin <rev>: this checkout has no git HEAD to pin lean-react to'); }
 })());
 const toolchain = (await readFile(resolve(root, 'lean-toolchain'), 'utf8')).trim();
