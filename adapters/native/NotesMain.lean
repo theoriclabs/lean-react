@@ -23,9 +23,9 @@ def main : IO UInt32 := do
   LeanAppNative.Log.configure (← LeanAppNative.Env.logConfig)
   let config := LeanDb.Instance.ofPath path
   ensureSchema path LeanAppNative.Notes.base
-  let .ok session ← LeanDb.Cli.Session.open LeanAppNative.Notes.base config
+  let .ok runtime ← LeanAppNative.Runtime.Service.new LeanAppNative.Notes.base config
+      (config := ← LeanAppNative.Env.runtimeConfig)
     | throw (IO.userError "notes database unavailable")
-  let runtime ← LeanDb.Runtime.Service.new LeanAppNative.Notes.base config session true
   try
     let .ok auth ← LeanAppNative.Auth.Service.new runtime (config := ← LeanAppNative.Env.authConfig)
       | throw (IO.userError "authentication unavailable")

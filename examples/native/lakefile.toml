@@ -1,26 +1,37 @@
 name = "tickets_native"
 version = "0.1.0"
 defaultTargets = ["tickets_server", "tickets_protocol", "tickets_checks", "tickets_http_checks"]
+# Share the adapter's dependency checkouts (LA-12): one clone per pinned revision, no sibling
+# directories. `npm run test:manifest` keeps every entry Git-pinned or inside this repository.
+packagesDir = "../../adapters/native/.lake/packages"
 
 [[require]]
 name = "leanreact"
 path = "../.."
 
 [[require]]
+name = "leanapp_native"
+path = "../../adapters/native"
+
+[[require]]
 name = "leansqlite"
-path = "../../../leandb_v2/.lake/packages/leansqlite"
+git = "https://github.com/leanprover/leansqlite"
+rev = "0be4df908d1a8e75b58961041e2b4973692623df"
 
 [[require]]
 name = "leandb"
-path = "../../../leandb_v2"
+git = "https://github.com/theoriclabs/LeanDB"
+rev = "v0.4.0"
 
 [[require]]
 name = "leanhttp"
-path = "../../../leanhttp"
+git = "https://github.com/theoriclabs/leanhttp"
+rev = "v0.3.1"
 
 [[require]]
-name = "leanapp_native"
-path = "../../adapters/native"
+name = "leanws"
+git = "https://github.com/theoriclabs/leanws"
+rev = "40900ccb00e04186360ba0a235c560517b7ecb57"
 
 [[lean_lib]]
 name = "NativeTickets"

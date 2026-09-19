@@ -12,16 +12,17 @@ This is the implementation contract for application assembly. Passing a local fi
 
 The reviewed baseline uses Lean 4.33.0, compiler commit `d8b18978322de05a8f3dba51ef03cf5461676c17`. Keep the root and native `lean-toolchain` files in sync. LeanJS uses internal compiler APIs, so a toolchain upgrade requires its parity and rejection tests.
 
-| Dependency | Reviewed source | Development location |
+| Dependency | Pinned source | Override |
 | --- | --- | --- |
-| LeanReact | `d56cf1896776b88c3d36241a05759a0d16bfaf53` | This repository |
-| LeanDB | `f01db4837a18f13bed8c22af5be831d42eafbcc8` | `../leandb_v2` |
-| LeanHttp | `9adb3d6535a5e3c46cb2dff8a1000db2449aa207` | `../leanhttp` |
-| LeanSQLite | `0be4df908d1a8e75b58961041e2b4973692623df` | Lake Git dependency |
+| LeanReact | This repository (`../..` from the native packages) | `-Kleanreact=PATH` |
+| LeanDB | `https://github.com/theoriclabs/LeanDB` at `v0.4.0` (`65b7b9236ee11dce6f9cd6417e118cff6cbcedac`) | `-Kleandb=PATH` |
+| LeanHttp | `https://github.com/theoriclabs/leanhttp` at `v0.3.1` (`9adb3d6535a5e3c46cb2dff8a1000db2449aa207`) | `-Kleanhttp=PATH` |
+| leanws | `https://github.com/theoriclabs/leanws` at `40900ccb00e04186360ba0a235c560517b7ecb57` (v0.1.0 plus `Handshake.Reject.unauthorized`) | `-Kleanws=PATH` |
+| LeanSQLite | `https://github.com/leanprover/leansqlite` at `0be4df908d1a8e75b58961041e2b4973692623df` | `-Kleansqlite=PATH` |
 
-These identify the baseline, not a released version containing the new framework. LeanDB has no configured Git remote in this workspace. A clean external release needs an approved immutable source URL or a checksummed source bundle for it; do not invent a repository URL or claim that the baseline contains later transaction changes.
+Both native packages (`adapters/native` and `examples/native`, which shares the adapter's `.lake/packages` directory) record these revisions in their `lake-manifest.json`, so a fresh clone builds with no sibling checkouts. `npm run test:manifest` (part of `npm test`) refuses any manifest entry that is not a commit-pinned GitHub source or a path inside this repository. A `-K` override is for local development against a modified dependency; never commit a manifest that records such a path. The deployment snapshots (`npm run package:cafe`, `package:notes`) copy the fetched sources from `adapters/native/.lake/packages` and their Dockerfiles pass the same overrides so the container never reaches the network.
 
-The native Lake file accepts explicit `-Kleanreact=PATH`, `-Kleandb=PATH`, `-Kleanhttp=PATH`, and `-Kleansqlite=PATH` source overrides. The first three default to the development checkouts. SQLite defaults to its immutable Git revision. There are no implicit paths into another checkout's `.lake` directory. An explicit SQLite source override can reuse an existing local source package for offline development; that check is not evidence of a cold-cache release build.
+The native runtime the adapter consumes is LeanDB 0.4.0's `Runtime.Service` (LDB-01) wrapped by `LeanAppNative.Runtime`, which adds the bounded writer queue, typed admission errors, an exclusive read-only connection pool (LDB-09, `LEANAPP_DB_READERS`) and a dedicated snapshot connection for backups.
 
 ## Portable sources and publication
 

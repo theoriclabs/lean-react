@@ -175,7 +175,7 @@ def host (auth : Auth.Service) (origin : String) (development : Bool := false)
     let .ok op := (Contract.Operation.canonical .query ⟨"notes", name, "1"⟩ : Validation (Contract.Operation .query Criteria Answer String))
       | throw (IO.userError "invalid notes operation")
     statuses := statuses ++ [Http.ErrorStatus.ofOperation op (fun e => if e == "notes.not_found" then 404 else 422)]
-  let .ok server := Server.create template codecs { maxBodyBytes := 4096, errorStatuses := statuses, maxConnections }
+  let .ok server := LeanAppNative.Server.create template codecs { maxBodyBytes := 4096, errorStatuses := statuses, maxConnections }
     | throw (IO.userError "invalid notes server")
   let .ok host := Auth.Host.createSnapshot auth server
       (fun conn user now expiresAt alive => assemble user now expiresAt (some (conn, alive))) origin development

@@ -3,21 +3,24 @@ set -euo pipefail
 
 native_dir="$(cd "$(dirname "$0")" && pwd)"
 project_dir="$(cd "$native_dir/../.." && pwd)"
-db_dir="$(cd "$project_dir/../leandb_v2" && pwd)"
-http_dir="$(cd "$project_dir/../leanhttp" && pwd)"
 adapter_dir="$project_dir/adapters/native"
-sqlite_dir="$db_dir/.lake/packages/leansqlite"
+# The pinned dependencies live in the adapter's package directory (LA-12); the Tickets package
+# shares it through `packagesDir`. Build them once with: (cd adapters/native && lake build LeanDb LeanHttp)
+packages_dir="$adapter_dir/.lake/packages"
+db_dir="$packages_dir/leandb"
+http_dir="$packages_dir/leanhttp"
+sqlite_dir="$packages_dir/leansqlite"
 build_dir="$native_dir/.lake/cached"
 mkdir -p "$build_dir/lib/lean" "$build_dir/ir" "$build_dir/bin"
 export LEAN_PATH="$build_dir/lib/lean:$db_dir/.lake/build/lib/lean:$sqlite_dir/.lake/build/lib/lean:$http_dir/.lake/build/lib/lean"
 
-# No Lake update/build: dependencies and their generated files remain read-only.
+# No Lake update/build here: the pinned dependencies' generated files remain read-only.
 for artifact in "$db_dir/.lake/build/lib/lean/LeanDb/Db.olean" \
   "$http_dir/.lake/build/lib/lean/LeanHttp.olean" \
   "$sqlite_dir/.lake/build/lib/libleansqlite.a" "$http_dir/.lake/build/lib/libleanhttp.a"; do
   if ! test -f "$artifact"; then
     echo "Missing cached dependency: $artifact" >&2
-    echo "Parent build: (cd examples/native && lake --no-cache build)" >&2
+    echo "Dependency build: (cd adapters/native && lake build LeanDb LeanHttp)" >&2
     exit 2
   fi
 done
@@ -40,8 +43,8 @@ cd "$project_dir"
 lean --version
 shared_modules=(LeanOntology/Path LeanOntology/Validation LeanOntology/Identity LeanOntology/Schema
   LeanOntology/Codec LeanOntology/Descriptor LeanOntology/Query LeanOntology LeanContract/Operation LeanContract/Transport
-  LeanContract/Http LeanContract/CallFailure LeanContract LeanApp/Context LeanApp/Capability LeanApp/Binding
-  LeanApp/Policy LeanApp/Module LeanApp/Application LeanApp/Testing LeanApp
+  LeanContract/Http LeanContract/CallFailure LeanContract/Channel LeanContract LeanApp/Context LeanApp/Capability LeanApp/Binding
+  LeanApp/Policy LeanApp/Module LeanApp/Application LeanApp/Channel LeanApp/Testing LeanApp
   Examples/Tickets/Domain Examples/Tickets/Contracts)
 shared_objects=()
 for module in "${shared_modules[@]}"; do
@@ -58,7 +61,7 @@ if [[ "${1:-}" == "--contracts-only" ]]; then
   exit 0
 fi
 
-for module in LeanAppNative/Server LeanAppNative/Client; do
+for module in LeanAppNative/Sha256 LeanAppNative/Log LeanAppNative/Metrics LeanAppNative/Server LeanAppNative/Client; do
   compile_module "$module" "$adapter_dir/$module.lean" "$adapter_dir"
   shared_objects+=("$build_dir/ir/$module.o")
 done
@@ -70,15 +73,12 @@ for module in "${native_modules[@]}"; do
 done
 
 dependency_objects=()
-for module in Core Entity Json Derive Pred Select PlanElab Transaction Db; do
-  dependency_objects+=("$db_dir/.lake/build/ir/LeanDb/$module.c.o.export")
-done
 while IFS= read -r object; do dependency_objects+=("$object"); done < <(
-  rg --files --hidden "$sqlite_dir/.lake/build/ir" "$http_dir/.lake/build/ir" -g '*.c.o.export' | sort)
+  rg --files --hidden "$db_dir/.lake/build/ir" "$sqlite_dir/.lake/build/ir" "$http_dir/.lake/build/ir" -g '*.c.o.export' | sort)
 for object in "${dependency_objects[@]}"; do
   if ! test -f "$object"; then
     echo "Missing cached native object: $object" >&2
-    echo "Parent build: (cd examples/native && lake --no-cache build)" >&2
+    echo "Dependency build: (cd adapters/native && lake build LeanDb LeanHttp)" >&2
     exit 2
   fi
 done

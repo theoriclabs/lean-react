@@ -1,4 +1,4 @@
-import LeanDb.Runtime
+import LeanAppNative.Runtime
 import Std.Data.HashMap
 
 namespace LeanAppNative.Jobs
@@ -9,17 +9,20 @@ inductive Outcome where
   | failed (code : String)
   deriving BEq
 
-/-- Writer jobs stay serial and inside `budgetPerSliceMs`. Reader jobs (backup,
-    reports) may run concurrently, bounded by the reader pool; they are exempt
-    from the slice budget because `VACUUM INTO` cannot be sliced. -/
+/-- Writer jobs stay serial and inside `budgetPerSliceMs`. Reader jobs (backup, reports) may
+    run concurrently, bounded by the reader pool; they are exempt from the slice budget because
+    `VACUUM INTO` cannot be sliced. -/
 inductive Lane where
   | writer
   | reader
   deriving BEq, Repr
 
 structure Context where
-  withWriter : {α : Type} → (LeanDb.Conn → IO α) → IO (Except LeanDb.Runtime.AdmissionError α)
-  withReader : {α : Type} → (LeanDb.Conn → IO α) → IO (Except LeanDb.Runtime.AdmissionError α)
+  withWriter : {α : Type} → (LeanDb.Conn → IO α) → IO (Except Runtime.AdmissionError α)
+  /-- The reader pool (`Runtime.Service.withReader`); the writer when the pool is empty. -/
+  withReader : {α : Type} → (LeanDb.Conn → IO α) → IO (Except Runtime.AdmissionError α)
+  /-- A consistent copy of the instance on a dedicated connection; never holds the writer. -/
+  snapshot : System.FilePath → IO (Except Runtime.AdmissionError Unit)
   deadline : Nat
   log : String → IO Unit
 
@@ -59,16 +62,24 @@ private def runJob (s : Scheduler) (ctx : Context) (job : Job) : IO Unit := do
     ctx.log s!"threw; rescheduling"
     s.last.modify (·.insert job.name ((← IO.monoMsNow) + job.everyMs))
 
-/-- Cooperative loop: one writer job at a time; reader jobs run concurrently
-    up to `readers`. With `readers := 0`, `withReader` is the writer (LeanDB's
-    fallback) and reader-lane jobs log a warning at start. -/
-def Scheduler.start (s : Scheduler) (service : LeanDb.Runtime.Service) (jobs : List Job)
-    (readers : Nat := 0) : IO Unit := do
+private def contextFor (service : Runtime.Service) (job : Job) (now : Nat) : Context := {
+  withWriter := service.withConnection
+  withReader := service.withReader
+  snapshot := service.snapshotTo
+  deadline := now + job.budgetPerSliceMs
+  log := fun msg => IO.println s!"job {job.name}: {msg}" }
+
+/-- Cooperative loop: one writer job at a time; reader jobs run concurrently up to `readers`
+    (the service's pool size by default). With `readers := 0`, reader-lane jobs run on the
+    single job loop and their `withReader` is the writer (LeanDB's fallback), so each one logs a
+    warning at start; `snapshot` never holds the writer at any reader count. -/
+def Scheduler.start (s : Scheduler) (service : Runtime.Service) (jobs : List Job)
+    (readers : Nat := service.readers) : IO Unit := do
   let started ← IO.monoMsNow
   for job in jobs do
     s.last.modify (·.insert job.name (started + job.initialDelayMs))
     if job.lane == .reader && readers == 0 then
-      let msg := s!"job {job.name}: withReader is the writer (readers := 0); this job will block writes"
+      let msg := s!"job {job.name}: withReader is the writer (readers := 0); reads in this job will block writes"
       s.warnings.modify (·.push msg)
       IO.println msg
   discard <| IO.asTask (prio := .dedicated) do
@@ -89,22 +100,10 @@ def Scheduler.start (s : Scheduler) (service : LeanDb.Runtime.Service) (jobs : L
             -- before the task records its next run time.
             s.last.modify (·.insert job.name (now + job.everyMs))
             discard <| IO.asTask (prio := .dedicated) do
-              let ctx : Context := {
-                withWriter := service.withConnection
-                withReader := service.withConnection
-                deadline := now + job.budgetPerSliceMs
-                log := fun msg => IO.println s!"job {job.name}: {msg}"
-              }
-              try runJob s ctx job
+              try runJob s (contextFor service job now) job
               finally s.readerActive.modify (fun n => n - 1)
         else
-          let ctx : Context := {
-            withWriter := service.withConnection
-            withReader := service.withConnection
-            deadline := now + job.budgetPerSliceMs
-            log := fun msg => IO.println s!"job {job.name}: {msg}"
-          }
-          runJob s ctx job
+          runJob s (contextFor service job now) job
         IO.sleep 1
 
 def walCheckpoint : Job where
@@ -124,8 +123,9 @@ def pruneSessions : Job where
     | .ok _ => return .done
     | .error _ => return .failed "prune"
 
-/-- Daily backup on the reader lane. Exempt from `budgetPerSliceMs` because
-    `VACUUM INTO` cannot be sliced. With `readers := 0` this blocks writes. -/
+/-- Daily backup on the reader lane: `Context.snapshot` copies the instance through a dedicated
+    connection (`VACUUM INTO`), so requests keep committing on the writer meanwhile at any reader
+    count. Exempt from `budgetPerSliceMs` because the copy cannot be sliced. -/
 def backup (dir : System.FilePath) (retainDays : Nat) : Job where
   name := "backup"
   everyMs := 86400000
@@ -136,7 +136,7 @@ def backup (dir : System.FilePath) (retainDays : Nat) : Job where
     let now ← IO.monoMsNow
     IO.FS.createDirAll dir
     let dest := dir / s!"backup-{now}.sqlite"
-    match ← ctx.withReader fun conn => LeanDb.backupTo conn dest with
+    match ← ctx.snapshot dest with
     | .error _ =>
       try IO.FS.removeFile dest catch _ => pure ()
       return .failed "backup"

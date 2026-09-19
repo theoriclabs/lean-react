@@ -17,3 +17,5 @@ await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples
 await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
 await run('node', ['--test', 'tests/gateway/*.test.mjs'], { cwd });
 await run('node', ['node_modules/typescript/bin/tsc', '--noEmit'], { cwd });
+await run('node', ['scripts/check-manifests.mjs'], { cwd });
+await run('node', ['--test', 'tests/scaffold/*.test.mjs'], { cwd });

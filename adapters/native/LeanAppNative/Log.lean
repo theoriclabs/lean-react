@@ -1,5 +1,5 @@
 import LeanApp
-import LeanDb.Sha256
+import LeanAppNative.Sha256
 import Std.Time
 
 /-! One JSON line per request (`v:1`). Never bodies, tokens, usernames or SQL: the principal
@@ -111,7 +111,7 @@ def withRequestId (context : RequestContext) (requestId : String) : RequestConte
 
 /-- `sha256(actor)` truncated to 16 hex characters: correlates a principal's requests without
 naming it. -/
-def principalHash (actor : String) : String := ((LeanDb.Sha256.string actor).take 16).toString
+def principalHash (actor : String) : String := ((Sha256.string actor).take 16).toString
 
 def TraceRef.principal (trace : TraceRef) (context : RequestContext) : IO Unit :=
   trace.update fun t => { t with principalHash := context.principal.map (principalHash ·.actor) }

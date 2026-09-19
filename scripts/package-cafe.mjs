@@ -4,11 +4,13 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, relative, extname, basename } from 'node:path';
 const root = fileURLToPath(new URL('../', import.meta.url));
+const packages = resolve(root, 'adapters/native/.lake/packages');
+// The pinned dependency sources as Lake fetched them (LA-12); a native build must have run first.
 const dependencies = {
-  leandb_v2: resolve(process.env.LEANAPP_LEANDB_SOURCE ?? resolve(root, '../leandb_v2')),
-  leanhttp: resolve(process.env.LEANAPP_LEANHTTP_SOURCE ?? resolve(root, '../leanhttp')),
-  leanws: resolve(process.env.LEANAPP_LEANWS_SOURCE ?? resolve(root, '../leanws')),
-  leansqlite: resolve(process.env.LEANAPP_LEANSQLITE_SOURCE ?? resolve(root, '../leandb_v2/.lake/packages/leansqlite')),
+  leandb: resolve(process.env.LEANAPP_LEANDB_SOURCE ?? resolve(packages, 'leandb')),
+  leanhttp: resolve(process.env.LEANAPP_LEANHTTP_SOURCE ?? resolve(packages, 'leanhttp')),
+  leanws: resolve(process.env.LEANAPP_LEANWS_SOURCE ?? resolve(packages, 'leanws')),
+  leansqlite: resolve(process.env.LEANAPP_LEANSQLITE_SOURCE ?? resolve(packages, 'leansqlite')),
 };
 const parent = resolve(root, '.lake/releases');
 await mkdir(parent, { recursive: true });
@@ -43,7 +45,7 @@ for (const name of ['adapters/native/lakefile.lean', 'adapters/native/lean-toolc
   'adapters/native/CryptoChecks.lean', 'scripts/build-cafe.mjs', 'scripts/process.mjs', 'scripts/GenerateCafe.lean', 'scripts/serve-cafe.mjs'])
   await copy(resolve(root, name), resolve(out, 'leanreact', name));
 for (const [dep, source] of Object.entries(dependencies)) {
-  const entries = dep === 'leandb_v2' ? ['LeanDb', 'LeanDb.lean', 'lakefile.toml', 'lean-toolchain', 'LICENSE'] :
+  const entries = dep === 'leandb' ? ['LeanDb', 'LeanDb.lean', 'lakefile.toml', 'lean-toolchain', 'LICENSE'] :
     dep === 'leanhttp' ? ['LeanHttp', 'LeanHttp.lean', 'bindings', 'lakefile.lean', 'lean-toolchain', 'LICENSE'] :
     dep === 'leanws' ? ['LeanWs', 'LeanWs.lean', 'lakefile.lean', 'lean-toolchain', 'LICENSE'] :
       ['SQLite', 'SQLite.lean', 'bindings', 'lakefile.lean', 'lean-toolchain', 'LICENSE'];

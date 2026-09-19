@@ -12,6 +12,8 @@
     "build:engine": "lake build",
     "test": "node scripts/test.mjs",
     "test:docs": "node scripts/check-docs.mjs",
+    "test:manifest": "node scripts/check-manifests.mjs",
+    "test:scaffold": "node --test tests/scaffold/*.test.mjs",
     "test:security": "node scripts/check-security.mjs",
     "build:notes": "node scripts/build-notes.mjs",
     "package:notes": "node scripts/package-notes.mjs",

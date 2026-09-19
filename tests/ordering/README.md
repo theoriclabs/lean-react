@@ -57,7 +57,7 @@ and its reservation history from ordinary Lean callers.
 
 ## Reference adaptations and portability
 
-Read-only source reference: `../leandb_v2/examples/eats/Eats/Config.lean`.
+Read-only source reference: LeanDB's [`examples/eats/Eats/Config.lean`](https://github.com/theoriclabs/LeanDB/blob/v0.4.0/examples/eats/Eats/Config.lean) (fetched under `adapters/native/.lake/packages/leandb` by a native build).
 The drink choices, two admissibility restrictions, option patterns, and pricing
 shape are adapted into ordinary Lean declarations. No LeanDB enum deriving,
 codecs, entities, catalog tables, or maintained summary fields are copied.

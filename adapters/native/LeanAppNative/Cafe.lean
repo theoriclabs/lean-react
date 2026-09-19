@@ -110,7 +110,7 @@ private def performWrite (conn : Conn) (p : Principal) : {α : Type} → Write �
   | _, .save input => saveRecipe conn p input
   | _, .delete id => deleteRecipe conn p id
 
-private def applicationFor (conn : Option Conn) : Validation (Application IO) := do
+private def applicationFor (lanes : Option Capabilities) : Validation (Application IO) := do
   let listOp : Operation .query Unit (Array Recipe) String ← Operation.canonical .query ⟨"cafe", "list", "1"⟩
   let saveOp : Operation .command Save Recipe String ← Operation.canonical .command ⟨"cafe", "save", "1"⟩
   let deleteOp : Operation .command String Unit String ← Operation.canonical .command ⟨"cafe", "delete", "1"⟩
@@ -125,19 +125,24 @@ private def applicationFor (conn : Option Conn) : Validation (Application IO) :=
     handler := fun _ cap input => cap.write (.delete input) }
   let read := fun (context : RequestContext) => {
     read := fun .recipes => do
-      let some conn := conn | throw (IO.userError "inert template")
+      let some caps := lanes | throw (IO.userError "inert template")
       let some p := context.principal | throw (IO.userError "unauthenticated")
-      listRecipes conn p : ReadCapability IO Read }
+      caps.reader fun conn => listRecipes conn p : ReadCapability IO Read }
   let write := fun (context : RequestContext) => {
     toRead := read context
     write := fun {α} (request : Write α) => do
-      let some conn := conn | throw (IO.userError "inert template")
+      let some caps := lanes | throw (IO.userError "inert template")
       let some p := context.principal | throw (IO.userError "unauthenticated")
-      performWrite conn p request : CommandCapability IO Read Write }
+      caps.writer fun conn => performWrite conn p request : CommandCapability IO Read Write }
   Application.create "proof-and-pour" [{ name := "recipes", exports := [
     listBinding.approve read, saveBinding.approve write, deleteBinding.approve write] }]
 
-def application (conn : Conn) := applicationFor (some conn)
+/-- Serialized assembly from a held writer connection. -/
+def application (conn : Conn) := applicationFor (some (Capabilities.held conn))
+
+/-- LA-07 assembly: `list` reads on the reader lane; `save`/`delete` hold the writer for
+their one transaction. -/
+def applicationWith (caps : Capabilities) := applicationFor (some caps)
 
 /-- Shared by the host and the generated browser client (`GenerateCafeClient.lean`). -/
 def publicOperations : Validation (List PublicOperation) := (applicationFor none).map Application.manifest
@@ -147,14 +152,14 @@ def errorStatuses : Validation (List Http.ErrorStatus) := do
   pure [Http.ErrorStatus.ofOperation saveOp (fun _ => 422)]
 
 def host (service : Auth.Service) (origin : String) (development : Bool := false)
-    (maxConnections : Nat := 64) : IO Auth.Host := do
+    (maxConnections : Nat := 64) (serializeRequests : Bool := false) : IO Auth.Host := do
   let .ok codecs := Http.codecs | throw (IO.userError "invalid codecs")
   let .ok app := applicationFor none | throw (IO.userError "invalid cafe application")
   let .ok statuses := errorStatuses | throw (IO.userError "invalid save contract")
-  let .ok template := Server.create app codecs {
+  let .ok template := LeanAppNative.Server.create app codecs {
     maxBodyBytes := 8192, errorStatuses := statuses, maxConnections }
     | throw (IO.userError "invalid server")
-  let .ok host := Auth.Host.create service template application origin development
+  let .ok host := Auth.Host.createWith service template applicationWith origin development serializeRequests
     | throw (IO.userError "invalid authentication origin/configuration")
   pure host
 

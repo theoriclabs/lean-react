@@ -1,0 +1,8 @@
+.lake/
+node_modules/
+dist/
+web/generated/
+test-results/
+playwright-report/
+*.log
+.DS_Store

@@ -25,8 +25,6 @@ tests/compiler/integration/
 .verification/
 tests/app/.build/
 tests/ordering/.build/
-# Development source overrides vary per checkout; pins live in the Lake file.
-adapters/native/lake-manifest.json
 examples/dist-auth/
 examples/dist-cafe/
 examples/dist-notes/

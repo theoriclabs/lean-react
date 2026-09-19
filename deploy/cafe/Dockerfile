@@ -6,7 +6,7 @@ RUN curl -fL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.
     && echo '4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c  lean.tar.zst' | sha256sum -c - \
     && tar --zstd -xf lean.tar.zst
 ENV PATH="/opt/lean-4.33.0-linux/bin:${PATH}"
-COPY leandb_v2 /src/leandb_v2
+COPY leandb /src/leandb
 COPY leanhttp /src/leanhttp
 COPY leanws /src/leanws
 COPY leansqlite /src/leansqlite
@@ -14,14 +14,16 @@ COPY leanreact /src/leanreact
 WORKDIR /src/leanreact
 RUN npm ci && npm run build:cafe
 WORKDIR /src/leanreact/adapters/native
-RUN lake -Kleansqlite=/src/leansqlite -Kopenssl=/usr build leanapp_cafe leanapp_crypto_checks \
+# The snapshot ships every dependency's source; the overrides keep Lake off the network.
+RUN lake -Kleandb=/src/leandb -Kleanhttp=/src/leanhttp -Kleanws=/src/leanws -Kleansqlite=/src/leansqlite -Kopenssl=/usr update \
+    && lake -Kleandb=/src/leandb -Kleanhttp=/src/leanhttp -Kleanws=/src/leanws -Kleansqlite=/src/leansqlite -Kopenssl=/usr build leanapp_cafe leanapp_crypto_checks \
     && .lake/build/bin/leanapp_crypto_checks
 
 FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libssl3 libgmp10 libcurl4 ca-certificates tini
 WORKDIR /app
 COPY --from=build /src/leanreact/LICENSE /app/LICENSE
-COPY --from=build /src/leandb_v2/LICENSE /app/licenses/LeanDb-LICENSE
+COPY --from=build /src/leandb/LICENSE /app/licenses/LeanDb-LICENSE
 COPY --from=build /src/leanhttp/LICENSE /app/licenses/LeanHttp-LICENSE
 COPY --from=build /src/leanws/LICENSE /app/licenses/LeanWs-LICENSE
 COPY --from=build /src/leansqlite/LICENSE /app/licenses/SQLite-LICENSE

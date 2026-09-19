@@ -34,6 +34,8 @@ if (profile === 'portable') {
   const jobs = await mkdtemp(resolve(tmpdir(), 'leanapp-jobs-'));
   console.log(`Job scheduler fixture: ${jobs}`);
   await run(resolve(native, '.lake/build/bin/leanapp_job_checks'), [jobs], { cwd: native });
+  // LA-12: the `leanapp new` template must keep building; the scaffolded project runs its README commands.
+  await run('node', ['--test', 'tests/scaffold/new-app.test.mjs'], { cwd, env: { ...process.env, LEANAPP_SCAFFOLD_FULL: '1' } });
 } else if (profile === 'auth') {
   const native = resolve(cwd, 'adapters/native');
   await run('lake', [...nativeOverrides(), '--no-cache', 'build', 'leanapp_crypto_checks', 'leanapp_auth_checks', 'leanapp_auth_demo'], { cwd: native });

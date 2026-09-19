@@ -8,7 +8,7 @@ The café uses one public Node process and one loopback-only Lean process in a c
 
 ## Build context
 
-The native package currently uses reviewed sibling sources. This command creates a new self-contained source snapshot with a SHA-256 manifest of every included file:
+The native package builds against Git-pinned dependencies (see the [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities)). After a native build has fetched them, this command creates a new self-contained source snapshot with a SHA-256 manifest of every included file:
 
 ```sh
 npm run package:cafe
@@ -16,7 +16,7 @@ npm run package:cafe
 
 It prints a directory under `.lake/releases/` containing the application, selected LeanDB/LeanHttp/SQLite sources and their licenses, and a Dockerfile. The runtime image retains the application's MIT license and native dependency notices. Caches, repository metadata, credentials, and databases are excluded. Each invocation gets a new directory; older snapshots remain untouched.
 
-Overrides are `LEANAPP_LEANDB_SOURCE`, `LEANAPP_LEANHTTP_SOURCE`, and `LEANAPP_LEANSQLITE_SOURCE`. The default SQLite source is `../leandb_v2/.lake/packages/leansqlite`. The container compiles native dependencies from source and verifies the exact Lean 4.33.0 Linux archive's published SHA-256 digest. Node's Debian base image and apt repositories are not yet immutable release pins.
+Dependency sources are copied from `adapters/native/.lake/packages/{leandb,leanhttp,leanws,leansqlite}`; `LEANAPP_LEANDB_SOURCE`, `LEANAPP_LEANHTTP_SOURCE`, `LEANAPP_LEANWS_SOURCE` and `LEANAPP_LEANSQLITE_SOURCE` override them. The Dockerfile passes the matching `-K` overrides to Lake, so the container compiles every native dependency from the snapshot without reaching the network, and verifies the exact Lean 4.33.0 Linux archive's published SHA-256 digest. Node's Debian base image and apt repositories are not yet immutable release pins.
 
 Build from the printed directory:
 
@@ -112,7 +112,7 @@ The Lean process writes one JSON line per request to stderr (`LEANAPP_LOG_FILE=<
 | `operation` | `{namespace, name, version}` of the dispatched Contract operation, or `null` for auth, health and unmatched routes. |
 | `outcome` | `success`, `domainError`, `decode`, `protocol`, `unauthenticated`, `forbidden`, `incompatible`, `failed` or `unavailable`. |
 | `principalHash` | SHA-256 of the actor id truncated to 16 hex characters, or `null`. Never the actor, username or session. |
-| `durations` | Milliseconds: `total` for the whole exchange and the disjoint phases `auth` (session resolution, or KDF work on credential routes), `queueWait` (waiting for the writer), `db` (connection held for application assembly) and `handler` (policy and handler). `auth + queueWait + db + handler ≤ total`; the writer was held for about `db + handler` plus `auth` on authenticated operations. |
+| `durations` | Milliseconds: `total` for the whole exchange and the disjoint phases `auth` (session resolution, or KDF work on credential routes), `queueWait` (waiting for a connection), `db` (connection held) and `handler` (policy and handler outside any connection). `auth + queueWait + db + handler ≤ total`. On the serialized hosts the writer was held for about `db + handler` plus `auth`; on a lanes host (the café by default) `db` is the sum of the short reader/writer holds the request's `read`/`write` calls made. |
 | `bodyBytes`, `replyBytes` | Sizes only. |
 | `error` | Only when an exception was caught: `{class, code}` with the `IO.Error` class and the sanitized code the client saw. `message` is added only with `LEANAPP_LOG_ERRORS=verbose`, which is for development. |
 
@@ -123,27 +123,27 @@ LEANAPP_LOG_FILE=/tmp/cafe-log.jsonl npm run build:cafe && LEANAPP_LOG_FILE=/tmp
 grep -c 'afternoon-oat-test-passphrase\|browser_barista\|leanapp_session=' /tmp/cafe-log.jsonl   # 0
 ```
 
-Counters live in process memory (reset on restart) and are exposed in Prometheus text format at `GET /internal/metrics` on the Lean listener, answered only to loopback peers and never proxied by the public process (it returns 404 there). Scrape it from a sidecar or the same container: `curl http://127.0.0.1:4181/internal/metrics`. It exposes `leanapp_requests_total{operation,outcome}`, the histograms `leanapp_request_duration_ms`, `leanapp_request_db_ms` (connection-held time) and `leanapp_request_queue_wait_ms`, the counters `leanapp_auth_throttles_total`, `leanapp_rate_limited_total`, `leanapp_request_body_bytes_total` and `leanapp_reply_bytes_total`, and the live gauges `leanapp_writer_queue_depth`, `leanapp_writer_active`, `leanapp_writer_completed_total` and the `leanapp_auth_session_cache_*` counters. Later subsystems register gauges by name through `Metrics.setGauge`.
+Counters live in process memory (reset on restart) and are exposed in Prometheus text format at `GET /internal/metrics` on the Lean listener, answered only to loopback peers and never proxied by the public process (it returns 404 there). Scrape it from a sidecar or the same container: `curl http://127.0.0.1:4181/internal/metrics`. It exposes `leanapp_requests_total{operation,outcome}`, the histograms `leanapp_request_duration_ms`, `leanapp_request_db_ms` (connection-held time) and `leanapp_request_queue_wait_ms`, the counters `leanapp_auth_throttles_total`, `leanapp_rate_limited_total`, `leanapp_request_body_bytes_total` and `leanapp_reply_bytes_total`, and the live gauges `leanapp_writer_queue_depth`, `leanapp_writer_active`, `leanapp_writer_completed_total`, `leanapp_reader_active`, `leanapp_reader_completed_total`, `leanapp_reader_pool_size` and the `leanapp_auth_session_cache_*` counters. Later subsystems register gauges by name through `Metrics.setGauge`.
 
-Saturation heuristics: a rising `queueWait` p95 with flat `db` means the single writer is saturated (add the session cache, shorten handlers or move reads off the writer); `leanapp_writer_queue_depth` approaching the runtime's `maxPending` (128) means `503 application.unavailable` is imminent; a growing `outcome="unavailable"` share confirms it. `auth` dominating `total` on credential routes is expected KDF cost (about 0.1–0.3 s); `leanapp_auth_throttles_total` climbing means the credential gate is refusing work. `leanapp_rate_limited_total` counts declared per-principal limits firing; anonymous traffic is the public process's concern.
+Saturation heuristics: a rising `queueWait` p95 with flat `db` means the writer is saturated (add the session cache, set `LEANAPP_DB_READERS` so queries and session resolution use the reader pool, or shorten write transactions); `leanapp_writer_queue_depth` approaching the runtime's `maxPending` (128) means `503 application.unavailable` is imminent; a growing `outcome="unavailable"` share confirms it. `auth` dominating `total` on credential routes is expected KDF cost (about 0.1–0.3 s); `leanapp_auth_throttles_total` climbing means the credential gate is refusing work. `leanapp_rate_limited_total` counts declared per-principal limits firing; anonymous traffic is the public process's concern.
 
 ## Operational boundaries
 
-The public process bounds body size and active upstream work. The Lean process bounds simultaneous connections (`LEANAPP_BACKEND_MAX_CONNECTIONS`, default 64), applies each operation's declared body cap before buffering, and enforces declared per-principal rate limits with `429` and `Retry-After`. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.
+The public process bounds body size and active upstream work. The Lean process bounds simultaneous connections (`LEANAPP_BACKEND_MAX_CONNECTIONS`, default 64), applies each operation's declared body cap before buffering, and enforces declared per-principal rate limits with `429` and `Retry-After`. `LEANAPP_DB_READERS` (default 0) opens that many read-only SQLite connections for query handlers, policy reads and session resolution, so they no longer wait on the single writer; `LEANAPP_SERIALIZE_REQUESTS=1` runs every request under the writer as before. A writer queue beyond 128 admitted callbacks answers `503 application.unavailable`. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.
 
 On SIGTERM, the public process stops admission and drains active HTTP exchanges, then sends SIGTERM to Lean. The Lean process (`LeanAppNative.Lifecycle.shutdown`) marks `/health/ready` unready, waits for in-flight writer work (default 15 s, below the gateway's 20 s), checkpoints and closes the database, and exits 0. A drain that still has queued work at the deadline exits 1. A 20-second gateway deadline then SIGKILLs whatever remains. SQLite transactions provide crash recovery if the process is killed mid-write. Back up the volume before schema changes and qualify restoration before depending on it. Schema mismatch refuses ordinary runtime admission.
 
 ## Scheduled work
 
-`LeanAppNative.Jobs` runs jobs on a dedicated task, using the same `Service.withConnection` admission path as requests. A job returns `.done`, `.continue state` (reschedule immediately after yielding), or `.failed code`. `Scheduler.stop` is part of drain: no new slices start, and an in-flight slice finishes or hits its budget. Each job has a `lane`:
+`LeanAppNative.Jobs` runs jobs on a dedicated task, using the same `Service.withConnection`/`withReader` admission paths as requests. A job returns `.done`, `.continue state` (reschedule immediately after yielding), or `.failed code`. `Scheduler.stop` is part of drain: no new slices start, and an in-flight slice finishes or hits its budget. Each job has a `lane`:
 
 | Job | Lane | Notes |
 | --- | --- | --- |
 | `Jobs.walCheckpoint` | writer | `PRAGMA wal_checkpoint(TRUNCATE)`; stays inside `budgetPerSliceMs` (50 ms). |
 | `Jobs.pruneSessions` | writer | Deletes expired session rows; sliced like any other writer job. |
-| `Jobs.backup dir retainDays` | reader | `VACUUM INTO`, then deletes older files. Exempt from the slice budget because a multi-GiB copy cannot be sliced. |
+| `Jobs.backup dir retainDays` | reader | `VACUUM INTO` through `JobContext.snapshot`, a dedicated connection opened for the copy, then deletes older files. Never holds the writer at any reader count (`npm run test:framework:native` commits every 5 ms during a 20 MiB backup and asserts a p95 admission wait under 50 ms); exempt from the slice budget because a multi-GiB copy cannot be sliced. |
 
-The scheduler keeps one writer job at a time (as today) and runs reader jobs concurrently, bounded by the `readers` argument to `Scheduler.start`. `JobContext.withReader` is the reader pool when `readers ≥ 1`; with `readers := 0` it is the writer (LeanDB's fallback) and each reader-lane job logs a warning at schedule time so the misconfiguration is visible at startup, not at the first outage. A throwing reader job is logged and rescheduled; the writer loop is unaffected.
+The scheduler keeps one writer job at a time (as today) and runs reader jobs concurrently, bounded by the `readers` argument to `Scheduler.start` (the runtime's pool size by default). `JobContext.withReader` is the reader pool when `readers ≥ 1`; with `readers := 0` it is the writer (LeanDB's fallback) and each reader-lane job logs a warning at schedule time so the misconfiguration is visible at startup, not at the first outage. A throwing reader job is logged and rescheduled; the writer loop is unaffected.
 
 The café can include prune-plus-daily-backup by passing those jobs to `Scheduler.start` next to `Lifecycle.shutdown`. Job state is in-memory; restart the process and jobs begin again. Drain: a running reader slice may finish up to the process drain timeout, then is abandoned and its temporary output removed.
 

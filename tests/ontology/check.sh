@@ -10,7 +10,7 @@ lean --version
 for module in \
   LeanOntology/Path LeanOntology/Validation LeanOntology/Identity LeanOntology/Schema \
   LeanOntology/Codec LeanOntology/Descriptor LeanOntology/Query LeanOntology \
-  LeanContract/Operation LeanContract/Transport LeanContract/CallFailure LeanContract tests/ontology/Fixtures; do
+  LeanContract/Operation LeanContract/Transport LeanContract/CallFailure LeanContract/Channel LeanContract tests/ontology/Fixtures; do
   if [[ "$module" == tests/* ]]; then source_dir="."; else source_dir="engine"; fi
   lean -R "$source_dir" -o "$ontology_build_dir/$module.olean" "$source_dir/$module.lean"
 done

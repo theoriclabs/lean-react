@@ -17,13 +17,46 @@ package leanapp_native where
   version := v!"0.2.0-rc.1"
   moreLinkArgs := authCryptoLinkArgs
 
+/-- The portable workspace this adapter belongs to. -/
 require leanreact from (get_config? leanreact).getD "../.."
-require leandb from (get_config? leandb).getD "../../../leandb_v2"
-require leanhttp from (get_config? leanhttp).getD "../../../leanhttp"
-require leanws from (get_config? leanws).getD "../../../leanws"
 
-/-- Normally fetched at the upstream pin; an explicit local source override
-is useful for offline development. No checkout's build cache is a dependency. -/
+/-! Published pins (LA-12). Every native dependency is fetched from its immutable
+Git revision by default, so a fresh clone builds with no sibling checkouts.
+`-Kleandb=PATH`, `-Kleanhttp=PATH`, `-Kleanws=PATH` and `-Kleansqlite=PATH`
+override a pin with a local source tree for development; the committed manifest
+must never record such a path (`npm run test:manifest`). -/
+
+@[package_dep] def leandb : Dependency := {
+  name := `leandb
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leandb with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/LeanDB" (some "v0.4.0") none
+}
+
+@[package_dep] def leanhttp : Dependency := {
+  name := `leanhttp
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanhttp with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanhttp" (some "v0.3.1") none
+}
+
+/-- `Handshake.Reject.unauthorized` (401 at upgrade, LA-17) landed after v0.1.0. -/
+@[package_dep] def leanws : Dependency := {
+  name := `leanws
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanws with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanws" (some "40900ccb00e04186360ba0a235c560517b7ecb57") none
+}
+
 @[package_dep] def leansqlite : Dependency := {
   name := `leansqlite
   scope := ""
@@ -31,8 +64,7 @@ is useful for offline development. No checkout's build cache is a dependency. -/
   opts := {}
   src? := some <| match get_config? leansqlite with
     | some path => .path path
-    | none => .git "https://github.com/leanprover/leansqlite"
-        (some "0be4df908d1a8e75b58961041e2b4973692623df") none
+    | none => .git "https://github.com/leanprover/leansqlite" (some "0be4df908d1a8e75b58961041e2b4973692623df") none
 }
 
 target leanapp_auth.o pkg : System.FilePath := do

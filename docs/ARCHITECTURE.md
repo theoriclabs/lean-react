@@ -72,14 +72,19 @@ Browser
   → HTTPS ingress
   → Node gateway: assets, origin/body/admission limits
   → loopback Std.Http.Server
-  → auth host: current session, CSRF and approved operation
-  → handler: checked input, domain rule, explicit transaction
+  → auth host: session from the cache or a pooled reader, CSRF, approved operation
+  → assembly, wire decoding, identity and version checks: outside any connection
+  → policy: reads on a pooled reader
+  → handler: a query reads on a pooled reader; a command's `write` holds the writer
+    for that one call (its explicit transaction) and its later reads follow it there
   → LeanDB / SQLite on the persistent volume
 ```
 
+Request phases are lanes (LA-07). `Auth.Host.createWith` and `Managed.createWith` take a factory over `Capabilities`: two closures, `withReader` and `withWriter`, that admit one call each, so no handler ever holds a bare connection or keeps it past the call. `LEANAPP_DB_READERS` sizes the read-only pool (0 sends every read to the writer); `LEANAPP_SERIALIZE_REQUESTS=1`, `Host.create` and `Managed.create` keep the older path in which the whole request runs under the writer. Private Notes stays on that transaction-bound path because its request-local lease must retire when the request's single transaction ends. Denied admission (drain, close, schema gate, overload) never reaches the factory or a handler; a refusal that lands mid-request is a `503 application.unavailable`, never a sanitized 500.
+
 The café's public process serves ordinary React/JavaScript and proxies only approved auth/recipe routes. Its native listener is loopback-only. Hosting providers terminate public TLS; the configured origin is trusted configuration, not a value inferred from incoming Host headers.
 
-Auth resolves current account/session authority under the runtime's owned connection callback. Recipe queries are scoped by actor and tenant. Saves compute the price on the server and check the 40-recipe limit within the write transaction. Deletes include the same ownership constraints; knowing another recipe's ID grants no access.
+Auth resolves current account/session authority from its process-local cache or, on a miss, one read on a pooled connection, storing the result only if no invalidation raced the read. Recipe queries are scoped by actor and tenant. Saves compute the price on the server and check the 40-recipe limit within the write transaction. Deletes include the same ownership constraints; knowing another recipe's ID grants no access.
 
 LeanHttp supplies outbound clients, not this inbound listener. `Std.Http.Server` handles inbound native HTTP. React can be authored in JavaScript, as in the café, or in Lean through LeanReact, as in the frontend playground.
 

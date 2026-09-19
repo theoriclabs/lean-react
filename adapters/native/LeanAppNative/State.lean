@@ -29,7 +29,7 @@ def AppState.afterCommit (s : AppState σ) (act : IO Unit) : LeanDb.DbM Unit :=
   LeanDb.untrackedSqlite fun _ => s.pending.modify (·.push act)
 
 /-- `LeanDb.transaction` that flushes `afterCommit` hooks iff the body commits. -/
-def AppState.transaction (s : AppState σ) (act : LeanDb.DbM (LeanDb.TransactionDecision ε α)) :
+def AppState.transaction (s : AppState σ) (act : LeanDb.DbM (LeanDb.Tx ε α)) :
     LeanDb.DbM (Except ε α) := do
   match ← LeanDb.transaction act with
   | .ok v =>

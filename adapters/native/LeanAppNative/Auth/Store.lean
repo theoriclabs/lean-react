@@ -1,5 +1,5 @@
 import LeanApp
-import LeanDb.Runtime
+import LeanAppNative.Runtime
 import LeanDb.Derive
 import LeanAppNative.Auth.Crypto
 import LeanAppNative.Metrics
@@ -133,6 +133,9 @@ private structure Cache where
   hits : Nat := 0
   misses : Nat := 0
   invalidations : Nat := 0
+  /-- Bumped by every eviction call, so a reader-lane resolution can tell that an invalidation
+  raced its row read and must not store what it read. -/
+  epoch : Nat := 0
 
 /-- Socket hosts subscribe so a logout or generation bump can close live sessions. -/
 inductive InvalidationEvent where
@@ -154,7 +157,7 @@ private structure Bucket where
 
 structure Service where
   private mk ::
-  private runtime : Runtime.Service
+  private runtime : LeanAppNative.Runtime.Service
   private dummyHash : String
   private kdf : Std.BaseMutex
   private throttle : Std.Mutex Throttle
@@ -166,6 +169,9 @@ structure Service where
 
 def Service.ttl (service : Service) : Nat := service.config.ttl
 
+/-- The runtime service, for hosts that build request lanes (LA-07). -/
+def Service.database (service : Service) : LeanAppNative.Runtime.Service := service.runtime
+
 def wallSeconds : IO Nat := do
   return (← Std.Time.Timestamp.now).toMillisecondsSinceUnixEpoch.toInt.toNat / 1000
 
@@ -176,6 +182,13 @@ private def runDb (conn : Conn) (action : DbM α) : IO (Except Error α) := do
 
 private def admitted (service : Service) (action : Conn → IO (Except Error α)) : IO (Except Error α) := do
   match ← service.runtime.withConnection action with
+  | .ok result => return result
+  | .error (.host _) => return .error .internal
+  | .error _ => return .error .unavailable
+
+/-- A pooled read-only connection (the writer when the pool is empty); never queues on the writer. -/
+private def admittedReader (service : Service) (action : Conn → IO (Except Error α)) : IO (Except Error α) := do
+  match ← service.runtime.withReader action with
   | .ok result => return result
   | .error (.host _) => return .error .internal
   | .error _ => return .error .unavailable
@@ -199,7 +212,7 @@ private def userOf (account : Account) : User :=
 
 private def validTenant (tenant : String) : Bool := !tenant.isEmpty && tenant.length ≤ 64
 
-def Service.new (runtime : Runtime.Service) (clock : IO Nat := wallSeconds)
+def Service.new (runtime : LeanAppNative.Runtime.Service) (clock : IO Nat := wallSeconds)
     (config : Service.Config := {}) : IO (Except Error Service) := do
   if config.ttl == 0 || config.ttl > 604800 || config.maxSessions == 0 then return .error .internal
   if let .fixed tenant := config.tenantPolicy then
@@ -258,25 +271,36 @@ def Service.onInvalidation (service : Service) (callback : InvalidationEvent →
   service.invalidation.atomically fun ref => ref.modify (·.push callback)
 
 /-- Bounded by `sessionCacheMax`: a full cache is cleared rather than evicted selectively. -/
+private def Cache.store (cache : Cache) (max : Nat) (digest : String) (entry : CacheEntry) : Cache :=
+  let cache := if cache.entries.size ≥ max then { cache with entries := {}, actors := {} } else cache
+  let owned := digest :: (cache.actors.getD entry.user.actor []).filter (· != digest)
+  { cache with entries := cache.entries.insert digest entry, actors := cache.actors.insert entry.user.actor owned }
+
 private def Service.cacheStore (service : Service) (digest : String) (entry : CacheEntry) : IO Unit := do
+  if service.config.sessionCacheTtlMs == 0 then return
+  service.cache.atomically fun ref => ref.modify (·.store service.config.sessionCacheMax digest entry)
+
+private def Service.cacheEpoch (service : Service) : IO Nat :=
+  service.cache.atomically fun ref => return (← ref.get).epoch
+
+/-- `cacheStore` unless an invalidation happened since `epoch` was read. -/
+private def Service.cacheStoreIf (service : Service) (digest : String) (entry : CacheEntry) (epoch : Nat) : IO Unit := do
   if service.config.sessionCacheTtlMs == 0 then return
   service.cache.atomically fun ref => do
     let cache ← ref.get
-    let cache := if cache.entries.size ≥ service.config.sessionCacheMax then { cache with entries := {}, actors := {} } else cache
-    let owned := digest :: (cache.actors.getD entry.user.actor []).filter (· != digest)
-    ref.set { cache with entries := cache.entries.insert digest entry, actors := cache.actors.insert entry.user.actor owned }
+    if cache.epoch == epoch then ref.set (cache.store service.config.sessionCacheMax digest entry)
 
 private def Service.cacheEvict (service : Service) (digests : List String) : IO Unit := do
   for d in digests do service.emitInvalidation (.digest d)
   if service.config.sessionCacheTtlMs == 0 || digests.isEmpty then return
-  service.cache.atomically fun ref => ref.modify (·.remove digests)
+  service.cache.atomically fun ref => ref.modify fun cache => { (cache.remove digests) with epoch := cache.epoch + 1 }
 
 private def Service.cacheEvictActor (service : Service) (actor : String) : IO Unit := do
   service.emitInvalidation (.actor actor)
   if service.config.sessionCacheTtlMs == 0 then return
   service.cache.atomically fun ref => do
     let cache ← ref.get
-    ref.set (cache.remove (cache.actors.getD actor []))
+    ref.set { (cache.remove (cache.actors.getD actor [])) with epoch := cache.epoch + 1 }
 
 def Service.cacheStats (service : Service) : IO CacheStats :=
   service.cache.atomically fun ref => do
@@ -435,7 +459,7 @@ def Service.signup (service : Service) (input password : String)
 /-- Verify a password for a stored account outside the database lock, then run `issue` under one
 admitted transaction against the rechecked account row. Unknown names cost one dummy KDF. -/
 private def verifiedThen (service : Service) (name password : String)
-    (issue : Stored Account → Nat → DbM (TransactionDecision Error β)) : IO (Except Error β) := do
+    (issue : Stored Account → Nat → DbM (Tx Error β)) : IO (Except Error β) := do
   let loaded ← admitted service fun conn => runDb conn (accountByName name)
   let candidate ← match loaded with
     | .ok candidate => pure candidate
@@ -476,23 +500,33 @@ def Service.login (service : Service) (input password : String)
     return .ok issued
 
 /-- `lastSeenAt` is refreshed at most once per five minutes to avoid a write per request. -/
-private def touchSession (session : Stored Session) (now : Nat) : DbM Unit := do
+private def touchDue (session : Stored Session) (now : Nat) : Bool :=
   let seen : Int := (session.val.lastSeenAt.map (·.toInt)).getD 0
-  if seen + 300 ≤ (now : Int) then
+  seen + 300 ≤ (now : Int)
+
+private def touchSession (session : Stored Session) (now : Nat) : DbM Unit := do
+  if touchDue session now then
     untrackedSqlite fun db => do
       let stmt ← db.prepare s!"UPDATE {quoteIdent (Entity.tableName Session)} SET lastSeenAt = ? WHERE tokenDigest = ?"
       stmt.bindInt64 1 (Int64.ofNat now)
       stmt.bindText 2 session.val.tokenDigest
       discard stmt.step
 
-private def resolveSession (digest : String) (now : Nat) : DbM (Except Error (Stored Session × User)) := do
+/-- The read half of session resolution: valid on a read-only connection. -/
+private def checkSession (digest : String) (now : Nat) : DbM (Except Error (Stored Session × User)) := do
   let some session ← sessionByDigest digest | return .error .unauthenticated
   let some account ← accountByActor session.val.actor | return .error .unauthenticated
   if !account.val.enabled || session.val.expiresAt.toInt ≤ now ||
       account.val.generation != session.val.generation || account.val.generation.toInt < 0 then
     return .error .unauthenticated
-  touchSession session now
   return .ok (session, userOf account.val)
+
+private def resolveSession (digest : String) (now : Nat) : DbM (Except Error (Stored Session × User)) := do
+  match ← checkSession digest now with
+  | .error e => return .error e
+  | .ok (session, user) =>
+    touchSession session now
+    return .ok (session, user)
 
 private def csrfAccepted (csrf : Option String) (expected : String) : IO Bool := do
   let some supplied := csrf | return true
@@ -535,6 +569,39 @@ def Service.withAuthenticated (service : Service) (token : String) (csrf : Optio
         trace.principal context
         trace.phase auth entered
         return .ok (← action conn context user)
+  catch _ => return .error .internal
+
+/-- Session resolution off the writer (LA-07): the cache when it hits, else one read on a pooled
+reader (the writer when the pool is empty). `lastSeenAt` is refreshed through the writer only when
+due. The entry is cached only if no invalidation happened while the row was being read, so a
+concurrent logout or generation bump cannot resurrect a revoked session. -/
+def Service.resolve (service : Service) (token : String) (csrf : Option String)
+    (requestId : String) (trace : Log.TraceRef := none) : IO (Except Error (RequestContext × User)) := do
+  unless tokenShape token do return .error .unauthenticated
+  try
+    let started ← IO.monoMsNow
+    let auth := fun (t : Log.Timings) (n : Nat) => { t with auth := t.auth + n }
+    let digest ← Crypto.digestToken token
+    if let some entry ← service.cacheLookup digest then
+      unless ← csrfAccepted csrf entry.csrf do return .error .forbidden
+      let context := TrustedNative.issueContext ⟨entry.user.actor, entry.user.tenant, entry.user.generation⟩ requestId
+      trace.principal context
+      trace.phase auth started
+      return .ok (context, entry.user)
+    let epoch ← service.cacheEpoch
+    let now ← service.clock
+    let checked ← admittedReader service fun conn => runDb conn (checkSession digest now)
+    match flatten checked with
+    | .error e => trace.phase auth started; return .error e
+    | .ok (session, user) =>
+      unless ← csrfAccepted csrf session.val.csrf do trace.phase auth started; return .error .forbidden
+      if touchDue session now then
+        discard <| admitted service fun conn => runDb conn (withTransaction (touchSession session now))
+      service.cacheStoreIf digest ⟨user, session.val.csrf, session.val.expiresAt.toInt.toNat, ← IO.monoMsNow⟩ epoch
+      let context := TrustedNative.issueContext ⟨user.actor, user.tenant, user.generation⟩ requestId
+      trace.principal context
+      trace.phase auth started
+      return .ok (context, user)
   catch _ => return .error .internal
 
 def Service.session (service : Service) (token : String) : IO (Except Error (User × String)) := do
@@ -668,7 +735,7 @@ def Service.setAccess (service : Service) (actor tenant : String) (enabled : Boo
 
 def Service.ready (service : Service) : IO Bool := service.runtime.ready
 
-/-- Writer queue state for metrics: active/queued/completed callbacks. -/
-def Service.queue (service : Service) : IO Runtime.State := service.runtime.snapshot
+/-- Writer queue and reader pool state for metrics: active/queued/completed callbacks. -/
+def Service.queue (service : Service) : IO LeanAppNative.Runtime.State := service.runtime.snapshot
 
 end LeanAppNative.Auth

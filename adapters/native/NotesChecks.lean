@@ -11,10 +11,9 @@ private def ok (result : Except Auth.Error α) : IO α :=
 
 def main : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "notes.sqlite")
-  let .ok session ← LeanDb.Cli.Session.open Notes.base inst | throw (IO.userError "session")
-  let runtime ← LeanDb.Runtime.Service.new Notes.base inst session true
+  let .ok runtime ← LeanAppNative.Runtime.Service.new Notes.base inst | throw (IO.userError "session")
   let clock ← IO.mkRef 1000
-  let auth ← ok (← Auth.Service.new runtime clock.get 60)
+  let auth ← ok (← Auth.Service.new runtime clock.get { ttl := 60 })
   try
     let alice ← ok (← auth.signup "alice_notes" "a sufficiently long test password")
     let bob ← ok (← auth.signup "bob_notes" "a sufficiently long test password")
@@ -44,7 +43,7 @@ def main : IO Unit := IO.FS.withTempDir fun dir => do
     check "same-tenant row IDs are disjoint" (av.notes.length == 2 && bv.notes.length == 2 && av.notes.all (fun x => bv.notes.all (fun y => x.id != y.id)))
     let foreignInput := (Wire.codec (α := Notes.Criteria)).encode { criteria with id := bv.notes.head?.map (·.id) }
     check "same-tenant actual account lookup is denied" ((← call alice "lookup" foreignInput).reply.status == 404)
-    let conn ← session.conn.get
+    let .ok conn ← runtime.withConnection pure | throw (IO.userError "writer")
     let p : PrivateNotes.Principal := ⟨alice.user.actor, alice.user.tenant, alice.user.generation⟩
     let facts : PrivateNotes.SessionFacts := ⟨p.actor, p.tenant, p.generation, p.generation, true, 1060, 1000⟩
     let .ok grant := PrivateNotes.authorize Unit facts p | throw (IO.userError "grant")

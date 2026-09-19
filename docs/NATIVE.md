@@ -24,9 +24,11 @@ bash tests/native/check.sh --no-build
 ```
 
 The cached build compiles shared source and native modules into
-`examples/native/.lake/cached`, then links against the siblings' existing Lean
-objects and real SQLite/LeanHttp FFI libraries. It performs no downloads, does
-not invoke sibling builds, and writes neither root nor sibling build artifacts.
+`examples/native/.lake/cached`, then links against the pinned dependencies' Lean
+objects and real SQLite/LeanHttp FFI libraries under `adapters/native/.lake/packages`
+(built once by `cd adapters/native && lake build LeanDb LeanHttp`). It performs
+no downloads, does not invoke dependency builds, and writes no root or dependency
+build artifacts.
 It explicitly sets Lean module/package identities to avoid the case-insensitive
 macOS `Examples`/`examples` native-initializer mismatch.
 
@@ -66,33 +68,32 @@ Print the explicit public manifest without starting a server or opening SQLite:
 examples/native/.lake/cached/bin/tickets_server --manifest
 ```
 
-The local Lake package also declares path dependencies on `../..`,
-`../../../leandb_v2`, `../../../leanhttp`, and the cached SQLite package at
-`../../../leandb_v2/.lake/packages/leansqlite`. Its manifest contains only local
-path entries. If a cached object is missing or a parent wants Lake to rebuild
-dependencies, the exact parent-run command is:
+The local Lake package requires `../..`, `../../adapters/native` and the same
+Git-pinned LeanDB, LeanHttp, leanws and LeanSQLite revisions as the adapter,
+sharing its `.lake/packages` directory through `packagesDir`, so nothing is
+cloned twice and its manifest contains no path outside the repository. If a
+cached object is missing or you want Lake to build everything itself:
 
 ```sh
 cd examples/native
 lake --no-cache build
 ```
 
-That alternative can write generated files in the root and sibling `.lake`
-directories; the cached build is the verified path for this worker's ownership
-envelope. No escalation or dependency download was needed for the cached build.
-The standard Lake build emits executables in `examples/native/.lake/build/bin`.
+That alternative writes generated files in the root and dependency `.lake`
+directories; the cached build is the verified path. The standard Lake build
+emits executables in `examples/native/.lake/build/bin`.
 
-Inspected sibling versions/HEADs:
+Pinned dependency revisions (the [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities) is authoritative):
 
-| Dependency | Version / inspected HEAD |
+| Dependency | Pinned revision |
 | --- | --- |
-| LeanDB | 0.3.0 / `f01db4837a18f13bed8c22af5be831d42eafbcc8` plus local FS03 transaction and FS08 runtime callback patches |
-| LeanHttp | 0.3.1 / `9adb3d6535a5e3c46cb2dff8a1000db2449aa207` |
-| leansqlite | 0.1.0 / `0be4df908d1a8e75b58961041e2b4973692623df` |
+| LeanDB | `v0.4.0` / `65b7b9236ee11dce6f9cd6417e118cff6cbcedac` |
+| LeanHttp | `v0.3.1` / `9adb3d6535a5e3c46cb2dff8a1000db2449aa207` |
+| leanws | `40900ccb00e04186360ba0a235c560517b7ecb57` |
+| leansqlite | `0be4df908d1a8e75b58961041e2b4973692623df` |
 
-Local path dependencies are mutable; those HEADs are provenance, not immutable
-package pins. The cached build consumes the existing sibling `.olean` and
-native object artifacts without rebuilding or altering their repositories.
+The cached build consumes those checkouts' `.olean` and native object artifacts
+without rebuilding or altering them.
 
 ## Public contracts and routes
 

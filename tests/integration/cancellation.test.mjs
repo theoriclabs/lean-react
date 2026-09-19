@@ -10,7 +10,7 @@ const { createRoot } = await import('react-dom/client');
 const { mountElement, ctor, configureRuntime, callFailure } = await import('../../engine/adapters/leanjs-react.mjs');
 const { createTicketsService, createTicketsLoader } = await import('../../examples/adapters/tickets-service.mjs');
 const { encodeSummary } = await import('../../examples/adapters/tickets-service.mjs');
-const { CallFailure } = await import('../../examples/adapters/tickets-client/operations.mjs');
+const { CallFailure, operations } = await import('../../examples/adapters/tickets-client/operations.mjs');
 const program = await import('../../examples/generated/tickets.mjs');
 const seed = program['Examples.Tickets.initialTickets'];
 const listIdentity = { namespace: 'leanreact.tickets', name: 'list', version: '1' };
@@ -23,8 +23,10 @@ function fetchDouble() {
     init.signal.addEventListener('abort', () => { call.aborted = true; reject(new Error('aborted')); });
     calls.push(call);
   });
+  // The reply body is what the server would send: the generated output codec's wire form
+  // (tagged nats, tagged options), not the adapter's JavaScript view of a summary.
   const reply = (call, tickets) => call.resolve(new Response(JSON.stringify({
-    operation: listIdentity, tag: 'success', value: tickets.map(encodeSummary),
+    operation: listIdentity, tag: 'success', value: operations.list.output.encode(tickets.map(encodeSummary)),
   }), { status: 200, headers: { 'content-type': 'application/json' } }));
   return { fetch, calls, reply };
 }

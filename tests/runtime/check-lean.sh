@@ -15,6 +15,9 @@ lean -R engine -o "$build_dir/LeanOntology.olean" engine/LeanOntology.lean
 # Resources carry the portable Contract.CallFailure, so the contract's operation identities are needed too.
 lean -R engine -o "$build_dir/LeanContract/Operation.olean" engine/LeanContract/Operation.lean
 lean -R engine -o "$build_dir/LeanContract/CallFailure.olean" engine/LeanContract/CallFailure.lean
+# Channels (useChannel) and streams (useStream) depend on the contract's channel protocol.
+lean -R engine -o "$build_dir/LeanContract/Transport.olean" engine/LeanContract/Transport.lean
+lean -R engine -o "$build_dir/LeanContract/Channel.olean" engine/LeanContract/Channel.lean
 lean -R examples/lean -o "$build_dir/Examples/Tickets/Domain.olean" examples/lean/Examples/Tickets/Domain.lean
 lean -R engine -o "$build_dir/LeanReact/Core.olean" engine/LeanReact/Core.lean
 lean -R engine -o "$build_dir/LeanReact/Cell.olean" engine/LeanReact/Cell.lean
@@ -24,6 +27,8 @@ lean -R engine -o "$build_dir/LeanReact/Forms.olean" engine/LeanReact/Forms.lean
 lean -R engine -o "$build_dir/LeanReact/Resources.olean" engine/LeanReact/Resources.lean
 lean -R engine -o "$build_dir/LeanReact/Handle.olean" engine/LeanReact/Handle.lean
 lean -R engine -o "$build_dir/LeanReact/Router.olean" engine/LeanReact/Router.lean
+lean -R engine -o "$build_dir/LeanReact/Channels.olean" engine/LeanReact/Channels.lean
+lean -R engine -o "$build_dir/LeanReact/Streams.olean" engine/LeanReact/Streams.lean
 lean -R engine -o "$build_dir/LeanReact.olean" engine/LeanReact.lean
 if ! lean tests/runtime/Probe.lean > "$build_dir/typechecks.log" 2>&1; then
   cat "$build_dir/typechecks.log"

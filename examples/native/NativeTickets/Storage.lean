@@ -1,5 +1,6 @@
 import Examples.Tickets.Contracts
 import LeanDb.Db
+import LeanDb.Transaction
 import LeanDb.Derive
 import Std.Sync.Mutex
 

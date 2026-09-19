@@ -35,6 +35,15 @@ def natSetting (name : String) (default : Nat) (max : Nat := 1000000) (min : Nat
 /-- `LEANAPP_BACKEND_MAX_CONNECTIONS`: simultaneous connections the Lean listener accepts (default 64). -/
 def maxConnections : IO Nat := natSetting "LEANAPP_BACKEND_MAX_CONNECTIONS" 64 65535
 
+/-- `LEANAPP_DB_READERS`: pooled read-only connections for query lanes and reader-lane jobs
+(default 0: every read uses the writer). -/
+def readers : IO Nat := natSetting "LEANAPP_DB_READERS" 0 64 0
+
+/-- `LEANAPP_SERIALIZE_REQUESTS=1` runs every request entirely under the writer, as before LA-07. -/
+def serializeRequests : IO Bool := return (← IO.getEnv "LEANAPP_SERIALIZE_REQUESTS") == some "1"
+
+def runtimeConfig : IO Runtime.Config := return { readers := ← readers }
+
 /-- Authentication service configuration assembled from the environment: `LEANAPP_TENANT_POLICY`,
 `LEANAPP_MAX_SESSIONS` (concurrent sessions per account, default 1) and
 `LEANAPP_SESSION_CACHE_TTL_MS` (in-process session cache, default 0 = off, 30000 recommended). -/

@@ -39,11 +39,10 @@ private def zeros : String := String.ofList (List.replicate 64 '0')
 
 /-- A fresh runtime and authentication service over a temporary database. -/
 private def withService (config : Auth.Service.Config)
-    (body : Auth.Service → LeanDb.Runtime.Service → IO.Ref Nat → IO Unit) : IO Unit :=
+    (body : Auth.Service → LeanAppNative.Runtime.Service → IO.Ref Nat → IO Unit) : IO Unit :=
   IO.FS.withTempDir fun dir => do
     let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
-    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
-    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    let .ok runtime ← LeanAppNative.Runtime.Service.new Auth.Demo.base inst | throw (IO.userError "session")
     let now ← IO.mkRef 1000
     let service ← ok (← Auth.Service.new runtime now.get config)
     try body service runtime now finally runtime.close
@@ -195,25 +194,23 @@ private def sessions : IO Unit := do
     let token ← Auth.Crypto.randomToken
     let csrf ← Auth.Crypto.randomToken
     let digest ← Auth.Crypto.digestToken token
-    let .ok legacy ← LeanDb.Cli.Session.open Legacy.base inst | throw (IO.userError "legacy session")
-    let conn ← legacy.conn.get
-    let .ok _ ← LeanDb.DbM.run conn (do
+    let .ok legacy ← LeanAppNative.Runtime.Service.new Legacy.base inst | throw (IO.userError "legacy session")
+    let .ok (.ok _) ← legacy.withConnection fun conn => LeanDb.DbM.run conn (do
         discard <| LeanDb.insert Auth.Account ⟨"legacy", hash, "legacy-actor", "legacy-actor", 1, true⟩
         LeanDb.insert Legacy.Session ⟨digest, csrf, "legacy-actor", 1, 4000⟩)
       | throw (IO.userError "legacy rows")
     legacy.close
-    let .ok drifted ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "drifted session")
-    check "old schema is gated until migrated" ((← drifted.gate.get).isSome)
+    let .ok drifted ← LeanAppNative.Runtime.Service.new Auth.Demo.base inst | throw (IO.userError "drifted session")
+    check "old schema is gated until migrated" ((← drifted.gate).isSome)
     drifted.close
     let .ok (some plan, some report) ← LeanDb.migrate inst.path Auth.Demo.base.specs (apply := true)
       | throw (IO.userError "migration failed")
     check "session columns migrate additively"
       (!plan.isDestructive && report.applied == ["add column \"session\".\"createdAt\"",
         "add column \"session\".\"lastSeenAt\"", "add column \"session\".\"label\""])
-    let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "migrated session")
-    let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+    let .ok runtime ← LeanAppNative.Runtime.Service.new Auth.Demo.base inst | throw (IO.userError "migrated session")
     try
-      check "migrated instance is admitted" ((← session.gate.get).isNone)
+      check "migrated instance is admitted" ((← runtime.gate).isNone)
       let service ← ok (← Auth.Service.new runtime (pure 1000) { maxSessions := 3 })
       let (user, _) ← ok (← service.session token)
       check "legacy session still resolves" (user.username == "legacy")
@@ -224,8 +221,8 @@ private def sessions : IO Unit := do
     finally runtime.close
 
 /-- Session-table selects recorded in LeanDB's query log: the statement trace of the auth step. -/
-private def sessionReads (runtime : LeanDb.Runtime.Service) : IO Nat := do
-  let .ok count ← runtime.withConnection fun conn => conn.withAccessIO do
+private def sessionReads (runtime : LeanAppNative.Runtime.Service) : IO Nat := do
+  let .ok count ← runtime.withConnection fun conn => do
       let stmt ← conn.raw.prepare "SELECT count(*) FROM _leandb_log WHERE verb = 'select' AND detail LIKE 'session |%'"
       discard stmt.step
       return (← stmt.columnInt64 0).toInt.toNat
@@ -464,8 +461,7 @@ private def rateLimits : IO Unit := withService {} fun service _ now => do
 
 private def run : IO Unit := IO.FS.withTempDir fun dir => do
   let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
-  let .ok session ← LeanDb.Cli.Session.open Auth.Demo.base inst | throw (IO.userError "session")
-  let runtime ← LeanDb.Runtime.Service.new Auth.Demo.base inst session true
+  let .ok runtime ← LeanAppNative.Runtime.Service.new Auth.Demo.base inst | throw (IO.userError "session")
   let now ← IO.mkRef 1000
   let service ← ok (← Auth.Service.new runtime now.get { ttl := 60 })
   try
@@ -527,7 +523,7 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
     -- its hash finishes, then issuance queues behind the held database lock.
     let entered ← IO.Promise.new (α := Except IO.Error Unit)
     let release ← IO.Promise.new (α := Except IO.Error Unit)
-    let held ← IO.asTask (runtime.database.atomically fun _ => do
+    let held ← IO.asTask (runtime.withConnection fun _ => do
       entered.resolve (.ok ())
       IO.ofExcept release.result!.get) Task.Priority.dedicated
     IO.ofExcept entered.result!.get
@@ -542,7 +538,7 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
         let rejected ← service.login s!"busy_{i / 10}" password
         check "unadmitted KDF burst rejected" (rejected.map (fun _ => ()) == .error .throttled)
     finally release.resolve (.ok ())
-    IO.ofExcept held.get
+    discard <| IO.ofExcept held.get
     discard <| ok (← IO.ofExcept signing.get)
     check "unadmitted burst did not exhaust global login quota" ((← service.login "holder" password).isOk)
     for _ in [:11] do discard <| service.login "throttled" password
@@ -553,6 +549,44 @@ private def run : IO Unit := IO.FS.withTempDir fun dir => do
     check "closed runtime refuses authentication" ((← service.session bob2.token).map (fun _ => ()) == .error .unavailable)
   finally runtime.close
 
+/-- LA-07: an authenticated operation on a `lanes` host resolves the session and runs its read
+on the reader pool, never entering the writer; a cache hit needs no database work at all. -/
+private def lanes : IO Unit := IO.FS.withTempDir fun dir => do
+  let inst := LeanDb.Instance.ofPath (dir / "lanes.sqlite")
+  let .ok runtime ← LeanAppNative.Runtime.Service.new Auth.Demo.base inst (config := { readers := 1 })
+    | throw (IO.userError "runtime")
+  let now ← IO.mkRef 1000
+  let service ← ok (← Auth.Service.new runtime now.get { sessionCacheTtlMs := 30000 })
+  try
+    let alice ← ok (← service.signup "lane_alice" password)
+    let host ← Auth.Demo.host service "https://example.test"
+    let body := "{\"operation\":{\"namespace\":\"auth-demo\",\"name\":\"whoami\",\"version\":\"1\"},\"kind\":\"query\",\"input\":null}"
+    let whoami := fun (issued : Auth.Issued) (h : Auth.Host) =>
+      h.dispatch (post "/api/whoami" body s!"__Host-leanapp_session={issued.token}" issued.csrf)
+    let before ← service.queue
+    let reply ← whoami alice host
+    let after ← service.queue
+    check "lanes: an authenticated query resolves and reads on the pool, never the writer"
+      (reply.reply.status == 200 && (reply.reply.body.getObjValAs? String "value").toOption == some "lane_alice" &&
+        after.completed == before.completed && after.readersCompleted == before.readersCompleted + 2)
+    let again ← whoami alice host
+    let cached ← service.queue
+    check "lanes: a session cache hit costs only the handler's read"
+      (again.reply.status == 200 && cached.readersCompleted == after.readersCompleted + 1 && cached.completed == after.completed)
+    check "lanes: wrong CSRF is refused before any lane" ((← host.dispatch (post "/api/whoami" body s!"__Host-leanapp_session={alice.token}" zeros)).reply.status == 403)
+    discard <| ok (← service.logout alice.token alice.csrf)
+    check "lanes: logout is visible to reader-lane resolution immediately" ((← whoami alice host).reply.status == 401)
+    let bob ← ok (← service.signup "lane_bob" password)
+    let serial ← Auth.Demo.host service "https://example.test" (serializeRequests := true)
+    let before ← service.queue
+    let reply ← whoami bob serial
+    let after ← service.queue
+    check "lanes: serializeRequests keeps the request under one writer admission"
+      (reply.reply.status == 200 && after.completed == before.completed + 1 && after.readersCompleted == before.readersCompleted)
+    runtime.drain
+    check "lanes: a drained runtime is 503 before the handler" ((← whoami bob host).reply.status == 503)
+  finally runtime.close
+
 def main : IO Unit := do
   run
   tenantPolicies
@@ -560,3 +594,4 @@ def main : IO Unit := do
   sessionCache
   rateLimits
   observability
+  lanes

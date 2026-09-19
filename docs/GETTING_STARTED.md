@@ -27,18 +27,9 @@ No LeanDB or LeanHttp dependency is needed for that build. If you only want Lean
 
 ## Prepare the native dependencies
 
-The default native development layout is:
+The native package fetches LeanDB, LeanHttp, leanws and LeanSQLite from their pinned Git revisions on the first build; no sibling checkouts are needed. The [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities) lists the pins and `npm run test:manifest` keeps the committed manifests honest. OpenSSL 3 development headers/libraries and a C toolchain must be installed. The default macOS OpenSSL prefix is `/opt/homebrew/opt/openssl@3`; the Linux container uses Debian's system package.
 
-```text
-code/
-├── leanreact/       # this LeanApp checkout; the local folder can keep its name
-├── leandb_v2/       # reviewed LeanDB sources, including transaction/runtime changes
-└── leanhttp/        # independent LeanHttp sources
-```
-
-The native package fetches LeanSQLite at its pinned Git revision unless given a local source override. OpenSSL 3 development headers/libraries and a C toolchain must be installed. The default macOS OpenSSL prefix is `/opt/homebrew/opt/openssl@3`; the Linux container uses Debian's system package.
-
-The [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities) records reviewed baselines and overrides. Those historical commit IDs alone do not contain every later LeanDB change. There is no published, independently tested full-stack installer yet, and this workspace's LeanDB checkout has no configured remote. Do not replace it with an arbitrary repository or assume the old frontend tag includes these dependencies.
+To develop against a modified dependency, pass its local source with `-Kleandb=PATH` (likewise `-Kleanhttp`, `-Kleanws`, `-Kleansqlite`) as shown below, and do not commit a manifest that records that path.
 
 ## Build and start the café
 
@@ -58,19 +49,19 @@ The default database is `.lake/cafe.sqlite`. Stop with Ctrl-C; the database rema
 
 ### Source and OpenSSL overrides
 
-For an offline build using the SQLite source already present in the reviewed LeanDB checkout:
+To build against a local LeanDB tree instead of the pin (an offline machine, or a change under review):
 
 ```sh
-(cd adapters/native && \
-  lake -Kleansqlite=../../../leandb_v2/.lake/packages/leansqlite build leanapp_cafe)
+(cd adapters/native && lake -Kleandb=/absolute/path/to/LeanDB build leanapp_cafe)
 ```
 
-This is an explicit source override, not a dependency on precompiled artifacts. If your checkouts live elsewhere, pass absolute paths before `build`:
+This is an explicit source override, not a dependency on precompiled artifacts. Every dependency can be overridden the same way; pass the flags before `build`:
 
 ```sh
 lake -Kleanreact=/absolute/path/to/this-checkout \
-  -Kleandb=/absolute/path/to/leandb_v2 \
+  -Kleandb=/absolute/path/to/LeanDB \
   -Kleanhttp=/absolute/path/to/leanhttp \
+  -Kleanws=/absolute/path/to/leanws \
   -Kleansqlite=/absolute/path/to/leansqlite \
   -Kopenssl=/absolute/openssl-prefix build leanapp_cafe
 ```
@@ -103,7 +94,7 @@ For a first domain of your own, work through [domain modeling](DOMAIN_MODELING.m
 node scripts/new-app.mjs --name myapp --namespace myapp --out ../myapp
 ```
 
-The generator writes a portable library, a native `Main`, a gateway stub, and a README with the build commands. Override dependency paths with Lake `-K` flags when developing against sibling checkouts.
+The generator copies [templates/app](../templates/app): a portable domain, contracts and LeanReact screen with a LeanJS generator; a native package (storage, application bindings with policies, `Main` with auth, host and lifecycle, checks including an ACL negative case); web assets, a gateway configuration, one HTTP test and one Playwright test, a Dockerfile, build/dev/package scripts and a README whose commands are exactly what `npm run test:scaffold` runs. Its native package pins LeanDB, LeanHttp, leanws and LeanSQLite by Git revision and LeanReact by the commit the generator ran from (`--pin` overrides it); `-K` flags override any of them with a local path.
 
 ## Check your changes
 
@@ -119,7 +110,7 @@ Build the café first. The café API tests use disposable local databases; the b
 
 | Symptom | Check |
 | --- | --- |
-| Missing `LeanDb` or a native dependency | Confirm source paths and required local changes; use the explicit Lake overrides above. |
+| Missing `LeanDb` or a native dependency | The first native build clones the pinned revisions from GitHub; check network access, or point the `-K` overrides above at local sources. |
 | `openssl/evp.h` or `-lcrypto` missing | Install OpenSSL 3 development files and supply the correct `-Kopenssl` prefix. |
 | Missing `examples/dist-cafe` or `leanapp_cafe` | Run both build commands before starting. |
 | Port already in use | Stop only your existing café process, or set distinct `PORT` and `LEANAPP_BACKEND_PORT` values. |

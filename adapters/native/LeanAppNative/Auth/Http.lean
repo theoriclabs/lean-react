@@ -1,5 +1,6 @@
 import LeanAppNative.Auth.Store
 import LeanAppNative.Server
+import LeanAppNative.Capabilities
 
 namespace LeanAppNative.Auth
 open LeanApp Contract Ontology
@@ -42,7 +43,9 @@ structure Host where
   private codecs : Http.Codecs
   private config : ServerConfig
   private manifest : Lean.Json
-  private factory : LeanDb.Conn → Validation (Application IO)
+  private factory : Factory
+  /-- With a `lanes` factory, still run each authenticated request under the writer. -/
+  private serializeRequests : Bool
   origin : String
   private development : Bool
   private snapshotFactory : Option (LeanDb.Conn → User → Nat → Nat → IO.Ref Bool → Validation (Application IO))
@@ -67,7 +70,17 @@ def Host.create (auth : Service) (template : Server)
     Validation.fail "auth.reserved_path_collision"
   pure ⟨auth, template.app.manifest, template.codecs,
     { template.config with failureCode := "application.failed" },
-    template.config.manifest template.app.manifest, factory, origin, development, none⟩
+    template.config.manifest template.app.manifest, .serialized factory, true, origin, development, none⟩
+
+/-- LA-07: the factory receives request-scoped lanes. The session resolves from the cache or a
+pooled reader (`Service.resolve`), then assembly, policy and handler run outside the writer;
+each `write` holds the writer for that one call. `serializeRequests := true` keeps every
+request under the writer as `Host.create` does. -/
+def Host.createWith (auth : Service) (template : Server)
+    (factory : Capabilities → Validation (Application IO)) (origin : String)
+    (development : Bool := false) (serializeRequests : Bool := false) : Validation Host := do
+  let host ← Host.create auth template (fun _ => .ok template.app) origin development
+  pure { host with factory := .lanes factory, serializeRequests }
 
 /-- Additive example host: carries authenticated snapshot facts to application assembly.
 The request lease is invalidated before returning from the transaction callback. -/
@@ -131,8 +144,30 @@ def Host.metrics (host : Host) : IO String := do
   let cache ← host.auth.cacheStats
   Metrics.render [("leanapp_writer_queue_depth", queue.queued), ("leanapp_writer_active", queue.active),
     ("leanapp_writer_completed_total", queue.completed),
+    ("leanapp_reader_active", queue.readersActive), ("leanapp_reader_completed_total", queue.readersCompleted),
+    ("leanapp_reader_pool_size", host.auth.database.readers),
     ("leanapp_auth_session_cache_hits_total", cache.hits), ("leanapp_auth_session_cache_misses_total", cache.misses),
     ("leanapp_auth_session_cache_invalidations_total", cache.invalidations), ("leanapp_auth_session_cache_size", cache.size)]
+
+/-- LA-07 authenticated request path: the principal resolves from the cache or a pooled reader
+(`Service.resolve`); assembly, policy and handler then run outside the writer and acquire a
+lane per call. Denied admission never reaches the factory or a handler; a refusal that lands
+mid-request is answered 503 by `Server.dispatch`. -/
+private def Host.lanesRequest (host : Host) (assemble : Capabilities → Validation (Application IO))
+    (token csrf requestId : String) (trace : Log.TraceRef)
+    (dispatch : Nat → RequestContext → Application IO → IO Response) : IO (Except Error Response) := do
+  match ← host.auth.resolve token (some csrf) requestId (trace := trace) with
+  | .error e => return .error e
+  | .ok (context, _) =>
+    unless ← host.auth.ready do
+      trace.update fun t => { t with outcome := some .unavailable }
+      return .error .unavailable
+    let clock ← LaneClock.new
+    let .ok app := assemble (Capabilities.request host.auth.database clock)
+      | return .ok ⟨errorReply .internal, none, none⟩
+    let response ← dispatch (← IO.monoMsNow) context app
+    clock.settle trace
+    return .ok response
 
 /-- The optional trace collects the request id, operation, principal hash, phase timings and
 outcome for the request line written by `Host.handler`. -/
@@ -227,12 +262,13 @@ def Host.dispatch (host : Host) (request : Request) (trace : Log.TraceRef := non
       let .ok server := Server.create app host.codecs host.config | assembled; return ⟨errorReply .internal, none, none⟩
       assembled
       return ⟨← server.dispatch context request.method request.path request.body trace, none, none⟩
-    let result ← match host.snapshotFactory with
-      | none => host.auth.withAuthenticated token (some csrf) requestId (trace := trace) fun conn context _ => do
-          let entered ← IO.monoMsNow
-          let .ok app := host.factory conn | return ⟨errorReply .internal, none, none⟩
-          dispatch entered context app
-      | some factory => host.auth.withAuthenticatedTransaction token csrf requestId (trace := trace) <|
+    let serialized := fun (assemble : LeanDb.Conn → Validation (Application IO)) =>
+      host.auth.withAuthenticated token (some csrf) requestId (trace := trace) fun conn context _ => do
+        let entered ← IO.monoMsNow
+        let .ok app := assemble conn | return ⟨errorReply .internal, none, none⟩
+        dispatch entered context app
+    let result ← match host.snapshotFactory, host.factory with
+      | some factory, _ => host.auth.withAuthenticatedTransaction token csrf requestId (trace := trace) <|
           fun conn context user now expiresAt => do
             let entered ← IO.monoMsNow
             let alive ← IO.mkRef true
@@ -240,6 +276,10 @@ def Host.dispatch (host : Host) (request : Request) (trace : Log.TraceRef := non
               let .ok app := factory conn user now expiresAt alive | return ⟨errorReply .internal, none, none⟩
               dispatch entered context app
             finally alive.set false
+      | none, .serialized assemble => serialized assemble
+      | none, .lanes assemble =>
+        if host.serializeRequests then serialized (fun conn => assemble (Capabilities.held conn))
+        else host.lanesRequest assemble token csrf requestId trace dispatch
     return match result with | .ok response => response | .error e => ⟨errorReply e, none, none⟩
   catch e =>
     trace.failure "auth-host" "auth.failed" e

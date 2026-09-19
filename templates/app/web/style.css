@@ -1,0 +1,10 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; padding: 2rem 1rem; max-width: 40rem; margin-inline: auto; }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+.account, .panel { display: grid; gap: 0.75rem; }
+label { display: grid; gap: 0.25rem; }
+input { font: inherit; padding: 0.5rem; }
+button { font: inherit; padding: 0.5rem 1rem; cursor: pointer; }
+.controls { display: flex; gap: 0.5rem; }
+.notes { padding-left: 1.25rem; }
+[role="alert"] { color: #b3261e; }

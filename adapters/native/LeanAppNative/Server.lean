@@ -10,6 +10,15 @@ structure HttpReply where
   status : Nat
   body : Lean.Json
 
+/-- Raised by a lane (`Capabilities.reader`/`writer`) when the runtime refuses admission
+mid-request: draining, closed, gated or overloaded. `Server.dispatch` answers
+`503 application.unavailable`, never a sanitized 500. -/
+def unavailableError : IO.Error := .userError "leanapp.unavailable"
+
+def isUnavailable : IO.Error → Bool
+  | .userError message => message == "leanapp.unavailable"
+  | _ => false
+
 def HttpReply.toJson (reply : HttpReply) : Lean.Json :=
   .mkObj [("status", Lean.toJson reply.status), ("body", reply.body)]
 
@@ -115,6 +124,9 @@ def Server.dispatch (server : Server) (context : RequestContext)
     return server.reply request.operation result
   catch e =>
     trace.phase (fun t n => { t with handler := t.handler + n }) started
+    if isUnavailable e then
+      trace.update fun t => { t with outcome := some .unavailable }
+      return ⟨503, Http.protocolResponse "application.unavailable"⟩
     trace.failure "server" server.config.failureCode e
     return ⟨500, Http.protocolResponse server.config.failureCode⟩
 

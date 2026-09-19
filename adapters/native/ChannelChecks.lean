@@ -187,9 +187,8 @@ def run : IO Unit := do
 
   IO.FS.withTempDir fun dir => do
     let inst := LeanDb.Instance.ofPath (dir / "auth.sqlite")
-    let .ok dbsession ← LeanDb.Cli.Session.open Demo.base inst
+    let .ok runtime ← LeanAppNative.Runtime.Service.new Demo.base inst
       | throw (IO.userError "FAIL: auth session")
-    let runtime ← LeanDb.Runtime.Service.new Demo.base inst dbsession true
     let .ok auth ← Service.new runtime
       | throw (IO.userError "FAIL: auth service")
     try
