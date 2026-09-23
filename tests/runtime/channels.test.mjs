@@ -45,10 +45,86 @@ test('seq gap triggers resubscribe; stale generation is ignored', async () => {
   });
   await new Promise(r => setTimeout(r, 10));
   const sock = MockSocket.instances[0];
-  sock.peer({ tag: 'event', sub: sub.id, seq: 0, payload: { n: 1 } });
-  sock.peer({ tag: 'event', sub: sub.id, seq: 2, payload: { n: 2 } });
-  assert.deepEqual(events, [[0, { n: 1 }]]);
-  assert.ok(sock.sent.some(f => f.tag === 'subscribe' && f.sub === sub.id));
+  sock.peer({ tag: 'subscribed', sub: sub.id, snapshot: null });
+  sock.peer({ tag: 'event', sub: sub.id, seq: 1, payload: { n: 1 } });
+  sock.sent.length = 0;
+  sock.peer({ tag: 'event', sub: sub.id, seq: 3, payload: { n: 3 } });
+  assert.deepEqual(events, [[1, { n: 1 }]]);
+  assert.equal(sock.sent.filter(f => f.tag === 'subscribe' && f.sub === sub.id).length, 1);
+  // Stale events from the replaced registration are dropped, not treated as new gaps.
+  sock.peer({ tag: 'event', sub: sub.id, seq: 4, payload: { n: 4 } });
+  assert.equal(sock.sent.filter(f => f.tag === 'subscribe').length, 1);
+  sock.peer({ tag: 'subscribed', sub: sub.id, snapshot: null });
+  sock.peer({ tag: 'event', sub: sub.id, seq: 1, payload: { n: 5 } });
+  assert.deepEqual(events, [[1, { n: 1 }], [1, { n: 5 }]]);
+});
+
+test('after a reconnect the server restarts at seq 1 and events keep flowing', async () => {
+  MockSocket.instances = [];
+  const events = [];
+  const timers = [];
+  const runtime = createChannelRuntime({
+    WebSocketImpl: MockSocket,
+    csrf: () => 'x',
+    origin: 'http://127.0.0.1:1',
+    random: () => 0,
+    setTimeoutFn: (fn, ms) => { timers.push(fn); return timers.length; },
+    clearTimeoutFn() {},
+  });
+  const sub = runtime.use({
+    channel: { namespace: 't', name: 'watch', version: '1' },
+    params: {},
+    onEvent: (seq, payload) => events.push([seq, payload]),
+  });
+  await new Promise(r => setTimeout(r, 10));
+  const first = MockSocket.instances[0];
+  first.peer({ tag: 'subscribed', sub: sub.id, snapshot: null });
+  for (const seq of [1, 2, 3]) first.peer({ tag: 'event', sub: sub.id, seq, payload: seq });
+  first.close(1006);
+  timers.at(-1)();
+  await new Promise(r => setTimeout(r, 10));
+  const second = MockSocket.instances.at(-1);
+  assert.notEqual(second, first);
+  second.peer({ tag: 'subscribed', sub: sub.id, snapshot: null });
+  for (const seq of [1, 2]) second.peer({ tag: 'event', sub: sub.id, seq, payload: 10 + seq });
+  assert.deepEqual(events.map(e => e[1]), [1, 2, 3, 11, 12]);
+  assert.equal(second.sent.filter(f => f.tag === 'subscribe').length, 1);
+});
+
+test('a hidden tab stays closed until visible; the last close stops the socket', async () => {
+  MockSocket.instances = [];
+  const listeners = [];
+  globalThis.document = { hidden: false, addEventListener: (type, fn) => listeners.push(fn) };
+  const timers = [];
+  try {
+    const runtime = createChannelRuntime({
+      WebSocketImpl: MockSocket,
+      csrf: () => 'x',
+      origin: 'http://127.0.0.1:1',
+      hiddenCloseMs: 500,
+      setTimeoutFn: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+      clearTimeoutFn(id) { if (timers[id - 1]) timers[id - 1].fn = () => {}; },
+    });
+    const sub = runtime.use({ channel: { namespace: 't', name: 'watch', version: '1' }, params: {}, onEvent() {} });
+    await new Promise(r => setTimeout(r, 10));
+    globalThis.document.hidden = true;
+    for (const fn of listeners) fn();
+    const hide = timers.find(t => t.ms === 500);
+    const before = timers.length;
+    hide.fn();
+    assert.equal(runtime._socket(), null);
+    assert.equal(timers.length, before, 'no reconnect is scheduled while hidden');
+    assert.equal(MockSocket.instances.length, 1);
+    globalThis.document.hidden = false;
+    for (const fn of listeners) fn();
+    assert.equal(MockSocket.instances.length, 2, 'becoming visible reopens');
+    await new Promise(r => setTimeout(r, 10));
+    sub.close();
+    assert.equal(runtime._socket(), null);
+    assert.equal(timers.length, before, 'closing the last subscription does not reconnect');
+  } finally {
+    delete globalThis.document;
+  }
 });
 
 test('frame codec round-trips', () => {

@@ -6,7 +6,7 @@ The standalone auth demo below is loopback-only. The same adapter also runs in t
 
 ## Run the demo
 
-Use the repository's Lean toolchain, installed npm dependencies, the sibling LeanDB/LeanHttp checkouts, and OpenSSL 3 development headers/library. The native package uses Homebrew's `/opt/homebrew/opt/openssl@3` on macOS or system paths on Linux. Pass `-Kopenssl=/absolute/prefix` to Lake for another installation. Linux qualification currently covers the café's Debian amd64 container and crypto checks; see [release evidence](RELEASE.md).
+Use the repository's Lean toolchain, installed npm dependencies, the [pinned native dependencies](GETTING_STARTED.md#prepare-the-native-dependencies) (fetched on the first build), and OpenSSL 3 development headers/library. The native package uses Homebrew's `/opt/homebrew/opt/openssl@3` on macOS or system paths on Linux. Pass `-Kopenssl=/absolute/prefix` to Lake for another installation. Linux qualification currently covers the café's Debian amd64 container and crypto checks; see [release evidence](RELEASE.md).
 
 In the first terminal, from the repository root:
 

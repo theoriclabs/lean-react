@@ -63,7 +63,14 @@ export function createStreamRuntime({
           source = null;
           onState?.({ status: 'closed', reason: 'user' });
         },
-        reconnect() { attempt = 0; connect(); },
+        reconnect() {
+          if (closed) return;
+          clearTimeoutFn(timer);
+          source?.close();
+          source = null;
+          attempt = 0;
+          connect();
+        },
       };
     },
   };

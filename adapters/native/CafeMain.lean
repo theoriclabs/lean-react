@@ -31,10 +31,8 @@ def main : IO UInt32 := do
       | throw (IO.userError "authentication unavailable")
     let host ← LeanAppNative.Cafe.host auth origin development (← LeanAppNative.Env.maxConnections)
       (serializeRequests := ← LeanAppNative.Env.serializeRequests)
-    Std.Async.Async.block do
-      let server ← host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩)
-      server.waitShutdown
-    return ← LeanAppNative.Lifecycle.shutdown runtime
+    return ← LeanAppNative.Lifecycle.serveUntilStopped runtime
+      (host.serve (.v4 ⟨Std.Net.IPv4Addr.ofParts 127 0 0 1, port.toUInt16⟩))
   catch e =>
     IO.eprintln s!"cafe: {e}"
     return ← LeanAppNative.Lifecycle.shutdown runtime

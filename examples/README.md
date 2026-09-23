@@ -13,7 +13,7 @@ These applications and portable domain models consume the reusable [LeanApp libr
 | `web/` | Showcase website, browser entry point, HTML, and ordinary CSS |
 | `consumer/` | Independent Node and TypeScript consumers of generated Lean modules |
 | `adapters/` | Example-specific foreign React and Tickets wire/service adapters |
-| `native/` | Optional local Tickets server using the sibling LeanDB and LeanHttp projects |
+| `native/` | Optional local Tickets server using the pinned LeanDB and LeanHttp packages |
 | `generated/` | Generated ESM, TypeScript declarations, and manifests; ignored by version control |
 | `dist/` | Browser bundle and static assets; ignored by version control |
 

@@ -14,9 +14,13 @@ structure SessionLimits where
   maxQueuedBytes : Nat := 512 * 1024
   inboundPerSecond : Nat := 10
   helloTimeoutMs : Nat := 5000
+  /-- How often a live socket re-checks its session (expiry, revocation). `0` disables. -/
+  revalidateMs : Nat := 60000
   deriving Repr
 
 structure Subscriber where
+  /-- The owning socket, from `Registry.socketId`. Sub ids are only unique per socket. -/
+  socket : Nat
   sub : SubId
   principal : Option Principal
   seq : IO.Ref EventSeq
@@ -25,30 +29,33 @@ structure Subscriber where
 
 structure Registry where
   private topics : IO.Ref (Std.HashMap Topic (Array Subscriber))
-  private bySub : IO.Ref (Std.HashMap (String × Nat) (Array Topic))
+  private bySub : IO.Ref (Std.HashMap (Nat × Nat) (Array Topic))
+  private nextSocket : IO.Ref Nat
   private publishLock : Std.Mutex Unit
   published : IO.Ref Nat
   revoked : IO.Ref Nat
 
 def Registry.new : IO Registry :=
-  return ⟨← IO.mkRef {}, ← IO.mkRef {}, ← Std.Mutex.new (), ← IO.mkRef 0, ← IO.mkRef 0⟩
+  return ⟨← IO.mkRef {}, ← IO.mkRef {}, ← IO.mkRef 0, ← Std.Mutex.new (), ← IO.mkRef 0, ← IO.mkRef 0⟩
 
-private def subKey (actor : String) (sub : SubId) : String × Nat := (actor, sub.n)
+/-- A fresh socket id. Two tabs of one actor must not share subscription keys. -/
+def Registry.socketId (r : Registry) : IO Nat :=
+  r.nextSocket.modifyGet fun n => (n + 1, n + 1)
 
-def Registry.subscribe (r : Registry) (actor : String) (topics : List Topic) (sub : Subscriber) :
-    IO Unit := do
-  r.bySub.modify (·.insert (subKey actor sub.sub) topics.toArray)
+def Registry.subscribe (r : Registry) (topics : List Topic) (sub : Subscriber) : IO Unit := do
+  r.bySub.modify (·.insert (sub.socket, sub.sub.n) topics.toArray)
   for t in topics do
     r.topics.modify fun m =>
       m.insert t ((m.getD t #[]).push sub)
 
-def Registry.unsubscribe (r : Registry) (actor : String) (sub : SubId) : IO Unit := do
-  let key := subKey actor sub
+def Registry.unsubscribe (r : Registry) (socket : Nat) (sub : SubId) : IO Unit := do
+  let key := (socket, sub.n)
   let topics := (← r.bySub.get).getD key #[]
   r.bySub.modify (·.erase key)
   for t in topics do
     r.topics.modify fun m =>
-      m.insert t ((m.getD t #[]).filter (fun s => !(s.sub == sub && (s.principal.map (·.actor)).getD actor == actor)))
+      let rest := (m.getD t #[]).filter (fun s => !(s.socket == socket && s.sub == sub))
+      if rest.isEmpty then m.erase t else m.insert t rest
 
 /-- Enqueue `event` on every live subscriber of `topic`. `seq` is stamped under
     the registry publish lock so concurrent publishes stay gap-free. -/
@@ -78,8 +85,7 @@ def Registry.revoke (r : Registry) (topic : Topic) (keep : Principal → Bool) :
         discard <| s.enqueue (.closed s.sub .revoked)
         s.alive.set false
         n := n + 1
-      if let some p := s.principal then
-        Registry.unsubscribe r p.actor s.sub
+      Registry.unsubscribe r s.socket s.sub
   r.revoked.modify (· + n)
   return n
 
@@ -109,6 +115,8 @@ structure LiveSub where
 
 /-- In-memory protocol machine for tests (no sockets). -/
 structure Session where
+  /-- Assigned on first subscribe from the registry; see `Registry.socketId`. -/
+  socket : IO.Ref (Option Nat)
   helloed : IO.Ref Bool
   principal : IO.Ref (Option Principal)
   outbound : IO.Ref (Array Frame)
@@ -128,6 +136,7 @@ def Session.new (limits : SessionLimits := {}) : IO Session := do
     outbound.modify (·.push f)
     return true
   return {
+    socket := ← IO.mkRef none
     helloed := ← IO.mkRef false
     principal := ← IO.mkRef none
     outbound
@@ -192,7 +201,27 @@ private def Session.admitInbound (s : Session) : IO Bool := do
   s.inboundN.set (n + 1)
   return true
 
-private def Session.enqueueFor (s : Session) (reg : Registry) (actor : String)
+private def Session.socketId (s : Session) (reg : Registry) : IO Nat := do
+  if let some id ← s.socket.get then return id
+  let id ← reg.socketId
+  s.socket.set (some id)
+  return id
+
+/-- Drop one subscription from the registry and this socket's bookkeeping. -/
+private def Session.dropSub (s : Session) (reg : Registry) (socket : Nat) (sub : SubId) : IO Unit := do
+  reg.unsubscribe socket sub
+  if let some live := (← s.live.get).get? sub.n then
+    live.alive.set false
+    s.live.modify (·.erase sub.n)
+    s.subscriptions.modify fun n => n - 1
+
+/-- Release every subscription this socket holds. Hosts call it when the socket ends. -/
+def Session.release (s : Session) (reg : Registry) : IO Unit := do
+  let some socket ← s.socket.get | return
+  for (n, _) in (← s.live.get).toList do
+    s.dropSub reg socket ⟨n⟩
+
+private def Session.enqueueFor (s : Session) (reg : Registry) (socket : Nat)
     (sub : SubId) (live : LiveSub) (f : Frame) : IO Bool := do
   unless ← live.alive.get do return false
   let bytes := frameBytes f
@@ -200,10 +229,7 @@ private def Session.enqueueFor (s : Session) (reg : Registry) (actor : String)
   let bq ← live.queuedBytes.get
   let overflow := ev ≥ s.limits.maxQueuedEvents || bq + bytes > s.limits.maxQueuedBytes
   if overflow then
-    live.alive.set false
-    Registry.unsubscribe reg actor sub
-    s.live.modify (·.erase sub.n)
-    s.subscriptions.modify fun n => n - 1
+    s.dropSub reg socket sub
     discard <| s.push (.closed sub .overflow)
     return false
   let buffering ← s.buffering.get
@@ -219,10 +245,7 @@ private def Session.enqueueFor (s : Session) (reg : Registry) (actor : String)
     let ev' ← live.queuedEvents.get
     let bq' ← live.queuedBytes.get
     if ev' ≥ s.limits.maxQueuedEvents || bq' > s.limits.maxQueuedBytes then
-      live.alive.set false
-      Registry.unsubscribe reg actor sub
-      s.live.modify (·.erase sub.n)
-      s.subscriptions.modify fun n => n - 1
+      s.dropSub reg socket sub
       discard <| s.push (.closed sub .overflow)
       return false
     return false
@@ -231,7 +254,6 @@ private def Session.enqueueFor (s : Session) (reg : Registry) (actor : String)
 def Session.drive (s : Session) (reg : Registry) (channels : List (ApprovedChannel IO))
     (context : RequestContext) (expectedCsrf : String) (frame : Frame)
     (onCall : Option (RequestContext → WireRequest → IO Lean.Json) := none) : IO Drive := do
-  let actor := (context.principal.map (·.actor)).getD ""
   match frame with
   | .hello p csrf =>
     if p != Protocol.v1 || csrf != expectedCsrf then
@@ -246,7 +268,8 @@ def Session.drive (s : Session) (reg : Registry) (channels : List (ApprovedChann
     match frame with
     | .subscribe sub identity params _resume =>
       let n ← s.subscriptions.get
-      if n ≥ s.limits.maxSubscriptions then
+      let replacing := (← s.live.get).contains sub.n
+      if !replacing && n ≥ s.limits.maxSubscriptions then
         discard <| s.push (.closed sub .overflow)
         return .cont
       match channels.find? (·.identity == identity) with
@@ -262,6 +285,9 @@ def Session.drive (s : Session) (reg : Registry) (channels : List (ApprovedChann
         | .error e =>
           discard <| s.push (.fail sub none (callFail e)); return .cont
         | .ok (topics, snap) =>
+          let socket ← s.socketId reg
+          -- Re-subscribing an id replaces the old registration instead of stacking it.
+          s.dropSub reg socket sub
           s.subscriptions.modify (· + 1)
           let alive ← IO.mkRef true
           let queuedEvents ← IO.mkRef (0 : Nat)
@@ -270,17 +296,15 @@ def Session.drive (s : Session) (reg : Registry) (channels : List (ApprovedChann
           let live : LiveSub := { channel := ch, params, topics, queuedEvents, queuedBytes, alive }
           s.live.modify (·.insert sub.n live)
           let subr : Subscriber := {
-            sub, principal := context.principal, seq, alive
-            enqueue := fun f => s.enqueueFor reg actor sub live f
+            socket, sub, principal := context.principal, seq, alive
+            enqueue := fun f => s.enqueueFor reg socket sub live f
           }
-          reg.subscribe actor topics subr
+          reg.subscribe topics subr
           discard <| s.push (.subscribed sub snap)
           return .cont
     | .unsubscribe sub =>
-      reg.unsubscribe actor sub
-      if let some live := (← s.live.get).get? sub.n then
-        live.alive.set false
-      s.live.modify (·.erase sub.n)
+      if let some socket ← s.socket.get then
+        s.dropSub reg socket sub
       return .cont
     | .send sub msg payload =>
       match (← s.live.get).get? sub.n with

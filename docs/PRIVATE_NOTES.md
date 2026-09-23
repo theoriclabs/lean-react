@@ -92,7 +92,7 @@ Compared with the original design, this slice uses a concrete read family and in
 
 ## Build and verify locally
 
-Use the [native dependency layout](GETTING_STARTED.md): Lean 4.33.0, Node 22.13+, sibling LeanDB/LeanHttp checkouts and OpenSSL 3 development files. From the repository root:
+Use the [native dependency layout](GETTING_STARTED.md): Lean 4.33.0, Node 22.13+, the pinned LeanDB/LeanHttp packages Lake fetches on the first build, and OpenSSL 3 development files. From the repository root:
 
 ```sh
 npm ci

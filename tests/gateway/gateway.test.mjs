@@ -185,6 +185,11 @@ test('body caps: default, per-route override, and manifest caps win over config'
     assert.equal((await g.post('/api/big', '{'.padEnd(65, ' '))).status, 413);
     assert.equal((await g.post('/api/echo', '{"a":1}')).status, 200);
     assert.equal(stub.hits.at(-1).headers['content-length'], '7');
+    // A multi-megabyte upload still gets a readable 413, whether or not it declares its length.
+    const huge = '{'.padEnd(4 * 1024 * 1024, ' ');
+    assert.equal((await g.post('/api/small', huge)).status, 413);
+    const chunked = new ReadableStream({ start(c) { for (let i = 0; i < 64; i++) c.enqueue(new TextEncoder().encode(' '.repeat(65536))); c.close(); } });
+    assert.equal((await g.call('/api/small', { method: 'POST', headers: { 'content-type': 'application/json', 'x-leanapp-request': '1', origin: g.origin }, body: chunked, duplex: 'half' })).status, 413);
   } finally { await g.handle.stop(); await stub.close(); }
 });
 

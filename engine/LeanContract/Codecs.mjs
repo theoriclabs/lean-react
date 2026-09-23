@@ -17,7 +17,9 @@ const scalar = (predicate, encodeCode, decodeCode) => Object.freeze({
 
 export const unit = scalar(value => value === null, 'encode.unit', 'decode.expected_null');
 export const bool = scalar(value => typeof value === 'boolean', 'encode.boolean', 'decode.expected_boolean');
-export const str = scalar(value => typeof value === 'string', 'encode.string', 'decode.expected_string');
+// Lean strings hold Unicode scalar values only: a lone surrogate would come back as U+FFFD,
+// so it is refused here instead of being silently rewritten by the server.
+export const str = scalar(value => typeof value === 'string' && value.isWellFormed(), 'encode.string', 'decode.expected_string');
 
 // Wire integers are canonical decimal strings; JavaScript values are bigint, never Number.
 const integer = (tag, pattern, encodeCode, decodeCode, admits) => Object.freeze({

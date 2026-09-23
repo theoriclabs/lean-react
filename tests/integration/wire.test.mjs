@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as domain from '../../examples/generated/domain.mjs';
 import { operations, decodeHttpReply, CallFailure } from '../../examples/adapters/tickets-client/operations.mjs';
-import { nat } from '../../engine/LeanContract/Codecs.mjs';
+import { nat, str } from '../../engine/LeanContract/Codecs.mjs';
 import { summaryFromLean, summaryToLean, createTicketsClient } from '../../examples/adapters/tickets-service.mjs';
 
 const seed = domain['Examples.Tickets.seed'].fields[0];
@@ -58,4 +58,12 @@ test('transport receives explicit public operations and keeps transport/decode e
   assert.deepEqual(calls[0], { url: '/api/tickets/list', body: { operation: identity('list'), kind: 'query', input: null } });
   await assert.rejects(createTicketsClient({ fetch: async () => { throw Error('offline'); } }).list(), error => error.kind === 'transport');
   await assert.rejects(createTicketsClient({ fetch: async () => ({ status: 200, json: async () => { throw Error('invalid'); } }) }).list(), error => error.kind === 'decode');
+});
+
+test('strings must be well-formed Unicode: lone surrogates are refused, astral characters pass', () => {
+  assert.equal(str.encode('tea 🍵'), 'tea 🍵');
+  assert.equal(str.decode('\u{1F375}'), '🍵');
+  for (const bad of ['\ud800', 'a\udc00b', '\ud83c'])
+    assert.throws(() => str.encode(bad), error => error instanceof CallFailure && error.code === 'encode.string');
+  assert.throws(() => str.decode('\ud800'), CallFailure);
 });
