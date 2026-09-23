@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "{{Name}}: a LeanApp application scaffolded by leanapp new",
+  "description": "{{Name}}: a LeanApp application scaffolded by scripts/new-app.mjs",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/dev.mjs",

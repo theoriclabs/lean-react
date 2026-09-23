@@ -33,6 +33,17 @@ COPY --from=build /src/leanreact/scripts/serve-cafe.mjs /app/scripts/serve-cafe.
 COPY --from=build /src/leanreact/engine/gateway /app/engine/gateway
 COPY SOURCE-MANIFEST.json /app/SOURCE-MANIFEST.json
 ENV NODE_ENV=production PORT=8080 LEANAPP_CAFE_BINARY=/app/bin/leanapp_cafe LEANAPP_BACKEND_PORT=4181
+# Start as root only to hand the database directory (often a root-owned volume) to `node`,
+# then drop privileges; the gateway and the Lean backend never run as root.
+RUN printf '%s\n' '#!/bin/sh' \
+      'if [ "$(id -u)" = 0 ]; then' \
+      '  dir="${RAILWAY_VOLUME_MOUNT_PATH:-$(dirname "${LEANAPP_DB_PATH:-/data/db}")}"' \
+      '  if [ -d "$dir" ] && ! chown -R node:node "$dir"; then' \
+      '    echo "entrypoint: cannot chown $dir; staying root" >&2; exec "$@"' \
+      '  fi' \
+      '  exec setpriv --reuid=node --regid=node --init-groups "$@"' \
+      'fi' \
+      'exec "$@"' > /usr/local/bin/leanapp-entrypoint && chmod 755 /usr/local/bin/leanapp-entrypoint
 EXPOSE 8080
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/leanapp-entrypoint"]
 CMD ["node", "/app/scripts/serve-cafe.mjs"]

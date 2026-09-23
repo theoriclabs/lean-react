@@ -32,7 +32,7 @@ docker run --rm -p 127.0.0.1:8080:8080 -v proof-and-pour-data:/data \
   -e LEANAPP_DB_PATH=/data/cafe.sqlite proof-and-pour:0.2.0-rc.1
 ```
 
-Replace the example origin with your actual HTTPS origin and configure its proxy separately. For local browser development, use `npm run dev:cafe`. Development mode intentionally binds to loopback and omits Secure cookies; never use it on a public service.
+Replace the example origin with your actual HTTPS origin and configure its proxy separately. The container starts as root only to give the database directory to the unprivileged `node` user, then runs the gateway and the Lean backend as `node`; a root-owned volume from an earlier release is taken over on the first start. For local browser development, use `npm run dev:cafe`. Development mode intentionally binds to loopback and omits Secure cookies; never use it on a public service.
 
 ## Railway
 
@@ -131,7 +131,7 @@ Saturation heuristics: a rising `queueWait` p95 with flat `db` means the writer 
 
 The public process bounds body size and active upstream work. The Lean process bounds simultaneous connections (`LEANAPP_BACKEND_MAX_CONNECTIONS`, default 64), applies each operation's declared body cap before buffering, and enforces declared per-principal rate limits with `429` and `Retry-After`. `LEANAPP_DB_READERS` (default 0) opens that many read-only SQLite connections for query handlers, policy reads and session resolution, so they no longer wait on the single writer; `LEANAPP_SERIALIZE_REQUESTS=1` runs every request under the writer as before. A writer queue beyond 128 admitted callbacks answers `503 application.unavailable`. Native auth separately limits admitted password work. These controls are process-local; they do not replace provider-level abuse protection. Use disposable demo passwords and avoid sensitive recipe names. Password reset and account recovery are unavailable.
 
-On SIGTERM, the public process stops admission and drains active HTTP exchanges, then sends SIGTERM to Lean. The Lean process (`LeanAppNative.Lifecycle.shutdown`) marks `/health/ready` unready, waits for in-flight writer work (default 15 s, below the gateway's 20 s), checkpoints and closes the database, and exits 0. A drain that still has queued work at the deadline exits 1. A 20-second gateway deadline then SIGKILLs whatever remains. SQLite transactions provide crash recovery if the process is killed mid-write. Back up the volume before schema changes and qualify restoration before depending on it. Schema mismatch refuses ordinary runtime admission.
+On SIGTERM, the public process stops admission and drains active HTTP exchanges, then sends SIGTERM to Lean. The Lean process (`LeanAppNative.Lifecycle.shutdown`) marks `/health/ready` unready, waits for in-flight writer work (default 15 s, below the gateway's 20 s), checkpoints and closes the database, and exits 0. At the deadline it cancels in-flight HTTP exchanges, allows them 2 s to unwind, and exits 1; if work is still active it leaves the database to SQLite's crash recovery rather than waiting. A 20-second gateway deadline then SIGKILLs whatever remains. SQLite transactions provide crash recovery if the process is killed mid-write. Back up the volume before schema changes and qualify restoration before depending on it. Schema mismatch refuses ordinary runtime admission.
 
 ## Scheduled work
 

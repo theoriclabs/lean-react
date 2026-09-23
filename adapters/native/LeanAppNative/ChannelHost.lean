@@ -26,17 +26,19 @@ private def decodeText (text : String) : Option Frame :=
   | .ok json => Frame.decode json
   | .error _ => none
 
-/-- Session cookie as forwarded by the gateway (`leanapp_session` or `__Host-`). -/
-def cookieToken (headers : Headers) : Option String := Id.run do
-  let some raw := (headers.get? (Header.Name.ofString! "cookie")).map (·.value) | none
-  for field in raw.splitOn ";" do
-    match field.trimAscii.toString.splitOn "=" with
-    | name :: token :: rest =>
-      let token := "=".intercalate (token :: rest)
-      if (name == "leanapp_session" || name == "__Host-leanapp_session") && tokenShape token then
-        return some token
-    | _ => pure ()
-  none
+/-- The session cookie the HTTP host issues: `__Host-` outside development. -/
+def sessionCookieName (development : Bool := false) : String :=
+  if development then "leanapp_session" else "__Host-leanapp_session"
+
+/-- The session token under exactly `name`, as the HTTP host reads it. Any other
+    cookie name is ignored, and a duplicated cookie is treated as absent, so a
+    tossed `leanapp_session` cannot stand in for the `__Host-` cookie. -/
+def cookieToken (headers : Headers) (name : String := sessionCookieName) : Option String := do
+  let raw ← (headers.get? (Header.Name.ofString! "cookie")).map (·.value)
+  let fields := raw.splitOn ";" |>.map (fun item => item.trimAscii.toString.splitOn "=")
+  let [entry] := fields.filter (fun item => item.head? == some name) | none
+  let [_, token] := entry | none
+  if tokenShape token then some token else none
 
 private inductive Incoming where
   | msg (m : Option LeanWs.Message)
@@ -51,28 +53,46 @@ private def nextMessage (ws : LeanWs.Session) (budgetMs : Option Nat) : Async In
       .case ws.recvSelector (fun m => pure (.msg m)),
       .case (← Selector.sleep (Time.Millisecond.Offset.ofNat ms)) (fun _ => pure .timeout)]
 
-/-- Shared recv loop. `closePolicy` turns a CSRF/hello failure into WebSocket 1008. -/
+/-- Shared recv loop. `closePolicy` turns a CSRF/hello failure into WebSocket 1008.
+    `revalidate` re-checks the session every `limits.revalidateMs`, so a socket
+    loses its authority when the session expires, not only on explicit logout. -/
 private def pump (ws : LeanWs.Session) (session : Session) (registry : Registry)
     (channels : List (ApprovedChannel IO)) (context : RequestContext) (csrf : String)
     (onCall : Option (RequestContext → WireRequest → IO Lean.Json))
     (onClose : RequestContext → List (Topic × SubId) → IO Unit)
-    (helloTimeoutMs : Nat) (closePolicy : Bool) : Async Unit := do
+    (helloTimeoutMs : Nat) (closePolicy : Bool)
+    (revalidate : Option (IO Bool) := none) : Async Unit := do
   let started ← IO.monoMsNow
+  let every := session.limits.revalidateMs
+  let revalidate := if every == 0 then none else revalidate
+  let nextCheck ← IO.mkRef (started + every)
   try
     repeat
-      let budget : Option Nat ← do
+      let helloDue : Option Nat ← do
         if helloTimeoutMs == 0 || (← session.helloed.get) then pure none
-        else
-          let now ← IO.monoMsNow
-          let deadline := started + helloTimeoutMs
-          if now ≥ deadline then pure (some 0) else pure (some (deadline - now))
-      match ← nextMessage ws budget with
+        else pure (some (started + helloTimeoutMs))
+      let checkDue : Option Nat ← do
+        if revalidate.isSome then pure (some (← nextCheck.get)) else pure none
+      let due := match helloDue, checkDue with
+        | some a, some b => some (min a b)
+        | some a, none => some a
+        | none, b => b
+      let now ← IO.monoMsNow
+      match ← nextMessage ws (due.map (· - now)) with
       | .timeout =>
-        if closePolicy then
-          discard <| ws.close .policyViolation "hello"
-        else
-          discard <| session.push (.closed ⟨0⟩ .session)
-        break
+        let now ← IO.monoMsNow
+        if helloDue.any (now ≥ ·) then
+          if closePolicy then
+            discard <| ws.close .policyViolation "hello"
+          else
+            discard <| session.push (.closed ⟨0⟩ .session)
+          break
+        if let some check := revalidate then
+          unless ← (try check catch _ => pure false) do
+            discard <| session.push (.closed ⟨0⟩ .session)
+            discard <| ws.close .policyViolation "session"
+            break
+          nextCheck.set (now + every)
       | .msg none => break
       | .msg (some (LeanWs.Message.text text)) =>
         match decodeText text with
@@ -93,6 +113,7 @@ private def pump (ws : LeanWs.Session) (session : Session) (registry : Registry)
         break
   finally
     let topics ← session.topics
+    session.release registry
     try onClose context topics catch _ => pure ()
 
 /-- Bind `addr` and accept Channels sessions with a fixed context (tests). -/
@@ -115,6 +136,7 @@ def Host.listenWith (addr : Std.Net.SocketAddress) (registry : Registry)
     return { server, registry }
 
 private structure Bound where
+  id : Nat
   digest : String
   actor : String
   session : Session
@@ -129,9 +151,11 @@ def Host.listen (addr : Std.Net.SocketAddress) (registry : Registry)
     (onCall : Option (RequestContext → WireRequest → IO Lean.Json) := none)
     (onClose : RequestContext → List (Topic × SubId) → IO Unit := fun _ _ => pure ())
     (limits : SessionLimits := {})
-    (config : LeanWs.ServerConfig := { sendTimeoutMs := 0 }) :
+    (config : LeanWs.ServerConfig := { sendTimeoutMs := 0 })
+    (cookieName : String := sessionCookieName) :
     IO Host := do
   let bound ← IO.mkRef ([] : List Bound)
+  let nextBound ← IO.mkRef (0 : Nat)
   auth.onInvalidation fun ev => do
     let all ← bound.get
     for b in all do
@@ -153,12 +177,12 @@ def Host.listen (addr : Std.Net.SocketAddress) (registry : Registry)
               | none => false } with
         | .error e => return .error e
         | .ok accept =>
-          let some token := cookieToken req.headers | return .error .unauthorized
+          let some token := cookieToken req.headers cookieName | return .error .unauthorized
           match ← (try auth.session token catch _ => pure (.error .internal)) with
           | .ok _ => return .ok accept
           | .error _ => return .error .unauthorized)
       (fun ws accept => do
-        let some token := cookieToken accept.request.headers | do
+        let some token := cookieToken accept.request.headers cookieName | do
           discard <| ws.close .policyViolation "session"
           return
         match ← (try auth.session token catch _ => pure (.error .internal)) with
@@ -171,12 +195,18 @@ def Host.listen (addr : Std.Net.SocketAddress) (registry : Registry)
           let session ← Session.new limits
           Session.attach session (sendFrame ws)
           let flag ← IO.mkRef true
-          bound.modify ({ digest, actor := user.actor, session, ws, alive := flag } :: ·)
+          let id ← nextBound.modifyGet fun n => (n, n + 1)
+          bound.modify ({ id, digest, actor := user.actor, session, ws, alive := flag } :: ·)
+          let stillValid : IO Bool := do
+            match ← auth.session token with
+            | .ok (current, _) => return current.actor == user.actor
+            | .error _ => return false
           try
             pump ws session registry channels context csrf onCall onClose
-              limits.helloTimeoutMs true
+              limits.helloTimeoutMs true (revalidate := some stillValid)
           finally
-            flag.set false)
+            flag.set false
+            bound.modify (·.filter (·.id != id)))
     return { server, registry }
 
 def Host.localPort (h : Host) : UInt16 :=

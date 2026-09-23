@@ -64,3 +64,24 @@ test('streams share the channel reconnect policy including 503 spread', () => {
   assert.equal(reconnectPolicy({ attempt: 0, reason: 503, random: () => 0.25, goingAwaySpreadMs: 8000 }), 2000);
   handle.close();
 });
+
+test('reconnect() replaces the live source and cancels a pending retry', () => {
+  MockEventSource.instances = [];
+  const timers = [];
+  const runtime = createStreamRuntime({
+    EventSourceImpl: MockEventSource,
+    random: () => 0,
+    setTimeoutFn: (fn) => { timers.push(fn); return timers.length; },
+    clearTimeoutFn(id) { if (timers[id - 1]) timers[id - 1] = () => {}; },
+  });
+  const stream = runtime.open({ url: '/events' });
+  const first = MockEventSource.instances[0];
+  stream.reconnect();
+  assert.equal(first.closed, true, 'the previous source is closed');
+  const second = MockEventSource.instances.at(-1);
+  second.onerror();
+  stream.reconnect();
+  for (const fn of timers) fn();
+  const live = MockEventSource.instances.filter(s => !s.closed);
+  assert.equal(live.length, 1, 'exactly one source stays open');
+});

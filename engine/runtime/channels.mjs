@@ -56,6 +56,7 @@ export function createChannelRuntime({
   let opened = false;
   const subscriptions = new Map();
   let reconnectTimer = null;
+  let hideTimer = null;
   const hidden = () => typeof document !== 'undefined' && document.hidden;
 
   function send(frame) {
@@ -78,9 +79,18 @@ export function createChannelRuntime({
     };
   }
 
+  /** The server numbers each (re)subscription from seq 1. Until `subscribed`
+   *  arrives, out-of-order events belong to the replaced registration and are
+   *  dropped rather than treated as a gap. */
+  function subscribe(sub) {
+    sub.lastSeq = 0;
+    sub.awaiting = true;
+    return send(subscribeFrame(sub));
+  }
+
   function sendSubscribe(sub) {
     sub.generation += 1;
-    send(subscribeFrame(sub));
+    subscribe(sub);
   }
 
   function backgroundDelay() {
@@ -119,28 +129,35 @@ export function createChannelRuntime({
 
   function open() {
     if (socket || !WebSocketImpl) return;
+    if (reconnectTimer != null) { clearTimeoutFn(reconnectTimer); reconnectTimer = null; }
     const url = path.startsWith('ws') ? path : `${origin.replace(/^http/, 'ws')}${path}`;
-    socket = new WebSocketImpl(url, protocol);
+    const current = new WebSocketImpl(url, protocol);
+    socket = current;
+    // A socket the runtime already let go of (see `suspend`) no longer drives state.
+    const stale = () => socket !== current;
     socket.addEventListener('open', () => {
+      if (stale()) return;
       attempt = 0;
       opened = true;
       hello();
       resubscribeAll();
     });
     socket.addEventListener('message', event => {
+      if (stale()) return;
       let frame;
       try { frame = decodeFrame(event.data); } catch { return; }
       if (frame.tag === 'event') {
         const sub = [...subscriptions.values()].find(s => s.id === frame.sub);
         if (!sub) return;
-        if (sub.lastSeq != null && frame.seq !== sub.lastSeq + 1) {
-          send(subscribeFrame(sub));
+        if (frame.seq !== sub.lastSeq + 1) {
+          if (!sub.awaiting) subscribe(sub);
           return;
         }
         sub.lastSeq = frame.seq;
         sub.onEvent?.(frame.seq, frame.payload);
       } else if (frame.tag === 'subscribed') {
         const sub = [...subscriptions.values()].find(s => s.id === frame.sub);
+        if (sub) sub.awaiting = false;
         if (sub?.onSnapshot && frame.snapshot != null) sub.onSnapshot(frame.snapshot);
       } else if (frame.tag === 'fail') {
         const sub = [...subscriptions.values()].find(s => s.id === frame.sub);
@@ -154,19 +171,34 @@ export function createChannelRuntime({
       }
     });
     socket.addEventListener('close', event => {
+      if (stale()) return;
       socket = null;
       const reason = opened ? (event?.code ?? 0) : 503;
       opened = false;
+      if (subscriptions.size === 0) return;
       for (const sub of subscriptions.values()) sub.onOffline?.(attempt + 1);
       scheduleReconnect(reason);
     });
   }
 
+  /** Close without reconnecting; `open` (a visible tab or a new `use`) resumes. */
+  function suspend() {
+    if (reconnectTimer != null) { clearTimeoutFn(reconnectTimer); reconnectTimer = null; }
+    const current = socket;
+    socket = null;
+    opened = false;
+    current?.close();
+  }
+
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
+      if (hideTimer != null) { clearTimeoutFn(hideTimer); hideTimer = null; }
       if (document.hidden) {
-        setTimeoutFn(() => { if (document.hidden && socket) socket.close(); }, hiddenCloseMs);
-      } else if (!socket) open();
+        hideTimer = setTimeoutFn(() => {
+          hideTimer = null;
+          if (document.hidden) suspend();
+        }, hiddenCloseMs);
+      } else if (!socket && subscriptions.size > 0) open();
     });
   }
 
@@ -178,12 +210,12 @@ export function createChannelRuntime({
       const id = nextSub++;
       const record = {
         id, channel, params, resume, onEvent, onSnapshot, onDenied, onOffline,
-        lastSeq: null, generation: 0, pending: new Map(), priority,
+        lastSeq: 0, awaiting: true, generation: 0, pending: new Map(), priority,
       };
       if (enabled) {
         subscriptions.set(id, record);
         open();
-        if (socket?.readyState === 1) send(subscribeFrame(record));
+        if (socket?.readyState === 1) subscribe(record);
       }
       return {
         id,
@@ -208,11 +240,12 @@ export function createChannelRuntime({
           });
         },
         resubscribe() {
-          send(subscribeFrame(record));
+          subscribe(record);
         },
         close() {
           subscriptions.delete(id);
           send({ tag: 'unsubscribe', sub: id });
+          if (subscriptions.size === 0) suspend();
         },
         setResume(value) { record.resume = value; },
         get generation() { return generation; },

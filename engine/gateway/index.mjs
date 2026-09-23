@@ -87,6 +87,7 @@ export async function createGateway(config) {
   }
   for (const [path, cap] of Object.entries(routes.bodyBytes)) if (path !== 'default') caps.set(path, checkCap(cap, path));
   const defaultCap = checkCap(routes.bodyBytes.default ?? 8192, 'default');
+  const discardLimit = 64 * 1024 * 1024;
   const allowed = path => allow.has(path) || (literalPath(path) && prefixes.some(prefix => path.startsWith(prefix)));
 
   // Process lifecycle: stop admission, drain active public exchanges, then terminate the child.
@@ -228,13 +229,30 @@ export async function createGateway(config) {
     let released = false;
     res.once('close', () => { if (!released) { released = true; inFlight--; } });
     try {
-      let size = 0; const chunks = []; const cap = caps.get(path) ?? defaultCap;
-      for await (const chunk of req) {
-        size += chunk.length;
-        if (size > cap) { res.setHeader('connection', 'close'); send(413, '', 'body_too_large'); return; }
-        chunks.push(chunk);
-      }
-      const body = Buffer.concat(chunks); line.bytes.in = body.length;
+      const cap = caps.get(path) ?? defaultCap;
+      // Over the cap, discard the rest of the upload and then answer 413. Closing the
+      // connection mid-upload resets it and the client never sees the status. An upload
+      // past `discardLimit` is cut off; `server.requestTimeout` bounds a slow one.
+      const tooLarge = () => {
+        let discarded = 0;
+        req.on('data', chunk => { discarded += chunk.length; if (discarded > discardLimit) req.destroy(); });
+        req.once('end', () => { res.setHeader('connection', 'close'); send(413, '', 'body_too_large'); });
+        req.resume();
+      };
+      if (Number(req.headers['content-length']) > cap) { tooLarge(); return; }
+      const body = await new Promise((done, failed) => {
+        let size = 0; const chunks = [];
+        const collect = chunk => {
+          size += chunk.length;
+          if (size <= cap) { chunks.push(chunk); return; }
+          chunks.length = 0; req.off('data', collect); done(null);
+        };
+        req.on('data', collect);
+        req.once('end', () => done(Buffer.concat(chunks)));
+        req.once('error', failed);
+      });
+      if (!body) { tooLarge(); return; }
+      line.bytes.in = body.length;
       const headers = Object.fromEntries(forward.filter(k => req.headers[k] !== undefined).map(k => [k, req.headers[k]]));
       headers['content-length'] = String(body.length); headers['x-request-id'] = requestId;
       const sent = performance.now();

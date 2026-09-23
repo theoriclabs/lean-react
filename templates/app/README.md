@@ -1,6 +1,6 @@
 # {{Name}}
 
-A LeanApp application scaffolded by `leanapp new`: a shared domain rule (`{{Name}}/Domain.lean`) that
+A LeanApp application scaffolded by LeanReact's `scripts/new-app.mjs`: a shared domain rule (`{{Name}}/Domain.lean`) that
 runs in the browser and on the server, two approved operations (`{{Name}}/Contracts.lean`), a LeanReact
 screen (`{{Name}}/UI/App.lean`), and a native package with SQLite storage, policies, username/password
 sessions and a lifecycle-managed process (`native/`). The public process is the LeanApp gateway

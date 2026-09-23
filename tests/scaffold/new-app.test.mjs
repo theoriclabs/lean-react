@@ -21,7 +21,7 @@ async function walk(dir) {
   return out;
 }
 
-test('leanapp new scaffolds a complete, substituted project', { timeout: 120000 }, async () => {
+test('new-app scaffolds a complete, substituted project', { timeout: 120000 }, async () => {
   await (await import('node:fs/promises')).mkdir(parent, { recursive: true });
   const dir = await mkdtemp(resolve(parent, 'demo-'));
   await rm(dir, { recursive: true });

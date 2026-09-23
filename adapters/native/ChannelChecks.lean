@@ -46,7 +46,10 @@ private def wsHeaders (cookie : Option String) (origin : String := originOk) : H
   let h := Headers.empty.insert! "Origin" origin
   match cookie with
   | none => h
-  | some token => h.insert! "Cookie" s!"leanapp_session={token}"
+  | some token => h.insert! "Cookie" s!"{sessionCookieName}={token}"
+
+private def rawCookieHeaders (cookie : String) : Headers :=
+  (Headers.empty.insert! "Origin" originOk).insert! "Cookie" cookie
 
 private def send (ws : LeanWs.Session) (f : Frame) : Std.Async.Async Unit := do
   match ← ws.send (.text (Frame.encode f).compress) with
@@ -153,6 +156,40 @@ def run : IO Unit := do
     | .event ⟨2⟩ _ payload => payload == .str "still"
     | _ => false)
 
+  let regT ← Registry.new
+  let tabA ← Session.new
+  let tabB ← Session.new
+  for tab in [tabA, tabB] do
+    tab.handle regT [approved true] ctx "csrf" (.hello Protocol.v1 "csrf")
+    tab.handle regT [approved true] ctx "csrf" (.subscribe ⟨1⟩ identity .null none)
+    discard <| tab.take
+  tabA.handle regT [approved true] ctx "csrf" (.unsubscribe ⟨1⟩)
+  let nT ← regT.publish (Topic.doc "1") (.str "tab")
+  let fromA ← tabA.take
+  let fromB ← tabB.take
+  check "two sockets of one actor keep independent sub ids" (nT == 1 && fromA.isEmpty && fromB.any fun
+    | .event ⟨1⟩ _ payload => payload == .str "tab"
+    | _ => false)
+
+  let cyc ← Session.new
+  let regC ← Registry.new
+  cyc.handle regC [approved true] ctx "csrf" (.hello Protocol.v1 "csrf")
+  for _ in [0:40] do
+    cyc.handle regC [approved true] ctx "csrf" (.subscribe ⟨1⟩ identity .null none)
+    cyc.handle regC [approved true] ctx "csrf" (.unsubscribe ⟨1⟩)
+  cyc.handle regC [approved true] ctx "csrf" (.subscribe ⟨1⟩ identity .null none)
+  let cycled ← cyc.take
+  check "40 subscribe/unsubscribe cycles stay under the cap" (!cycled.any fun
+    | .closed _ .overflow => true
+    | _ => false)
+  cyc.handle regC [approved true] ctx "csrf" (.subscribe ⟨1⟩ identity .null none)
+  discard <| cyc.take
+  let nR ← regC.publish (Topic.doc "1") (.str "once")
+  check "re-subscribing an id replaces its registration" (nR == 1)
+  cyc.release regC
+  let nGone ← regC.publish (Topic.doc "1") (.str "gone")
+  check "release drops a closed socket's subscribers" (nGone == 0)
+
   Std.Async.Async.block do
     let host ← Host.listenWith (.v4 ⟨.ofParts 127 0 0 1, 0⟩) (← Registry.new) [approved true] ctx "csrf"
       (onCall := some fun _ req =>
@@ -206,6 +243,16 @@ def run : IO Unit := do
         | .error (.rejected (.status 401)) => check "missing cookie is 401 at upgrade" true
         | other => throw (IO.userError s!"FAIL: expected 401, got {repr (other.map fun _ => ())}")
         match ← LeanWs.Client.connect uri
+            { subprotocols := [protocol], headers := rawCookieHeaders s!"leanapp_session={alice.token}" } with
+        | .error (.rejected (.status 401)) => check "unprefixed session cookie is 401" true
+        | other => throw (IO.userError s!"FAIL: expected 401, got {repr (other.map fun _ => ())}")
+        match ← LeanWs.Client.connect uri
+            { subprotocols := [protocol]
+              headers := rawCookieHeaders
+                s!"{sessionCookieName}={alice.token}; {sessionCookieName}={bob.token}" } with
+        | .error (.rejected (.status 401)) => check "duplicated session cookie is 401" true
+        | other => throw (IO.userError s!"FAIL: expected 401, got {repr (other.map fun _ => ())}")
+        match ← LeanWs.Client.connect uri
             { subprotocols := [protocol], headers := wsHeaders (some alice.token) "https://evil.example" } with
         | .error (.rejected (.status 403)) => check "forged Origin is 403" true
         | other => throw (IO.userError s!"FAIL: expected 403, got {repr (other.map fun _ => ())}")
@@ -257,6 +304,33 @@ def run : IO Unit := do
             check "logout while connected closes session" gotSession
             wsB.close
             host.drain
+      let clock ← IO.mkRef (1800000000 : Nat)
+      let .ok shortAuth ← Service.new runtime clock.get { ttl := 60 }
+        | throw (IO.userError "FAIL: short-ttl auth service")
+      let carol ← match ← shortAuth.signup "carol_ws" password with
+        | .ok v => pure v | .error e => throw (IO.userError s!"FAIL: signup carol {repr e}")
+      Std.Async.Async.block do
+        let host ← Host.listen (.v4 ⟨.ofParts 127 0 0 1, 0⟩) (← Registry.new) [ch] shortAuth
+          (fun o => o == originOk) (limits := { revalidateMs := 100 })
+        let uri := Std.Http.URI.parse! s!"ws://127.0.0.1:{host.localPort}/"
+        match ← LeanWs.Client.connect uri
+            { subprotocols := [protocol], headers := wsHeaders (some carol.token) } with
+        | .error e => throw (IO.userError s!"FAIL: carol connect {e}")
+        | .ok ws =>
+          send ws (.hello Protocol.v1 carol.csrf)
+          send ws (.subscribe ⟨1⟩ identity .null none)
+          match ← recv ws with
+          | .subscribed _ _ => pure ()
+          | f => throw (IO.userError s!"FAIL: carol subscribed {(Frame.encode f).compress}")
+          clock.modify (· + 120)
+          let mut expired := false
+          for _ in [0:20] do
+            match ← recvClosed ws with
+            | some (.closed _ .session) => expired := true; break
+            | none => expired := true; break
+            | some _ => pure ()
+          check "a live socket closes once its session expires" expired
+          host.drain
     finally runtime.close
 
   IO.println "PASS channel protocol qualification (leanws loopback)"
