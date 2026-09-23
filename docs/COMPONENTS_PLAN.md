@@ -34,17 +34,17 @@ flowchart LR
     M --> X["P8 Notation, docs,<br/>hook API wind-down"]
 ```
 
-| Phase | Ships | Depends on | Size |
-|---|---|---|---|
-| P0 Spike | Compiled fixtures proving each construct the design needs | — | S |
-| P1 Core types | `Html`, `Attr`, `Cmd`, `Sub`, `Component`, element and attribute helpers | P0 | M |
-| P2 Host runtime | `program.mjs`: one state slot, atomic dispatch, `Html` → React, interop with hook components | P1 | M |
-| P3 Commands and subscriptions | Timers, navigation, focus, storage, an `Action` bridge; subscriptions started and stopped as the model changes | P2 | M |
-| P4 Native testing | Pure simulation and `Html` queries in Lean, no browser | P1 | S |
-| P5 Proofs | `Component.toSys`; invariants of `update`, theorems about `view` | P4, LeanProps extraction | M |
-| P6 Typed server calls | `Cmd.call` typed by LeanAPI endpoint signatures | P3, LeanAPI spec split | L |
-| P7 Migration | Counter, Forms, Tickets, then the leanchess UI | P3 (P6 for typed calls) | L |
-| P8 Notation, docs, wind-down | Optional JSX-like `html!`, docs, hook API for escape hatches only | P7 | M |
+| Phase | Ticket | Ships | Depends on | Size |
+|---|---|---|---|---|
+| P0 Spike | [LR-14](https://github.com/theoriclabs/lean-react/issues/44) | Compiled fixtures proving each construct the design needs | — | S |
+| P1 Core types | [LR-15](https://github.com/theoriclabs/lean-react/issues/45) | `Html`, `Attr`, `Cmd`, `Sub`, `Component`, element and attribute helpers | P0 | M |
+| P2 Host runtime | [LR-16](https://github.com/theoriclabs/lean-react/issues/46) | `program.mjs`: one state slot, atomic dispatch, `Html` → React, interop with hook components | P1 | M |
+| P3 Commands and subscriptions | [LR-17](https://github.com/theoriclabs/lean-react/issues/47) | Timers, navigation, focus, storage, an `Action` bridge; subscriptions started and stopped as the model changes | P2 | M |
+| P4 Native testing | [LR-18](https://github.com/theoriclabs/lean-react/issues/48) | Pure simulation and `Html` queries in Lean, no browser | P1 | S |
+| P5 Proofs | [LR-19](https://github.com/theoriclabs/lean-react/issues/49) | `Component.toSys`; invariants of `update`, theorems about `view` | P4, LeanProps extraction | M |
+| P6 Typed server calls | [LR-20](https://github.com/theoriclabs/lean-react/issues/50) | `Cmd.call` typed by LeanAPI endpoint signatures | P3, LeanAPI spec split | L |
+| P7 Migration | [LR-21](https://github.com/theoriclabs/lean-react/issues/51) | Counter, Forms, Tickets, then the leanchess UI | P3 (P6 for typed calls) | L |
+| P8 Notation, docs, wind-down | [LR-22](https://github.com/theoriclabs/lean-react/issues/52) | Optional JSX-like `html!`, docs, hook API for escape hatches only | P7 | M |
 
 LR-13 (the purge) is independent and can land any time. It should land before P7, so migration doesn't touch code that's about to be deleted.
 
@@ -259,15 +259,15 @@ In order, each a separate PR:
   - a blog post, like LeanAPI's.
 - **The hook API** stays, documented as the low-level escape hatch, like `Route` in LeanAPI. Removing it is a later decision, made only when nothing uses it.
 
-## Cross-repo tickets to open
+## Tickets
 
 | Repo | Ticket | Needed by |
 |---|---|---|
-| lean-react | LR-13 purge LeanApp ([#43](https://github.com/theoriclabs/lean-react/issues/43)) | Before P7 |
-| lean-react | P0–P8 as LR-14… (one per phase) | This plan |
-| leanapi | Extract the property kernel into its own package (`leanprops`) | P5 |
-| leanapi | Split `LeanApi.Spec` (LeanJS-compilable endpoint descriptions) from the server | P6 |
-| leanchess | Migrate the UI to the component model | P7 |
+| lean-react | [LR-13: purge LeanApp (#43)](https://github.com/theoriclabs/lean-react/issues/43) | Before P7 |
+| lean-react | [LR-14 (#44)](https://github.com/theoriclabs/lean-react/issues/44) … [LR-22 (#52)](https://github.com/theoriclabs/lean-react/issues/52): one per phase, P0 to P8 | This plan |
+| leanapi | [M13: extract the property kernel (leanprops) (#1)](https://github.com/theoriclabs/leanapi/issues/1) | P5 |
+| leanapi | [M14: split `LeanApi.Spec` (#2)](https://github.com/theoriclabs/leanapi/issues/2) | P6 |
+| leanchess | Migrate the UI to the component model: opened when P3 lands (it is P7's last step) | P7 |
 
 ## Risks
 
