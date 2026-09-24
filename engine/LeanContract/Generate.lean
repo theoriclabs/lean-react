@@ -1,5 +1,5 @@
 import LeanContract.Http
-import LeanApp.Binding
+import LeanContract.Public
 
 /-! Browser client generation from the public manifest: `operations.mjs` (codecs derived from each
 operation's `WireSchema`, accepted by `defineHttpOperation`), `operations.d.ts`/`.d.mts` (input,
@@ -9,7 +9,7 @@ output and error types with a typed `call` overload per operation) and `manifest
 Only schema-describable shapes are generated. A codec whose `decode` validates beyond its schema
 (a title length, a status name) is still validated on the server; the client checks the shape. -/
 namespace Contract.Generate
-open Ontology LeanApp
+open Ontology
 
 private def quote (text : String) : String := (Lean.Json.str text).compress
 

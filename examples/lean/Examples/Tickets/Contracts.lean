@@ -1,7 +1,7 @@
 import Examples.Tickets.Domain
 import LeanContract
 import LeanContract.Http
-import LeanApp.Binding
+import LeanContract.Public
 
 namespace Examples.Tickets.Contracts
 open Ontology Contract
@@ -94,15 +94,15 @@ def publicOperations : Validation PublicOperations := do
   let save ← Operation.create .command saveIdentity codecs.saveInput codecs.summary codecs.saveError
   pure ⟨codecs, list, save⟩
 
-/-- Public HTTP metadata shared by the native registration and the generated browser client.
-The native bindings must publish the same rules; `tickets_checks` compares the served manifest. -/
-def PublicOperations.approved (ops : PublicOperations) : List LeanApp.PublicOperation :=
+/-- Public HTTP metadata embedded in the generated browser client. A server publishing these
+operations must serve the same manifest, or the client refuses it as `incompatible`. -/
+def PublicOperations.approved (ops : PublicOperations) : List Contract.PublicOperation :=
   [⟨ops.list.describe, { path := listPath }, { describePolicy := "role ≥ viewer" }⟩,
    ⟨ops.save.describe, { path := savePath }, { describePolicy := "role ≥ editor" }⟩]
 
 /-- The `/api/manifest` body: schemas, HTTP bindings and public metadata per operation. -/
 def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
-  LeanApp.PublicOperation.manifest ops.approved
+  Contract.PublicOperation.manifest ops.approved
 
 def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
   ⟨ops.codecs.operationId, ops.codecs.errors⟩

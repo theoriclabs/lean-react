@@ -6,5 +6,3 @@ import LeanReact.Forms
 import LeanReact.Resources
 import LeanReact.Handle
 import LeanReact.Router
-import LeanReact.Channels
-import LeanReact.Streams
