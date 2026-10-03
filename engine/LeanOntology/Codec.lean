@@ -53,6 +53,22 @@ def checkTag (expected : String) (value : WireValue) : Validation Unit := do
   if actual != expected then
     Validation.fail "decode.unknown_tag" [.key "tag"] [("expected", expected), ("actual", actual)]
 
+/-- Portable exact decimal parsing. No JS Number or byte-position implementation is involved. -/
+def decimalDigits? (chars : List Char) : Option Nat :=
+  if chars.isEmpty then none else chars.foldl (fun result char =>
+    match result with
+    | none => none
+    | some value =>
+      let digit := char.toNat
+      if digit ≥ 48 && digit ≤ 57 then some (value * 10 + (digit - 48)) else none) (some 0)
+
+def decimalNat? (raw : String) : Option Nat := decimalDigits? raw.toList
+
+def decimalInt? (raw : String) : Option Int :=
+  match raw.toList with
+  | '-' :: digits => (decimalDigits? digits).map (fun value => -Int.ofNat value)
+  | digits => (decimalDigits? digits).map Int.ofNat
+
 def uniqueNames (names : List String) : Validation Unit := do
   let mut seen : List String := []
   for name in names do
@@ -111,12 +127,17 @@ private def decimal (tag : String) (value : WireValue) : Validation String := do
   JsonWire.checkTag tag value
   JsonWire.stringField "value" value
 
+/-- Decision 15: integers are bare JSON numbers (exact at any size); the milestone-1 tagged
+decimal form `{"tag":"nat","value":"5"}` is still accepted on decode. -/
 def nat : Codec Nat where
   schema := .natural
-  encode value := JsonWire.tagged "nat" (.str (toString value))
+  encode value := .num ⟨Int.ofNat value, 0⟩
   decode value := do
+    if let .num number := value then
+      if number.exponent == 0 && number.mantissa ≥ 0 then return number.mantissa.toNat
+      Validation.fail "decode.invalid_natural"
     let text ← decimal "nat" value
-    match text.toNat? with
+    match JsonWire.decimalNat? text with
     | some number =>
       if toString number == text then pure number
       else Validation.fail "decode.noncanonical_integer" [.key "value"]
@@ -124,10 +145,13 @@ def nat : Codec Nat where
 
 def int : Codec Int where
   schema := .integer
-  encode value := JsonWire.tagged "int" (.str (toString value))
+  encode value := .num ⟨value, 0⟩
   decode value := do
+    if let .num number := value then
+      if number.exponent == 0 then return number.mantissa
+      Validation.fail "decode.invalid_integer"
     let text ← decimal "int" value
-    match text.toInt? with
+    match JsonWire.decimalInt? text with
     | some number =>
       if toString number == text then pure number
       else Validation.fail "decode.noncanonical_integer" [.key "value"]

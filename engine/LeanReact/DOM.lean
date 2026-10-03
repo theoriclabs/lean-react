@@ -211,13 +211,13 @@ private def fieldAttributes (props : FieldProps) : Array Attribute :=
   optionalNat "maxLength" props.maxLength ++ handler props.onInput .input ++ handler props.onPaste .paste
 
 inductive InputType where
-  | text | email | password | search | checkbox | number | url | tel | date | time | range | radio
+  | text | email | password | search | checkbox | number | url | tel | date | time | datetimeLocal | range | radio
   deriving Repr, BEq
 
 def InputType.value : InputType → String
   | .text => "text" | .email => "email" | .password => "password"
   | .search => "search" | .checkbox => "checkbox" | .number => "number"
-  | .url => "url" | .tel => "tel" | .date => "date" | .time => "time" | .range => "range" | .radio => "radio"
+  | .url => "url" | .tel => "tel" | .date => "date" | .time => "time" | .datetimeLocal => "datetime-local" | .range => "range" | .radio => "radio"
 
 structure InputProps extends FieldProps where
   type : InputType := .text

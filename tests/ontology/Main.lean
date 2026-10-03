@@ -68,9 +68,14 @@ private def testNumbers : IO Unit := do
     roundTrip "exact Nat JSON" Codec.nat n
   for n in [(0 : Int), 1, -1, Int.ofNat huge, -(Int.ofNat huge)] do
     roundTrip "exact Int JSON" Codec.int n
-  check "Nat encodes decimal string" (Codec.nat.encode huge == JsonWire.tagged "nat" (.str (toString huge)))
-  reject "raw numeric transport" (Codec.nat.decode (.num 9007199254740993)) "decode.expected_object"
-  reject "wrong numeric tag" (Codec.int.decode (Codec.nat.encode 1)) "decode.unknown_tag" [.key "tag"]
+  -- Decision 15: a bare JSON number, exact at any size; the milestone-1 tagged decimal still decodes.
+  check "Nat encodes a bare JSON number" (Codec.nat.encode huge == .num ⟨Int.ofNat huge, 0⟩)
+  check "Nat bare number decodes exactly" ((Codec.nat.decode (.num 9007199254740993)).toOption == some 9007199254740993)
+  check "Nat tagged decimal still decodes" ((Codec.nat.decode (JsonWire.tagged "nat" (.str (toString huge)))).toOption == some huge)
+  check "Int tagged decimal still decodes" ((Codec.int.decode (JsonWire.tagged "int" (.str "-12"))).toOption == some (-12))
+  reject "negative bare natural" (Codec.nat.decode (.num (-1))) "decode.invalid_natural"
+  reject "fractional bare number" (Codec.int.decode (.num ⟨15, 1⟩)) "decode.invalid_integer"
+  reject "wrong numeric tag" (Codec.int.decode (JsonWire.tagged "nat" (.str "1"))) "decode.unknown_tag" [.key "tag"]
   reject "leading zero" (Codec.nat.decode (JsonWire.tagged "nat" (.str "001")))
     "decode.noncanonical_integer" [.key "value"]
   reject "negative zero" (Codec.int.decode (JsonWire.tagged "int" (.str "-0")))

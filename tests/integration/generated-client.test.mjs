@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { operations, manifest, manifestPath, createClient, canonical, types } from '../../examples/adapters/tickets-client/operations.mjs';
-import { CallFailure } from '../../engine/LeanContract/Fetch.mjs';
+import { CallFailure, parseJson } from '../../engine/LeanContract/Fetch.mjs';
 
 const clientDir = resolve('examples/adapters/tickets-client');
 const lean = (file, ...args) => execFileSync('lake', ['env', 'lean', '--run', file, ...args], { encoding: 'utf8' });
@@ -23,7 +23,8 @@ test('regenerating the Tickets client reproduces the committed files byte for by
 });
 
 test('Lean codec fixtures decode in the generated client and re-encode identically', async () => {
-  const fixtures = JSON.parse(lean('tests/integration/ClientFixtures.lean'));
+  // Decision 15: integers are bare JSON numbers; parse exactly beyond 2^53.
+  const fixtures = parseJson(lean('tests/integration/ClientFixtures.lean'));
   assert.equal(canonical(fixtures.manifest), canonical(manifest));
   assert.equal(canonical(JSON.parse(await readFile(join(clientDir, 'manifest.json'), 'utf8'))), canonical(manifest));
   assert.equal(roundTrip(operations.list.input, fixtures.list.input), canonical(fixtures.list.input));
@@ -75,7 +76,7 @@ test('the client refuses a stale bundle before the first request and forwards si
 test('generated operations reject malformed inputs before any request is sent', async () => {
   let sent = 0;
   const client = createClient({ fetch: async () => { sent++; return { status: 200, json: async () => ({}) }; } });
-  for (const input of [null, {}, { id: 'x' }, { ...operations.save.input.decode(JSON.parse(lean('tests/integration/ClientFixtures.lean')).save.input), expectedRevision: 1 }])
+  for (const input of [null, {}, { id: 'x' }, { ...operations.save.input.decode(parseJson(lean('tests/integration/ClientFixtures.lean')).save.input), expectedRevision: 1 }])
     await assert.rejects(client.call(operations.save.identity, input), error => error.kind === 'decode');
   assert.equal(sent, 0);
 });

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as domain from '../../examples/generated/domain.mjs';
 import { operations, decodeHttpReply, CallFailure } from '../../examples/adapters/tickets-client/operations.mjs';
+import { stringify, parseJson } from '../../engine/LeanContract/Fetch.mjs';
 import { nat, str } from '../../engine/LeanContract/Codecs.mjs';
 import { summaryFromLean, summaryToLean, createTicketsClient } from '../../examples/adapters/tickets-service.mjs';
 
@@ -12,14 +13,17 @@ const wireOf = lean => summary.encode(summaryFromLean(lean));
 
 test('generated codecs preserve large revisions, nominal IDs and exact shapes; domain rules stay in Lean', () => {
   const big = 10n ** 200n;
-  assert.equal(nat.decode(JSON.parse(JSON.stringify(nat.encode(big)))), big);
+  // Decision 15: a bare JSON number, exact beyond 2^53 through the transport's JSON text.
+  assert.equal(nat.decode(parseJson(stringify(nat.encode(big)))), big);
+  assert.equal(nat.encode(5n), 5);
   for (const value of ['00', '+1', '1.0', '-1', ' 1']) assert.throws(() => nat.decode({ tag: 'nat', value }), CallFailure);
   assert.throws(() => nat.encode(1), /encode.nat/);
   const wire = summaryFromLean(seed[0]);
   wire.revision = big;
   const encoded = summary.encode(wire);
-  assert.equal(encoded.revision.value, big.toString());
-  assert.deepEqual(summary.decode(JSON.parse(JSON.stringify(encoded))), wire);
+  assert.equal(encoded.revision, big);
+  assert.equal(stringify(encoded).includes(big.toString()), true);
+  assert.deepEqual(summary.decode(parseJson(stringify(encoded))), wire);
   assert.deepEqual(summaryFromLean(summaryToLean(wire)), wire);
   assert.throws(() => summary.decode({ ...encoded, extra: true }), /decode.unknown_field/);
   assert.throws(() => summary.decode({ ...encoded, id: { ...encoded.id, type: { package: 'leanreact.tickets', name: 'User' } } }), /identity.type_mismatch/);
