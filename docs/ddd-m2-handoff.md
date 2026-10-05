@@ -503,3 +503,36 @@ transcript for bare enum strings and bare integers (decoders still accept the ol
    `onError`, …) would break existing `LeanReact` users (e.g. a `load` field in
    `tests/runtime/P06Examples.lean`). Peers' real roots on disk: `LeanDb` (LeanDB) and `LeanApi`
    (LeanAPI).
+
+## Checked representation adapters (`represent`)
+
+For value types with a private constructor (an invariant held by construction), declared in
+any module, e.g. a library-free rules module:
+
+```lean
+/-- An interval is stored and sent as its bounds, and read back through `Interval.check`. -/
+represent Interval as Nat × Nat by Interval.toPair checked Interval.check
+```
+
+`represent T as R by enc checked dec` (identifier-led command in `LeanApp.Domain.Represent`,
+available from `LeanApp.Domain` and `LeanApp.Core`; an optional doc comment is kept on the
+generated definition). Needs `Wire R`; `enc : T → R` (a name or parenthesized term);
+`dec : R → Option T` or `R → Except String T`. Generates exactly (visible with `#print` /
+`#synth`):
+
+| Declaration | What |
+| --- | --- |
+| `T.representation : LeanApp.Domain.Representation T R` | `{ encode := enc, check := RepresentationCheck.check dec, checker := "dec" }` |
+| `T.instHasTypeId : Ontology.HasTypeId T` | only if absent; `{ packageName := "domain", name := "T" }` |
+| `T.instWire : Ontology.Wire T` | `⟨Representation.codec T.representation⟩` |
+| `T.instStorageCodec : LeanApp.Domain.StorageCodec T` | the same codec (stored values are re-checked on read) |
+| `T.instFieldType : LeanApp.Domain.FieldType T` | `⟨.value, ⟨.none, false⟩⟩` |
+
+Schema: `.named {domain, T} "1" (R's schema)`. A value the checker rejects is the decode error
+`decode.invalid_representation` with params `type`, `check`, `reason` (`"rejected"` for an
+`Option` checker). On Memory a rejected stored value is `Memory.Fault.decode`. Library:
+`structure Representation (T R)`, `class RepresentationCheck R T D`, `Representation.codec`.
+Tests: `tests/domain/RepresentTypes.lean` (library-free `Interval`, `SortedList`), 
+`Represent.lean` (generated declarations, wire round trip and rejection, entity/record/op
+input/output, `api`), `RepresentRun.lean` (Memory round trip, corruption on read),
+`negative/RepresentMissing` (no adapter: `failed to synthesize … FieldType Opaque`, as before).

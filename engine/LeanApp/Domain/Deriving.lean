@@ -147,12 +147,12 @@ partial def deriveOne (name : Lean.Name) (entity : Bool) (allowPayload : Bool :=
   let env ← getEnv
   let info ← getConstInfoInduct name
   unless info.numParams == 0 && info.numIndices == 0 && info.levelParams.isEmpty do
-    throwError "deriving Domain supports only nondependent, monomorphic declarations; provide a checked representation adapter for {name}"
+    throwError "deriving Domain supports only nondependent, monomorphic declarations; provide a checked representation adapter for {name} (declare `represent T as R by enc checked dec`)"
   let ty := full name
   let identity := "{ packageName := \"domain\", name := " ++ quoted name.toString ++ " }"
   if isStructure env name then
     unless (getStructureParentInfo env name).isEmpty do
-      throwError "inherited Domain record {name} needs a checked representation adapter"
+      throwError "inherited Domain record {name} needs a checked representation adapter (declare `represent T as R by enc checked dec`)"
     let fields := getStructureFields env name
     if fields.isEmpty then throwError "Domain record {name} must have at least one field"
     let mut metadata : Array String := #[]
@@ -163,7 +163,7 @@ partial def deriveOne (name : Lean.Name) (entity : Bool) (allowPayload : Bool :=
       let proj := name ++ field
       let fieldExpr ← liftTermElabM <| forallTelescopeReducing (← getConstInfo proj).type fun args body => do
         unless args.size == 1 && !body.hasFVar do
-          throwError "dependent or inherited field {proj} needs a checked representation adapter"
+          throwError "dependent or inherited field {proj} needs a checked representation adapter (declare `represent T as R by enc checked dec`)"
         return body
       unless fieldExpr.isAppOf ``LeanApp.Domain.Members || fieldExpr.isConstOf ``LeanApp.Domain.PasswordHash do
         ensureWire fieldExpr (visiting.insert name)
@@ -267,7 +267,7 @@ partial def deriveOne (name : Lean.Name) (entity : Bool) (allowPayload : Bool :=
     for ctorName in info.ctors do
       let ctor ← getConstInfoCtor ctorName
       unless ctor.numFields == 0 do
-        throwError "deriving Domain currently supports payload-free closed enums; {ctorName} requires a checked representation adapter"
+        throwError "deriving Domain currently supports payload-free closed enums; {ctorName} requires a checked representation adapter (declare `represent T as R by enc checked dec`)"
       let tag := ctorName.getString!
       cases := cases.push (quoted tag)
       entries := entries.push ("(" ++ quoted tag ++ ", " ++ full ctorName ++ ")")
@@ -292,7 +292,7 @@ partial def deriveVariant (name : Lean.Name) (ctors : List Lean.Name) (identity 
         let decl ← args[i]!.fvarId!.getDecl
         let fieldTy ← instantiateMVars decl.type
         if fieldTy.hasAnyFVar (fun fvar => args.contains (.fvar fvar)) then
-          throwError "variant field {ctorName} #{i} depends on an earlier field; provide a checked representation adapter"
+          throwError "variant field {ctorName} #{i} depends on an earlier field; provide a checked representation adapter (declare `represent T as R by enc checked dec`)"
         let label := if decl.userName.hasMacroScopes || decl.userName.isAnonymous then "_" ++ toString (i + 1)
           else decl.userName.eraseMacroScopes.toString
         result := result.push (label, fieldTy)

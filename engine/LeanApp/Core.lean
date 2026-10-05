@@ -38,7 +38,7 @@ export LeanApp.Domain (
   Password Password.parse Password.hash PasswordHash Session Session.profile
   Instant Instant.ofEpochSeconds Instant.parse Instant.format Instant.rfc3339
   Auth.startSession
-  Entity Domain Changes Principal HasRow LinkKey CredentialLink
+  Entity Domain Changes Principal HasRow LinkKey CredentialLink Representation
   Query.linkField
   Api Endpoint AnyEndpoint post get)
 

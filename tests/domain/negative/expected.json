@@ -45,5 +45,6 @@
   "PostEndpointWildcard": "onError requires explicit exhaustive branches",
   "PostRsvpMissingCase": "Missing cases:\nRsvpError.alreadyStarted",
   "PostGuestListMismatch": "page.guests\nhas type\n  GuestList\nbut is expected to have type\n  List Guest",
-  "RequireUndecidable": "require: failed to find a Decidable instance for\n  ∀ (n : Nat), n + 0 = n"
+  "RequireUndecidable": "require: failed to find a Decidable instance for\n  ∀ (n : Nat), n + 0 = n",
+  "RepresentMissing": "failed to synthesize instance of type class\n  LeanApp.Domain.FieldType Opaque"
 }

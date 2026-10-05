@@ -45,7 +45,7 @@ base = subprocess.check_output(['lake', 'env', 'printenv', 'LEAN_PATH'], env=ENV
 BUILD = ROOT / 'tests/domain/.build'
 ENV['LEAN_PATH'] = str(BUILD) + ':' + base
 for name in ['Declarations', 'Operations', 'Views', 'Partiful', 'PartifulViews', 'Evolution', 'Browser', 'Axioms', 'PostPart1',
-             'SignUpEvolution', 'PostViews', 'Loans', 'CleanSurface']:
+             'SignUpEvolution', 'PostViews', 'Loans', 'CleanSurface', 'RepresentTypes', 'Represent']:
     output = BUILD / f'tests/domain/{name}.olean'
     output.parent.mkdir(parents=True, exist_ok=True)
     run(['lake', 'env', 'lean', '-o', str(output), f'tests/domain/{name}.lean'], name)
@@ -55,6 +55,8 @@ run(['lake', 'env', 'lean', '--run', 'tests/domain/PostPart1Run.lean'], 'post-ru
 run(['lake', 'env', 'lean', '--run', 'tests/domain/Envelope.lean'], 'envelope')
 # Generality fixture (an unrelated lending-library domain) on Memory.
 run(['lake', 'env', 'lean', '--run', 'tests/domain/LoansRun.lean'], 'loans-runtime')
+# Checked representation adapters (`represent`) on Memory.
+run(['lake', 'env', 'lean', '--run', 'tests/domain/RepresentRun.lean'], 'represent-runtime')
 for name, expected in json.loads((ROOT / 'tests/domain/negative/expected.json').read_text()).items():
     run(['lake', 'env', 'lean', f'tests/domain/negative/{name}.lean'], name, expected)
 run(['lake', 'env', 'lean', '--run', 'tests/domain/Generate.lean'], 'generate', timeout=1800)
