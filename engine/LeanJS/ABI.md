@@ -478,3 +478,9 @@ working directory under `tests/compiler/integration`. Its generated outputs stay
 inside that owned directory. It also checks the Tickets hook metadata and parses
 its generated declarations. The optional `tests/compiler/Integration.lean`
 companion demonstrates `writeModule` on a smaller subset through `reactOptions`.
+
+Domain parser support additionally supplies `String.compare` using Unicode scalar
+lexical comparison (the same `$stringCompare` primitive), and `List.attachWith`
+using iterative list mapping to `Subtype.mk [value, null]`. Erased membership proof
+slots are preserved; no native proof is replaced. The domain qualification runner
+exercises both through derived JSON object codecs and total schema/draft walkers.

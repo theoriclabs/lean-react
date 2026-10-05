@@ -79,10 +79,19 @@ def Codec.variant (variant : VariantDescriptor α)
   pure {
     schema := .named variant.identity version
       (.variant (variant.cases.map (fun tag => (variant.tag tag, (payload tag).schema))))
+    -- Decision 15: a payload-free case is the bare string `"tag"`; `{"tag","value":null}` still decodes.
     encode := fun value =>
       let selected := variant.select value
-      JsonWire.tagged (variant.tag selected.1) ((payload selected.1).encode selected.2)
+      match (payload selected.1).schema with
+      | .unit => .str (variant.tag selected.1)
+      | _ => JsonWire.tagged (variant.tag selected.1) ((payload selected.1).encode selected.2)
     decode := fun value => do
+      if let .str tag := value then
+        match variant.cases.find? (fun candidate => variant.tag candidate == tag && (match (payload candidate).schema with | .unit => true | _ => false)) with
+        | none => Validation.fail "decode.unknown_tag" [] [("actual", tag)]
+        | some candidate =>
+          let decoded ← Validation.prependPath [.variant tag] ((payload candidate).decode .null)
+          return variant.inject candidate decoded
       JsonWire.object ["tag", "value"] value
       let tag ← JsonWire.stringField "tag" value
       match variant.cases.find? (fun candidate => variant.tag candidate == tag) with

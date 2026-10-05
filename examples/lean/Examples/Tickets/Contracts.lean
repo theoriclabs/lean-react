@@ -71,10 +71,12 @@ def publicCodecs : Validation PublicCodecs := do
   let saveError : Codec SaveError := {
     schema := .named ⟨packageId, "SaveError"⟩ "1"
       (.variant [("notFound", .unit), ("conflict", summary.schema)])
+    -- Decision 15: a payload-free case is the bare string; the tagged form still decodes.
     encode := fun error => match error with
-      | .notFound => JsonWire.tagged "notFound" .null
+      | .notFound => .str "notFound"
       | .conflict current => JsonWire.tagged "conflict" (summary.encode current)
     decode := fun value => do
+      if let .str "notFound" := value then return .notFound
       JsonWire.object ["tag", "value"] value
       let tag ← JsonWire.stringField "tag" value
       match tag with

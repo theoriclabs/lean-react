@@ -21,17 +21,26 @@ export const bool = scalar(value => typeof value === 'boolean', 'encode.boolean'
 // so it is refused here instead of being silently rewritten by the server.
 export const str = scalar(value => typeof value === 'string' && value.isWellFormed(), 'encode.string', 'decode.expected_string');
 
-// Wire integers are canonical decimal strings; JavaScript values are bigint, never Number.
+// Decision 15: wire integers are bare JSON numbers; JavaScript values are bigint, never Number.
+// Beyond 2^53 a value stays a bigint, which the transport writes as exact JSON text (and the
+// reader revives exactly). The milestone-1 tagged decimal form `{tag, value}` still decodes.
 const integer = (tag, pattern, encodeCode, decodeCode, admits) => Object.freeze({
   encode(value, path = []) {
     if (typeof value !== 'bigint' || !admits(value)) fail(encodeCode, value, path);
-    return { tag, value: value.toString() };
+    return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
   },
   decode(value, path = []) {
-    exactKeys(value, ['tag', 'value'], path);
-    if (value.tag !== tag) fail('decode.unknown_tag', value, [...path, 'tag']);
-    if (typeof value.value !== 'string' || !pattern.test(value.value)) fail(decodeCode, value, [...path, 'value']);
-    return BigInt(value.value);
+    let result;
+    if (typeof value === 'number' && Number.isSafeInteger(value)) result = BigInt(value);
+    else if (typeof value === 'bigint') result = value;
+    else if (isObject(value)) {
+      exactKeys(value, ['tag', 'value'], path);
+      if (value.tag !== tag) fail('decode.unknown_tag', value, [...path, 'tag']);
+      if (typeof value.value !== 'string' || !pattern.test(value.value)) fail(decodeCode, value, [...path, 'value']);
+      result = BigInt(value.value);
+    } else fail(decodeCode, value, path);
+    if (!admits(result)) fail(decodeCode, value, path);
+    return result;
   },
 });
 export const nat = integer('nat', /^(0|[1-9][0-9]*)$/, 'encode.nat', 'decode.invalid_natural', value => value >= 0n);
@@ -89,14 +98,22 @@ export const record = fields => {
   return Object.freeze({ encode: (value, path = []) => map('encode', value, path), decode: (value, path = []) => map('decode', value, path) });
 };
 
+// Decision 15: a payload-free case is the bare string "tag" on the wire; the value stays
+// `{tag, value: null}` in JavaScript. The milestone-1 `{tag, value: null}` wire form still decodes.
 export const variant = cases => {
   const table = new Map(cases);
   return Object.freeze({
     encode(value, path = []) {
       if (!isObject(value) || !table.has(value.tag)) fail('encode.variant', value, path);
-      return { tag: value.tag, value: table.get(value.tag).encode(value.value, [...path, 'value']) };
+      const payload = table.get(value.tag);
+      if (payload === unit) { unit.encode(value.value, [...path, 'value']); return value.tag; }
+      return { tag: value.tag, value: payload.encode(value.value, [...path, 'value']) };
     },
     decode(value, path = []) {
+      if (typeof value === 'string') {
+        if (table.get(value) !== unit) fail('decode.unknown_tag', value, path);
+        return { tag: value, value: null };
+      }
       exactKeys(value, ['tag', 'value'], path);
       if (typeof value.tag !== 'string' || !table.has(value.tag)) fail('decode.unknown_tag', value, [...path, 'tag']);
       return { tag: value.tag, value: table.get(value.tag).decode(value.value, [...path, 'value']) };
@@ -116,6 +133,58 @@ export const entityId = (packageName, name) => {
   return Object.freeze({ encode: (value, path = []) => check(shape.encode(value, path), path), decode: (value, path = []) => check(shape.decode(value, path), path) });
 };
 
+// Decision 15: a reference is a bare JSON integer; the endpoint contract fixes its type.
+// JavaScript values are bigint. The milestone-1 structured form is accepted on decode
+// (default scope only) during the transition. A value beyond 2^53 is sent as a bigint, which
+// the transport writes as exact JSON text.
+const INT64_MAX = 9223372036854775807n;
+export const refKey = (packageName, name) => {
+  const legacy = entityId(packageName, name);
+  return Object.freeze({
+    encode(value, path = []) {
+      if (typeof value !== 'bigint' || value <= 0n || value > INT64_MAX) fail('encode.ref', value, path);
+      return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value;
+    },
+    decode(value, path = []) {
+      if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return BigInt(value);
+      if (typeof value === 'bigint' && value > 0n && value <= INT64_MAX) return value;
+      if (isObject(value)) {
+        const old = legacy.decode(value, path);
+        if (old.scope !== 'default') fail('identity.non_default_scope', value, [...path, 'scope']);
+        if (!/^[1-9][0-9]*$/.test(old.key) || BigInt(old.key) > INT64_MAX) fail('identity.invalid_key', value, [...path, 'key']);
+        return BigInt(old.key);
+      }
+      return fail('decode.expected_integer', value, path);
+    },
+  });
+};
+
+// Proleptic Gregorian UTC, exact over the signed-64-bit second range (bigint arithmetic).
+const fdiv = (a, b) => (a >= 0n ? a / b : -((-a + b - 1n) / b));
+const pad = (value, width) => value.toString().padStart(width, '0');
+export function formatRfc3339(seconds) {
+  const days = fdiv(seconds, 86400n), second = seconds - days * 86400n;
+  const z = days + 719468n, era = fdiv(z, 146097n), doe = z - era * 146097n;
+  const yoe = (doe - doe / 1460n + doe / 36524n - doe / 146096n) / 365n;
+  const doy = doe - (365n * yoe + yoe / 4n - yoe / 100n), mp = (5n * doy + 2n) / 153n;
+  const day = doy - (153n * mp + 2n) / 5n + 1n, month = mp < 10n ? mp + 3n : mp - 9n;
+  const year = yoe + era * 400n + (month <= 2n ? 1n : 0n);
+  const yearText = year >= 0n && year <= 9999n ? pad(year, 4) : (year < 0n ? '-' : '+') + pad(year < 0n ? -year : year, 6);
+  return `${yearText}-${pad(month, 2)}-${pad(day, 2)}T${pad(second / 3600n, 2)}:${pad(second % 3600n / 60n, 2)}:${pad(second % 60n, 2)}Z`;
+}
+const RFC3339 = /^([+-][0-9]{6,}|[0-9]{4})-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/;
+
+// Decision 15: Time is an RFC 3339 UTC string at second precision (the server checks the
+// calendar); the milestone-1 `{tag:"int"}` epoch form is accepted on decode and normalized.
+export const time = Object.freeze({
+  encode: (value, path = []) => typeof value === 'string' && RFC3339.test(value) ? value : fail('encode.time', value, path),
+  decode(value, path = []) {
+    if (typeof value === 'string' && RFC3339.test(value)) return value;
+    if (isObject(value)) return formatRfc3339(int.decode(value, path));
+    return fail('decode.expected_time', value, path);
+  },
+});
+
 // Named schemas carry no validation descriptors yet; the name is kept for diagnostics only.
 export const named = (_name, inner) => inner;
 
@@ -131,5 +200,6 @@ export const statusByTag = table => error => table[error?.tag];
 export function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (isObject(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
-  return JSON.stringify(value);
+  // An exact integer beyond 2^53 is a bigint; it prints as the same JSON number text.
+  return typeof value === 'bigint' ? value.toString() : JSON.stringify(value);
 }

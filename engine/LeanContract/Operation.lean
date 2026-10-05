@@ -109,3 +109,13 @@ structure Interpreter (m : Type → Type) where
     Operation kind Input Output Error → Input → m (CallResult Output Error)
 
 end Contract
+
+namespace Contract.Operation
+/-- Generated declarations establish identity validity at elaboration, retaining existing codecs. -/
+def ofValidated (kind : Contract.OperationKind) (identity : Contract.OperationId)
+    (valid : (identity.namespaceName.isEmpty || identity.name.isEmpty || identity.version.isEmpty) = false)
+    [Ontology.Wire Input] [Ontology.Wire Output] [Ontology.Wire Error] :
+    Contract.Operation kind Input Output Error :=
+  let _ := valid
+  ⟨identity, Ontology.Wire.codec, Ontology.Wire.codec, Ontology.Wire.codec⟩
+end Contract.Operation

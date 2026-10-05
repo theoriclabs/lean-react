@@ -46,7 +46,12 @@ def intrinsics (moduleName : String) : Array LeanJS.Intrinsic := #[
   bridge moduleName `LeanReact.Route.segments "routeSegments" 1,
   bridge moduleName `LeanReact.Route.nat? "routeNat" 1,
   bridge moduleName `LeanReact.Query.parse "queryParse" 1,
-  bridge moduleName `LeanReact.Query.encode "queryEncode" 1
+  bridge moduleName `LeanReact.Query.encode "queryEncode" 1,
+  -- LR-06 endpoint pages: the app context's erased TypeName dictionary and the mounted app that
+  -- `call`/`navigate` act on (one per document).
+  bridge moduleName `LeanReact.Domain.instTypeNameAppContext "erased" 0,
+  bridge moduleName `LeanReact.Domain.installAppRuntime "appInstall" 1,
+  bridge moduleName `LeanReact.Domain.currentAppRuntime "appCurrent" 0
 ]
 
 def options (moduleName : String) : LeanJS.Options := {

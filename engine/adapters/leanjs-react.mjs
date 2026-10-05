@@ -1,6 +1,7 @@
 // Explicit adapter between LeanJS ABI v0 and the host-only React runtime.
 import * as React from 'react';
 import { createRuntime, pureHook, pureAction, bindAction, mapAction, catchAction, runAction, isCallFailure } from '../runtime/react.mjs';
+import { action } from '../runtime/actions.mjs';
 import { createResourceHooks } from '../runtime/resources.mjs';
 import { createCellHooks } from '../runtime/cells.mjs';
 import { createRouterHooks, splitLocation, segments, parseQuery, encodeQuery, parseNat } from '../runtime/router.mjs';
@@ -16,16 +17,23 @@ const bool = value => ctor(value ? 'Bool.true' : 'Bool.false');
 const fromBool = value => value?.tag === 'Bool.true';
 const keyText = value => value.fields[0];
 const descriptorComponents = new WeakMap();
+// A component named `stable:…` keeps one React type per name, so re-creating it during a
+// parent's render (an endpoint form or load inside a page) keeps its state.
+const stableComponents = new Map();
 const ComponentHost = runtime.component(({ descriptor, props }) => descriptor.fields[0](props), { name: 'LeanComponent' });
 function hostComponent(descriptor) {
-  if (!descriptorComponents.has(descriptor)) {
-    function CompiledComponent({ leanProps }) {
-      return runtime.element(ComponentHost, { descriptor, props: leanProps });
+  const name = descriptor.fields[1];
+  const stable = typeof name === 'string' && name.startsWith('stable:');
+  const cache = stable ? stableComponents : descriptorComponents;
+  const cacheKey = stable ? name : descriptor;
+  if (!cache.has(cacheKey)) {
+    function CompiledComponent({ leanProps, leanDescriptor }) {
+      return runtime.element(ComponentHost, { descriptor: leanDescriptor, props: leanProps });
     }
-    CompiledComponent.displayName = descriptor.fields[1];
-    descriptorComponents.set(descriptor, CompiledComponent);
+    CompiledComponent.displayName = name;
+    cache.set(cacheKey, CompiledComponent);
   }
-  return descriptorComponents.get(descriptor);
+  return cache.get(cacheKey);
 }
 
 export const actionPure = (_type, value) => pureAction(value);
@@ -108,7 +116,7 @@ export function useResource(_valueType, _errorType, key, loader, dependencies, e
 }
 export const component = (_propsType, render) => ctor('LeanReact.Component.mk', [render, 'Anonymous']);
 export const componentNamed = (_propsType, name, value) => ctor('LeanReact.Component.mk', [value.fields[0], name]);
-export const element = (_propsType, descriptor, props) => runtime.foreignElement(hostComponent(descriptor), { leanProps: props });
+export const element = (_propsType, descriptor, props) => runtime.foreignElement(hostComponent(descriptor), { leanProps: props, leanDescriptor: descriptor });
 export const text = value => runtime.text(value);
 export const fragment = children => runtime.fragment(children);
 export const empty = null;
@@ -209,6 +217,14 @@ export const routeSegments = path => segments(path);
 export const routeNat = segment => { const value = parseNat(segment); return value == null ? ctor('Option.none') : ctor('Option.some', [value]); };
 export const queryParse = search => parseQuery(search).map(pair);
 export const queryEncode = pairs => encodeQuery(pairs.map(entry => entry.fields));
+
+// The mounted app that compiled `call`/`navigate` act on (LR-06; one per document).
+let mountedApp = null;
+export const appInstall = installed => action(() => {
+  mountedApp = installed.tag === 'Option.some' ? installed.fields[0] : null;
+  return unit;
+});
+export const appCurrent = action(() => mountedApp ? ctor('Option.some', [mountedApp]) : ctor('Option.none'));
 
 export function mountElement(descriptor, props = unit) { return element(null, descriptor, props); }
 export function asReactComponent(descriptor, decodeProps = value => value) {
