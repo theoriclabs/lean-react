@@ -1,7 +1,7 @@
 import LeanAppNative.Managed
 import LeanDb.Derive
 
-open LeanAppNative LeanApp Contract Ontology
+open LeanAppNative LeanApi.Publication Contract Ontology
 
 namespace ManagedFixture
 
@@ -184,7 +184,7 @@ def run (dir : System.FilePath) : IO Unit := do
     let differentOps := { ops with get := ← valid (Operation.canonical .query ⟨"managed", "different", "1"⟩) }
     let drift ← valid (Managed.create service template (fun conn => makeApp differentOps counters (readMarker conn) (writeValue conn release)))
     check "factory metadata drift rejected before handlers" (failed (← drift.dispatch context "POST" "/put" (putBody 1)) && (← counters.handlers.get) == before)
-    let empty ← valid (Application.create "empty" ([] : List (LeanApp.Module IO)))
+    let empty ← valid (Application.create "empty" ([] : List (LeanApi.Publication.Module IO)))
     let missing ← valid (Managed.create service template (fun _ => .ok empty))
     check "factory missing exports rejected" (failed (← missing.dispatch context "POST" "/put" (putBody 1)))
     let lines ← IO.mkRef (#[] : Array String)

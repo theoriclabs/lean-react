@@ -12,7 +12,7 @@ Object.assign(globalThis, {window, document: window.document, HTMLElement: windo
 const React = await import('react');
 const {createRoot} = await import('react-dom/client');
 const {mountElement, ctor} = await import('../../engine/adapters/leanjs-react.mjs');
-const program = await import('./generated/post-app.mjs');
+const program = await import('./generated/domain.mjs');
 const generated = await import('./generated/post/operations.mjs');
 const unit = ctor('PUnit.unit');
 const none = ctor('Option.none');

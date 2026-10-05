@@ -4,6 +4,7 @@ export type Result<T, E> = { readonly ok: true; readonly value: T } | { readonly
 export interface Codec<T> { encode(value: T, path?: (string | number)[]): unknown; decode(value: unknown, path?: (string | number)[]): T }
 export interface HttpOperation<Identity, Input, Output, Error> {
   readonly identity: Identity; readonly kind: "query" | "command"; readonly path: string;
+  readonly method: "GET" | "POST"; readonly params: readonly string[]; readonly body: "envelope" | "plain";
   readonly maxBodyBytes: number | null; readonly describePolicy: string;
   readonly input: Codec<Input>; readonly output: Codec<Output>; readonly error: Codec<Error>;
   readonly encodeInput: (input: Input) => unknown; readonly decodeOutput: (value: unknown) => Output;
@@ -18,7 +19,8 @@ export interface ClientOptions { readonly baseURL?: string; readonly fetch?: typ
 export interface ManifestOperation {
   readonly namespace: string; readonly name: string; readonly version: string; readonly kind: "query" | "command";
   readonly input: unknown; readonly output: unknown; readonly error: unknown;
-  readonly http: { readonly path: string; readonly method: string; readonly maxBodyBytes: number | null };
+  readonly http: { readonly path: string; readonly method: string; readonly maxBodyBytes: number | null;
+    readonly params?: unknown; readonly body?: string };
   readonly metadata: { readonly title: string; readonly description: string; readonly describePolicy: string;
     readonly publish: { readonly topicField: string; readonly topicPrefix: string; readonly eventName: string; readonly alsoToActorField: string | null } | null;
     readonly issuesStreamTicket: boolean };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createAuthClient, deviceLabel } from '../../engine/LeanApp/AuthClient.mjs';
+import { createAuthClient, deviceLabel } from '../../engine/runtime/AuthClient.mjs';
 
 const csrf = 'a'.repeat(64);
 const user = (name = 'alice') => ({ username: name, actor: `actor:${name}`, tenant: 'demo', generation: '9007199254740993' });

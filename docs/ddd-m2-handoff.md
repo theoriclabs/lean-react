@@ -536,3 +536,183 @@ Tests: `tests/domain/RepresentTypes.lean` (library-free `Interval`, `SortedList`
 `Represent.lean` (generated declarations, wire round trip and rejection, entity/record/op
 input/output, `api`), `RepresentRun.lean` (Memory round trip, corruption on read),
 `negative/RepresentMissing` (no adapter: `failed to synthesize … FieldType Opaque`, as before).
+
+---
+
+# M3: LeanReact on the new layers (phase 4, 2026-10-05)
+
+LeanReact keeps the UI and requires the layers below it: leanontology `5f54fb8`, LeanDB `f6288e5`,
+LeanAPI `9f99be8` (plan: `domain_driven_development/runs/m3-layering/PLAN.md`).
+
+## Layout and wiring
+
+- **Requires** (`lakefile.toml`): `leanontology` (`../leanontology`), `leandb` (`../LeanDB`) and
+  `leanapi` (`../leanapi`) as path dependencies on the sibling checkouts, so every repository
+  shares one build. The manifest resolves the packages those check out themselves to their own
+  checkouts: `leansqlite` → `../LeanDB/.lake/packages/leansqlite`, `leancrypto` →
+  `../leanapi/.lake/packages/leancrypto`. Nothing was cloned. Pinned git requires for fresh
+  clones are DDD-LAPI-04.
+- **Libraries:** `LeanReact` (roots `LeanReact`, `LeanReact.Compiler`), `LeanReactDomain`
+  (`LeanReact.Domain`), `LeanReactServer` (`LeanReact.Server`), `LeanJS`, and the examples
+  (`Examples`, `Ordering`, `Cafe`, `PrivateNotes`). `lake build` builds the first four.
+- **Deleted:** `engine/LeanOntology` (now leanontology), `engine/LeanContract` (LeanAPI, names
+  kept, JS runtime included), all of `engine/LeanApp` (the pre-domain assembly is
+  `LeanApi.Publication`; `LeanApp.Domain`/`LeanApp.Core` are `LeanDb.Model` + `LeanApi.Core`),
+  `tests/ontology` (in leanontology and LeanAPI), the domain-model and operation tests
+  (`PostPart1*`, `Loans*`, `Represent*`, `Envelope`, `CleanSurface`, the DB-bridge checks; now in
+  LeanDB and LeanAPI), and the milestone 1 surface: `Partiful.lean`, `PartifulViews.lean`,
+  `Declarations`/`Operations`/`Views`/`Evolution`/`Axioms`/`Main` fixtures, 37 milestone 1 and
+  model negatives, `LeanReact.Domain.Screen`/`Scopes` (`screen`, `ScreenSpec`, `RouteInput`
+  screens, policy scopes), `formWith`/`buttonWith`/`screenWith`, the `form … onError …`,
+  `button` and `screen … actions` sugar, `fieldError .field`, the `Display`/`page do` helpers.
+  No module named `LeanApp` remains; `scripts/LeanReactClosure.lean` checks it.
+- **Moved here:** `engine/runtime/AuthClient.mjs` (the browser auth client, was
+  `engine/LeanApp/AuthClient.mjs`; no Lean module).
+- **JS runtime of generated clients** is LeanAPI's `LeanContract/{Fetch,Codecs,Service}.mjs`,
+  referenced by relative path to the sibling checkout (`engine/adapters/leanjs-contract.mjs`,
+  the examples' generated clients, the tests); the browser bundle stages it next to the app.
+
+## The UI surface (unchanged for apps)
+
+`form api.x (onSuccess := …) (onError := …)`, `nofun`, `call (api.x a)`, `load (api.x a)`,
+`App { api, pages }`, `path ==> page`, `navigate`, `notice`, `fieldError "f" msg`. `LeanReact.Domain`
+imports `LeanDb.Model`, `LeanApi.Core`, `LeanContract` and `LeanOntology` (metadata from
+`LeanDb.Model`, `Operation`/`Endpoint`/`Api` from `LeanApi.Core`, scalars from `Ontology`). Its
+closure is portable (no native module), checked by `scripts/LeanReactClosure.lean`.
+
+## Full-stack serving: `LeanReact.Server`
+
+```lean
+import Partiful.Views
+import LeanReact.Server
+open LeanDb.Model LeanApi.Core
+
+app% server where
+  app := app
+  migrations := [addGuestList := Party.addField guestList (fill := .everyone)]
+
+def main (args : List String) : IO UInt32 := server.main args
+```
+
+- `app% Name where app := X [migrations := …]` reads `X.api`, finds the domain's accounts (the
+  one entity with `credential C.profile C.hash` in the api's namespace; none means no accounts)
+  and runs LeanAPI's `declareApiApp` as `Name.api` (schema `Name.api.Database`). It then declares
+  `Name.browserApp` (`App.component X` with the client), writes the LeanJS module
+  `.lake/leanreact-browser/Name/domain.mjs`, and declares `Name : LeanReact.Server.AccountsApp …`
+  (or `PublicPagesApp …`) = LeanAPI's native app + `Browser {component, directory, title, pages}`.
+- `Name.main` is LeanAPI's `runApp`: its emit step (`LEANAPP_EMIT_CLIENT`) writes the route client
+  and `pages.json`; serving adds `NativeApp.pages`: every `App` page path returns the HTML shell
+  (bootstrap actor from `Auth.resolve`, `context.cookies.csrfName`), plus `/assets/app.mjs`.
+  A page and a GET endpoint on one path are negotiated by LeanAPI's `withPages`.
+- The browser entry is `engine/browser/App.mjs` (LeanAPI's old `mountDomainApp`, milestone 1
+  `mountApp` dropped). The bundle is found at `LEANREACT_BROWSER_DIR`, else
+  `<workspace>/.lake/leanreact-browser/<Name>` from the executable's path, else relative to cwd.
+- **`lake exe <app>` builds the bundle as a dependency (DDD-LAPI-07 kept):** the app's
+  lakefile has a `partiful_browser` target (runs the server binary to emit the client, stages
+  the entry and the runtime, runs esbuild) and the `partiful` executable `needs` it.
+  `scripts/stage-partiful.py` generates that lakefile; `scripts/lake-exe-partiful.sh` checks
+  `lake exe partiful` from a clean environment.
+- An API-only app never imports `LeanReact.Server` (or LeanReact at all).
+
+## For phase 5 (the app repositories)
+
+Import lines for an app with pages:
+
+```lean
+-- Domain.lean
+import LeanDb.Model
+import LeanApi.Core
+open LeanDb.Model LeanApi.Core
+-- Views.lean
+import Partiful.Domain
+import LeanReact.Domain
+open LeanDb.Model LeanApi.Core LeanReact
+-- Main.lean
+import Partiful.Views
+import LeanReact.Server
+open LeanDb.Model LeanApi.Core
+```
+
+`domain_driven_development` lakefile (partiful_v2): `require leanreact from "../leanreact"`
+(it brings LeanAPI, LeanDB, leanontology as path dependencies), the manifest resolving
+`leansqlite`/`leancrypto` to `../LeanDB/.lake/packages/leansqlite` and
+`../leanapi/.lake/packages/leancrypto`, the `partiful_browser` target and `lean_exe partiful`
+with `needs := #[partiful_browser]` (copy them from `.lake/partiful-app/lakefile.lean` that
+`scripts/stage-partiful.py` writes). `tictactoe/` (API only) requires only `leanapi`
+(`require leanapi from "../../leanapi"`), imports `LeanDb.Model` and `LeanApi.Core`, serves with
+`import LeanApi.Native` and `app% Name where api := api`, and must not require leanreact.
+
+**Blocker for phase 5:** LeanAPI's lakefile declares `lean_lib Partiful` (its staged post api,
+srcDir `.lake/partiful-api`). Every workspace that requires leanapi then has two packages
+providing `Partiful.*` ("could not disambiguate the module `Partiful.Domain`"). The staged copy
+here uses `PartifulApp.*` for that reason; LeanAPI should rename its staged library before the
+app repository requires it.
+
+## Ported, not dropped
+
+- The 17 mounted browser tests (`tests/domain/browser.test.mjs`) run on the new surface over
+  LeanAPI's `TestsCore.PostPart1`: typed form models (`FormSpec`/`useDomainForm` over
+  `hostParty`/`signUp`/`signIn`), the mounted `App` for screens, a settings op for the editors.
+  Adapted: the editor test checks every enum choice and the first-choice default (a plain op
+  argument has no default); the bound-action test uses the post's `rsvp`/`cancel` buttons (the
+  post's api has no `edit`/`reschedule` endpoints). `app.test.mjs` keeps its 9.
+- `tests/app` (pre-domain assembly) and `tests/framework/Import.lean` run against
+  `LeanApi.Publication` (not ported by LeanAPI; they test its module from here).
+- `adapters/native` (Cafe, Notes, auth demo, jobs, channels) and `examples/native` (Tickets):
+  `LeanApp.*` → `LeanApi.Publication.*`; LeanDB, LeanAPI, leanontology are path dependencies,
+  `leansqlite` resolves to LeanDB's checkout, leanhttp/leanws stay git-pinned. One code fix:
+  LeanDB's new `RuntimeError.snapshotBusy/snapshotAborted` map to host faults.
+  `examples/native/build-cached.sh` now builds with Lake (binaries in `.lake/build/bin`).
+- **LA-12** (`scripts/check-manifests.mjs`): development path pins to the sibling checkouts are
+  accepted and listed; `--release` applies the old rule (refuses them) until DDD-LAPI-04.
+- `templates/app` is a release-mode template pinned to git revisions; it cannot build until
+  DDD-LAPI-04 publishes pins for leanapi/LeanDB/leanontology (the fast scaffold test still runs;
+  the full one, `LEANAPP_SCAFFOLD_FULL`, is blocked on that).
+
+## Found on the way (for the peers)
+
+- **LeanAPI `LeanContract.Http.ErrorStatus.ofTags`** reads only the tagged form, so a
+  payload-free domain error, a bare string since decision 15 (`"notFound"`), gets no status
+  (`response.invalid_domain_status`, 500). The Tickets example declares its own tag table that
+  reads both (`Examples.Tickets.Contracts.statusByTag`); `ofTags` itself should do the same.
+- **LeanAPI `LeanContract/Service.mjs`** imports `../runtime/actions.mjs` and
+  `../adapters/leanjs-react.mjs`, which exist only in LeanReact, so it cannot load from the
+  leanapi checkout. It is a LeanReact adapter: it lives here as `engine/adapters/contract-service.mjs`;
+  LeanAPI can drop its copy.
+- **`lean_lib Partiful` in LeanAPI** collides with any app's `Partiful.*` (see above).
+- **Stale build output.** The old `LeanContract`/`LeanOntology`/`LeanApp` oleans in
+  `leanreact/.lake/build` shadowed LeanAPI's and leanontology's for `lake env lean` in workspaces
+  that put leanreact first on the search path (`adapters/native`). They were moved (not deleted;
+  the `.lake` guard) to `.lake/ddd-m2-scratch/leanreact-m3-stale-build/`, which can be removed.
+  `lake build` itself was never affected.
+- **Case-insensitive `tests`.** LeanDB and LeanAPI builds contain `Tests/` and `Tests*.olean`, so
+  a fixture module `tests.x.Y` resolves into them under `lake env lean`. The fixture scripts
+  (`scripts/check-domain.py`, `tests/ordering/check.sh`) run `lean` with their own build first on
+  `LEAN_PATH`.
+- Two example checks asserted milestone 1 wire forms and were updated to decision 15: a bare
+  JSON integer revision is the canonical form (the "lossy number" case is now a fraction), and
+  `notFound` is the bare string (`tests/Run.lean`, `NativeTickets/Checks.lean`).
+
+## Commands run (phase 4, final sources)
+
+All with `LEAN_NUM_THREADS=2`, sequentially in the background (`.lake/ddd-m2-scratch/leanreact-m3-gates.sh`,
+one log per step, `leanreact-m3-gate-*.log`); every step exited 0:
+
+| Gate | Result |
+| --- | --- |
+| `lake build`; `lake build LeanReact.Domain LeanReact.Server Examples Ordering Cafe PrivateNotes` | exit 0 |
+| `lake env lean --run scripts/LeanReactClosure.lean` | no `LeanApp` module reachable; `LeanReact` (2346 modules) and `LeanReact.Domain` (2375) have no native module; `LeanReact.Server` 2481 |
+| `lake env lean --run tests/Run.lean compiler` (LeanJS parity, audit corpus, determinism) | PASS |
+| `tests/runtime/check-lean.sh`, `Queries.lean`, `Cells.lean`, example generators | PASS |
+| `node --test tests/runtime/*.test.mjs tests/integration/*.test.mjs` | 121/0 |
+| `tests/gateway`, `tsc --noEmit`, `check-manifests` (development pins listed), `tests/scaffold` (fast) | PASS |
+| `python3 scripts/check-domain.py` | 21 PASS: 3 fixtures, 11 rejections, two-process deterministic generation, browser 17/0, app 9/0 |
+| `tests/app/check.sh`, `tests/framework/Import.lean`, `tests/ordering/check.sh` | PASS (pre-domain assembly on `LeanApi.Publication`) |
+| `adapters/native`: build of all 11 executables; storage, HTTP, managed, channel, job, crypto, auth, notes checks | PASS |
+| `tests/auth/http.test.mjs` + `auth-client` + `auth-load`; `tests/cafe/*`; `tests/security/*` | PASS |
+| `tests/native/check.sh`, `tests/native/run-http.sh` (Tickets on SQLite, Lake build) | PASS |
+| `scripts/stage-partiful.py` + `lake build partiful partiful_unmigrated`; `node scripts/partiful-acceptance.mjs` | **228** checks: auth 39, host 11, rsvp 14, matrix 50, edit 13, reschedule 17, cancel 16, restart 15, migration 25, browser (Chromium) 27, setup 1 |
+| `scripts/lake-exe-partiful.sh` (`lake exe partiful` builds the bundle, serves pages + API on 8080) | PASS |
+| `npm run build`; Playwright: examples 9, native Tickets 2, café 2, auth 3 | all passed |
+
+Not run: `LEANAPP_SCAFFOLD_FULL` (blocked on DDD-LAPI-04, above). Disk stayed above 1.1 GB.

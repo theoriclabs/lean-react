@@ -388,8 +388,8 @@ Concrete extraction proposals supported by this implementation:
 4. **Typed public-key lookup.** Implemented with a `Pred [TicketRow]` and
    `selectP`, using the existing composite scope/key index.
 
-Generic registration lives in `engine/LeanApp`, shared HTTP codecs and browser
-transport in `engine/LeanContract`, and native serving/client bindings in
+Generic registration lives in LeanAPI's `LeanApi.Publication` (formerly `engine/LeanApp`), shared HTTP codecs and browser
+transport in LeanAPI's `LeanContract`, and native serving/client bindings in
 `adapters/native`. `NativeTickets.Registration` contains the application-specific
 publication and fixture policy.
 

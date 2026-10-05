@@ -1,10 +1,11 @@
 /- The post's sign-up story, before the email constraint (DDD-LR-06 acceptance). `signUp` and
    `hostParty` cannot fail yet, so their pages say so with `(onError := nofun)`. The negative
    fixtures `PostSignUpNofun` and `PostHostNofun` are the same pages against the final domain
-   (`PostPart1`), where Lean reports the exact missing cases. -/
-import LeanApp.Domain
+   (LeanAPI's `TestsCore.PostPart1`), where Lean reports the exact missing cases. -/
+import LeanDb.Model
+import LeanApi.Core
 import LeanReact.Domain
-open LeanApp.Domain LeanReact
+open LeanDb.Model LeanApi.Core LeanReact
 
 namespace SignUpBefore
 

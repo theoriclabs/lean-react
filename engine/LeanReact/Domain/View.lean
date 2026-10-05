@@ -1,11 +1,12 @@
 import LeanReact.Domain.Drafts
-import LeanReact.Domain.Scopes
+import LeanReact.Resources
+import LeanContract.Operation
 import LeanReact.DOM
 import LeanReact.Cell
 import LeanReact.Domain.DateInput
 
 namespace LeanReact.Domain
-open LeanApp.Domain Ontology
+open LeanDb.Model Ontology
 
 structure Feedback (Input : Type) [HasRecord Input] where
   fields : List ((HasRecord.record (T := Input)).Field × String) := []
@@ -30,15 +31,6 @@ structure FormSpec (kind : Contract.OperationKind) (Input Output Error : Type) [
   editors : Bool := true
   establishesSession : Bool := false
   editor : (HasRecord.record (T := Input)).Field → FieldBinding Lean.Json → Bool → Option Element := fun _ _ _ => none
-
-def formWith [HasRecord I] (operation : LeanApp.Domain.Operation k Actor I O E)
-    (onError : E → Feedback I) (onSuccess : O → Feedback I := fun _ => {}) : FormSpec k I O E :=
-  { operation := operation.contract, onError, onSuccess,
-    establishesSession := operation.metadata.establishesSession }
-
-def buttonWith [HasRecord I] (label : String) (operation : LeanApp.Domain.Operation k Actor I O E)
-    (onError : E → Feedback I) (onSuccess : O → Feedback I := fun _ => {}) : FormSpec k I O E :=
-  { formWith operation onError onSuccess with label, editors := false }
 
 /-- Shared transport/auth/cancellation handlers cannot consume domain alternatives. -/
 structure ShellProps where
@@ -196,38 +188,4 @@ def FormSpec.render [HasRecord I] (spec : FormSpec k I O E) (model : DomainForm 
         #[LeanReact.text (if model.pending then "Submitting…" else model.feedback.message.getD "")],
       DOM.button { type := .submit, disabled := model.pending } #[LeanReact.text spec.label]])
 
-structure SomeAction where
-  kind : Contract.OperationKind
-  Input : Type
-  Output : Type
-  Error : Type
-  record : HasRecord Input
-  spec : @FormSpec kind Input Output Error record
-instance [HasRecord I] : CoeOut (FormSpec k I O E) SomeAction := ⟨fun spec => ⟨k, I, O, E, inferInstance, spec⟩⟩
-
-structure ScreenSpec (Input Output Error : Type) [HasRecord Input] where
-  operation : Contract.Operation .query Input Output Error
-  view : Output → Element
-  onError : Error → Feedback Input
-  actions : List SomeAction := []
-
-def screenWith [HasRecord I] (operation : LeanApp.Domain.Operation .query Actor I O E)
-    (view : O → Element) (onError : E → Feedback I) (actions : List SomeAction := []) : ScreenSpec I O E :=
-  ⟨operation.contract, view, onError, actions⟩
-
-class Display (T : Type) where
-  string : T → String
-instance : Display String := ⟨id⟩
-instance : Display Name := ⟨Name.value⟩
-instance : Display Title := ⟨Title.value⟩
-instance : Display Text := ⟨Text.value⟩
-
-def text [Display T] (value : T) : Element := LeanReact.text (Display.string value)
-def list (values : List T) (view : T → Element) : Element := DOM.ul {} (values.map (fun value => DOM.li {} #[view value])).toArray
-abbrev Page := StateM (Array Element)
-def render (element : Element) : Page Unit := modify (·.push element)
-def heading [Display T] (value : T) : Page Unit := render (DOM.h1 {} #[text value])
-def paragraph [Display T] (value : T) : Page Unit := render (DOM.p {} #[text value])
-def dateTime (value : Instant) : Page Unit := render (DOM.p {} #[LeanReact.text (DateInput.formatEpoch value.value ++ " UTC")])
-def page (body : Page Unit) : Element := fragment (body.run #[]).2
 end LeanReact.Domain

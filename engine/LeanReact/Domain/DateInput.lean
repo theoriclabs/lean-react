@@ -1,7 +1,7 @@
-import LeanApp.Domain.Scalars
+import LeanOntology.Scalars
 
 namespace LeanReact.Domain.DateInput
-open LeanApp.Domain
+open Ontology
 
 private def pad (width value : Nat) : String :=
   let text := toString value

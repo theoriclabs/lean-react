@@ -1,9 +1,9 @@
 /- The Part 1 post's pages (DDD-LR-06), over the post's domain fixture: `form`, `call` and
    `load` on typed endpoints, `App` with `path ==> page`. Mirrors `partiful_v2/Views.lean`
-   for the endpoints PostPart1 publishes. -/
-import tests.domain.PostPart1
+   for the endpoints LeanAPI's `TestsCore.PostPart1` publishes. -/
+import TestsCore.PostPart1
 import LeanReact.Domain
-open LeanApp.Domain LeanReact
+open LeanDb.Model LeanApi.Core LeanReact
 
 namespace PostViews
 

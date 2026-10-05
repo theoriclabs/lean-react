@@ -3,7 +3,7 @@ import LeanAppNative.Auth.Http
 import {{Name}}.Contracts
 
 namespace {{Name}}Native
-open LeanApp LeanDb {{Name}}
+open LeanApi.Publication LeanDb {{Name}}
 
 /-- One row per note. `actor`/`tenant` scope every read and write to the signed-in principal. -/
 structure NoteRow where

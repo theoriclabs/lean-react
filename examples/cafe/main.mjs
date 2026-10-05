@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createAuthClient } from '../../engine/LeanApp/AuthClient.mjs';
+import { createAuthClient } from '../../engine/runtime/AuthClient.mjs';
 import { preview } from './domain.mjs';
 import { createCafeClient, errorMessage, formatMoney, INITIAL_CONFIGURATION, parsePreview } from './client.mjs';
 

@@ -4,7 +4,7 @@ import LeanAppNative.Auth.Crypto
 import LeanWs
 
 namespace LeanAppNative.Channels
-open LeanApp
+open LeanApi.Publication
 open LeanAppNative.Auth
 open Contract (Frame CloseReason WireRequest Topic SubId)
 open Std Std.Async Std.Http

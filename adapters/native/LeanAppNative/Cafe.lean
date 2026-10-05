@@ -2,7 +2,7 @@ import LeanAppNative.Auth.Http
 import Cafe
 
 namespace LeanAppNative.Cafe
-open LeanApp Contract Ontology LeanDb
+open LeanApi.Publication Contract Ontology LeanDb
 
 structure RecipeRow where
   publicId : String

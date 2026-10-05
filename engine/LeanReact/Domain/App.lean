@@ -1,6 +1,7 @@
-import LeanReact.Domain.Screen
+import LeanReact.Domain.View
 import LeanReact.Router
 import LeanContract.Transport
+import LeanApi.Core
 
 /-! # Pages built from typed endpoints (DDD-LR-06)
 
@@ -40,7 +41,7 @@ def app : App where
   successful command run from the app reloads the page's data (DDD-LR-04). -/
 
 namespace LeanReact.Domain
-open LeanApp.Domain Ontology
+open LeanDb.Model LeanApi.Core Ontology
 
 /-! ## The client as a wire transport -/
 

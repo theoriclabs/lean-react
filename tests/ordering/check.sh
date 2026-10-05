@@ -3,16 +3,19 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p tests/ordering/.build/tests/ordering
 lake build Ordering
-export LEAN_PATH="$PWD/tests/ordering/.build${LEAN_PATH:+:$LEAN_PATH}"
-lake env lean tests/ordering/Positive.lean
-lake env lean -o tests/ordering/.build/tests/ordering/Fixtures.olean tests/ordering/Fixtures.lean
-lake env lean tests/ordering/GenerateDomain.lean
-lake env lean --run tests/ordering/Native.lean > tests/ordering/.build/native.json
+# The fixture build comes first on the search path, ahead of the dependencies' own `Tests*`
+# directories (`tests.ordering.*` would otherwise resolve into them on a case-insensitive file
+# system), so the checks run `lean` with that path rather than `lake env lean`.
+export LEAN_PATH="$PWD/tests/ordering/.build:$(lake env printenv LEAN_PATH)"
+lean tests/ordering/Positive.lean
+lean -o tests/ordering/.build/tests/ordering/Fixtures.olean tests/ordering/Fixtures.lean
+lean tests/ordering/GenerateDomain.lean
+lean --run tests/ordering/Native.lean > tests/ordering/.build/native.json
 node --test tests/ordering/parity.test.mjs
 for fixture in tests/ordering/negative/*.lean; do
   name="$(basename "$fixture" .lean)"
   log="tests/ordering/.build/$name.log"
-  if lake env lean "$fixture" > "$log" 2>&1; then
+  if lean "$fixture" > "$log" 2>&1; then
     echo "FAIL: $name unexpectedly compiled" >&2
     exit 1
   fi

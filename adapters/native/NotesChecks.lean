@@ -1,6 +1,6 @@
 import LeanAppNative.Notes
 
-open LeanAppNative LeanAppNative.Auth LeanApp Ontology
+open LeanAppNative LeanAppNative.Auth LeanApi.Publication Ontology
 
 private def check (label : String) (test : Bool) : IO Unit := do
   unless test do throw (IO.userError s!"FAIL notes: {label}")

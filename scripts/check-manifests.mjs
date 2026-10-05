@@ -1,13 +1,23 @@
 // Every Lake manifest in the repository must resolve its dependencies to immutable Git
 // revisions, or to path dependencies inside this repository. A manifest that records a path
 // outside the checkout (a sibling clone, an absolute developer path) only builds on the machine
-// that wrote it, which LA-12 rules out.
+// that wrote it, which LA-12 rules out for a release.
+//
+// Development mode (milestone 3, until DDD-LAPI-04 pins Git revisions): the layers below
+// LeanReact (leanontology, LeanDB, LeanAPI, and the packages they check out themselves) are
+// required as relative path dependencies on the sibling checkouts, so every repository shares
+// one build. Those entries are accepted and listed as development path pins. `--release`
+// applies the LA-12 rule without that exception.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifests = ['adapters/native/lake-manifest.json', 'examples/native/lake-manifest.json', 'lake-manifest.json'];
+const release = process.argv.includes('--release');
+// The sibling checkouts a development path pin may name (relative paths only).
+const siblings = ['leanontology', 'LeanDB', 'leanapi'];
+const developmentPins = [];
 let problems = 0;
 let checked = 0;
 for (const file of manifests) {
@@ -22,6 +32,11 @@ for (const file of manifests) {
     if (pkg.type === 'path') {
       const target = resolve(dirname(resolve(root, file)), pkg.dir);
       const inside = !relative(root, target).startsWith('..') && !isAbsolute(relative(root, target));
+      const sibling = !isAbsolute(pkg.dir) && siblings.some(name => {
+        const checkout = resolve(root, '..', name);
+        return target === checkout || !relative(checkout, target).startsWith('..');
+      });
+      if (!inside && sibling && !release) { developmentPins.push(`${file}: ${pkg.name} -> ${pkg.dir}`); continue; }
       if (!inside || isAbsolute(pkg.dir)) { console.error(`${file}: ${pkg.name} resolves outside the repository (${pkg.dir})`); problems += 1; }
       continue;
     }
@@ -60,5 +75,7 @@ for (const file of manifests)
       else resolved.set(pkg.url, { rev: pkg.rev, file });
     }
 if (problems > 0) { console.error(`${problems} manifest problem(s)`); process.exit(1); }
-console.log(`Checked ${checked} Lake dependency entries across ${manifests.length} manifests: all Git-pinned or inside the repository.`);
+console.log(`Checked ${checked} Lake dependency entries across ${manifests.length} manifests: all Git-pinned, inside the repository${release ? '' : ', or development path pins'}.`);
+if (developmentPins.length > 0)
+  console.log(`Development path pins (DDD-LAPI-04 replaces them; refused with --release):\n  ${developmentPins.join('\n  ')}`);
 console.log(`Checked ${pins.size} pinned sources across ${lakefiles.length} lakefiles and the manifests: all consistent.`);

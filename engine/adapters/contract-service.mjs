@@ -1,7 +1,9 @@
+// (LeanReact: an adapter over the contract client and this runtime; it was
+// `engine/LeanContract/Service.mjs`. It depends on LeanReact actions, so it stays here.)
 // Lean-facing service adapters over the browser transport. Loaders built here are cancellable:
 // the resource's AbortSignal reaches `fetch`, so unmount, refresh, and scope changes abort the request.
 import { action } from '../runtime/actions.mjs';
-import { resourceSignal } from '../adapters/leanjs-react.mjs';
+import { resourceSignal } from './leanjs-react.mjs';
 
 /** A `useResource` loader over an HTTP client: `(request, args) => Action`, where `request` is the Lean
  * `ResourceRequest` handed to the loader and `args` are encoded by `encodeArgs` into the operation input.

@@ -26,7 +26,7 @@ The native runtime the adapter consumes is LeanDB 0.4.0's `Runtime.Service` (LDB
 
 ## Portable sources and publication
 
-`engine/LeanOntology` contains identity, validation, descriptors and wire codecs. `engine/LeanContract` contains typed operations and checked router erasure. `engine/LeanApp` assembles explicitly approved exports and validates their bindings. Domain examples live under `examples/lean` and `examples/ordering`; native mappings live under `adapters/native`.
+Since milestone 3 these are packages LeanReact requires: leanontology's `LeanOntology` contains identity, validation, descriptors and wire codecs; LeanAPI's `LeanContract` contains typed operations and checked router erasure; LeanAPI's `LeanApi.Publication` (formerly `engine/LeanApp`) assembles explicitly approved exports and validates their bindings. Domain examples live under `examples/lean` and `examples/ordering`; native mappings live under `adapters/native`.
 
 An operation retains its input, output, error and execution kind until `Contract.Route.ofHandler`. A public manifest lists approved operations and their public codecs. Importing a module or describing a field does not publish a table or grant mutation rights. A trusted context constructor is an adapter boundary; it is not an authentication provider or a sandbox for arbitrary Lean code.
 

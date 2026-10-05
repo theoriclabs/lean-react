@@ -1,7 +1,7 @@
 import Examples.Tickets.Domain
 import LeanContract
 import LeanContract.Http
-import LeanApp.Binding
+import LeanApi.Publication.Binding
 
 namespace Examples.Tickets.Contracts
 open Ontology Contract
@@ -98,20 +98,33 @@ def publicOperations : Validation PublicOperations := do
 
 /-- Public HTTP metadata shared by the native registration and the generated browser client.
 The native bindings must publish the same rules; `tickets_checks` compares the served manifest. -/
-def PublicOperations.approved (ops : PublicOperations) : List LeanApp.PublicOperation :=
+def PublicOperations.approved (ops : PublicOperations) : List LeanApi.Publication.PublicOperation :=
   [⟨ops.list.describe, { path := listPath }, { describePolicy := "role ≥ viewer" }⟩,
    ⟨ops.save.describe, { path := savePath }, { describePolicy := "role ≥ editor" }⟩]
 
 /-- The `/api/manifest` body: schemas, HTTP bindings and public metadata per operation. -/
 def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
-  LeanApp.PublicOperation.manifest ops.approved
+  LeanApi.Publication.PublicOperation.manifest ops.approved
 
 def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
   ⟨ops.codecs.operationId, ops.codecs.errors⟩
 
+/-- `ErrorStatus.ofTags`, reading a payload-free error's tag from its decision-15 bare string
+(`"notFound"`) as well as from the tagged form (`{"tag": "conflict", …}`). LeanContract's
+`ofTags` reads only the tagged form. -/
+def statusByTag (operation : Contract.Operation kind Input Output Error) (table : List (String × Nat)) :
+    Contract.Http.ErrorStatus :=
+  ⟨operation.identity, fun value => do
+    let tag ← match value with
+      | .str tag => pure tag
+      | _ => JsonWire.stringField "tag" value
+    match table.lookup tag with
+    | some status => pure status
+    | none => Validation.fail "response.unknown_domain_error" [.key "tag"] [("actual", tag)]⟩
+
 /-- Tag-determined, so the generated client carries the same table. -/
 def PublicOperations.errorStatuses (ops : PublicOperations) : List Contract.Http.ErrorStatus :=
-  [Contract.Http.ErrorStatus.ofTags ops.save [("notFound", 404), ("conflict", 409)]]
+  [statusByTag ops.save [("notFound", 404), ("conflict", 409)]]
 
 def encodeRequest (ops : PublicOperations) := Contract.Http.encodeRequest ops.httpCodecs
 

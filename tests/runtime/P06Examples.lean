@@ -6,7 +6,7 @@ open LeanReact Ontology Examples.Tickets
 namespace P06Examples
 
 -- Reuse the actual Tickets parser. Only its errors are adapted to structured validation.
-def titleParser : DraftParser String Title := DraftParser.ofExcept Title.parse Title.value fun error =>
+def titleParser : DraftParser String Examples.Tickets.Title := DraftParser.ofExcept Examples.Tickets.Title.parse Examples.Tickets.Title.value fun error =>
   match error with
   | .empty => ValidationErrors.single "ticket.title.empty"
   | .tooLong length => ValidationErrors.single "ticket.title.tooLong" [] [("length", toString length)]
@@ -18,10 +18,10 @@ def TextField : Editor String := component fun field => pure <| DOM.input {
 
 structure EditProps where
   initial : String
-  save : Title → Action Unit
+  save : Examples.Tickets.Title → Action Unit
 
 structure EditModel where
-  form : Form String Title
+  form : Form String Examples.Tickets.Title
   submit : Action Unit
 
 def useTitleEditor (props : EditProps) : Hook EditModel := do

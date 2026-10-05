@@ -1,7 +1,7 @@
-import LeanApp
+import LeanApi.Publication
 import AclFixture
 
-open LeanApp LeanApp.Policy Contract Ontology
+open LeanApi.Publication LeanApi.Publication.Policy Contract Ontology
 
 /-! Expected not to typecheck: a `requireAtLeast .viewer` policy cannot feed an
     `.editor` handler. The evidence types are distinct. -/

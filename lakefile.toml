@@ -1,28 +1,49 @@
-# LeanApp portable workspace. Preserve the Lake package name for existing consumers.
+# LeanReact: the UI layer (LeanReact, LeanReact.Domain, LeanJS) and full-stack serving
+# (LeanReact.Server). It builds on the layers below it, which it requires as path
+# dependencies on the sibling checkouts during development (pinned git requires for fresh
+# clones are DDD-LAPI-04): leanontology (wire codecs, scalars), LeanDB (`LeanDb.Model`,
+# native storage) and LeanAPI (`LeanApi.Core`, `LeanContract`, native serving).
 name = "leanreact"
-version = "0.2.0-rc.1"
-defaultTargets = ["LeanOntology", "LeanContract", "LeanApp", "LeanReact", "LeanJS", "LeanReact.Compiler"]
+version = "0.3.0"
+defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer"]
+
+[[require]]
+name = "leanontology"
+path = "../leanontology"
+
+[[require]]
+name = "leandb"
+path = "../LeanDB"
+
+[[require]]
+name = "leanapi"
+path = "../leanapi"
 
 [[input_file]]
 name = "leanJsRuntime"
 path = "engine/LeanJS/Runtime.js"
 text = true
 
-[[lean_lib]]
-name = "LeanOntology"
-srcDir = "engine"
-
-[[lean_lib]]
-name = "LeanContract"
-srcDir = "engine"
-
-[[lean_lib]]
-name = "LeanApp"
-srcDir = "engine"
-
+# The UI core: components, hooks, DOM, forms, resources, router (portable, LeanJS-compiled).
 [[lean_lib]]
 name = "LeanReact"
 srcDir = "engine"
+roots = ["LeanReact", "LeanReact.Compiler"]
+
+# Pages over typed endpoints: `form`, `call`, `load`, `App`, `path ==> page` (portable).
+# Its imports below LeanReact are `LeanDb.Model`, `LeanApi.Core`, `LeanContract` and
+# `LeanOntology` only.
+[[lean_lib]]
+name = "LeanReactDomain"
+srcDir = "engine"
+roots = ["LeanReact.Domain"]
+
+# Full-stack serving (native): `app% Name where app := app`, the page routes and the browser
+# bundle, on LeanAPI's native app. An API-only app never imports it.
+[[lean_lib]]
+name = "LeanReactServer"
+srcDir = "engine"
+roots = ["LeanReact.Server"]
 
 [[lean_lib]]
 name = "LeanJS"

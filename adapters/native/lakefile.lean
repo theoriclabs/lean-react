@@ -20,20 +20,37 @@ package leanapp_native where
 /-- The portable workspace this adapter belongs to. -/
 require leanreact from (get_config? leanreact).getD "../.."
 
-/-! Published pins (LA-12). Every native dependency is fetched from its immutable
-Git revision by default, so a fresh clone builds with no sibling checkouts.
-`-Kleandb=PATH`, `-Kleanhttp=PATH`, `-Kleanws=PATH` and `-Kleansqlite=PATH`
-override a pin with a local source tree for development; the committed manifest
-must never record such a path (`npm run test:manifest`). -/
+/-! Development mode (milestone 3): the layers below LeanReact are path dependencies on the
+sibling checkouts, the same checkouts LeanReact itself requires, so every package shares one
+build. That covers LeanDB, LeanAPI (its `LeanApi.Publication` is the application assembly this
+adapter hosts) and leanontology, and resolves `leansqlite` to LeanDB's own checkout (one copy;
+LeanDB builds against it). DDD-LAPI-04 replaces these paths with pinned Git revisions for
+fresh clones; until then `npm run test:manifest` accepts them as development path pins (and
+`--release` refuses them, the LA-12 rule). `-Kleandb=PATH` etc. still override a source.
+leanhttp and leanws stay pinned to Git revisions. -/
 
 @[package_dep] def leandb : Dependency := {
   name := `leandb
   scope := ""
   version := .none
   opts := {}
-  src? := some <| match get_config? leandb with
-    | some path => .path path
-    | none => .git "https://github.com/theoriclabs/LeanDB" (some "v0.4.0") none
+  src? := some <| .path ((get_config? leandb).getD "../../../LeanDB")
+}
+
+@[package_dep] def leanapi : Dependency := {
+  name := `leanapi
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| .path ((get_config? leanapi).getD "../../../leanapi")
+}
+
+@[package_dep] def leanontology : Dependency := {
+  name := `leanontology
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| .path ((get_config? leanontology).getD "../../../leanontology")
 }
 
 @[package_dep] def leanhttp : Dependency := {
@@ -62,9 +79,7 @@ must never record such a path (`npm run test:manifest`). -/
   scope := ""
   version := .none
   opts := {}
-  src? := some <| match get_config? leansqlite with
-    | some path => .path path
-    | none => .git "https://github.com/leanprover/leansqlite" (some "0be4df908d1a8e75b58961041e2b4973692623df") none
+  src? := some <| .path ((get_config? leansqlite).getD "../../../LeanDB/.lake/packages/leansqlite")
 }
 
 target leanapp_auth.o pkg : System.FilePath := do
