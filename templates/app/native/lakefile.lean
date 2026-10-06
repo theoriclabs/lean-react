@@ -64,7 +64,7 @@ local source tree; never commit a manifest that records such a path. -/
   opts := {}
   src? := some <| match get_config? leanapi with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/leanapi" (some "686646a5c28c6b8df7424bf9721a0cc01d63a849") none
+    | none => .git "https://github.com/theoriclabs/leanapi" (some "b66c2991fae8fbe55b5c77d14b0216016855c6c0") none
 }
 
 @[package_dep] def leanontology : Dependency := {

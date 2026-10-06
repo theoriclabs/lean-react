@@ -20,7 +20,7 @@ rev = "d5253e5b0d83fc528927f340d1e50baab3e94999"
 [[require]]
 name = "leanapi"
 git = "https://github.com/theoriclabs/leanapi"
-rev = "686646a5c28c6b8df7424bf9721a0cc01d63a849"
+rev = "b66c2991fae8fbe55b5c77d14b0216016855c6c0"
 
 [[input_file]]
 name = "leanJsRuntime"

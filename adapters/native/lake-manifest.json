@@ -28,10 +28,10 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "686646a5c28c6b8df7424bf9721a0cc01d63a849",
+   "rev": "b66c2991fae8fbe55b5c77d14b0216016855c6c0",
    "name": "leanapi",
    "manifestFile": "lake-manifest.json",
-   "inputRev": "686646a5c28c6b8df7424bf9721a0cc01d63a849",
+   "inputRev": "b66c2991fae8fbe55b5c77d14b0216016855c6c0",
    "inherited": false,
    "configFile": "lakefile.toml"
   },
