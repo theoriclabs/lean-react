@@ -1,41 +1,69 @@
-{"version": "1.2.0",
+{
+ "version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages":
- [{"type": "path",
+ "packages": [
+  {
+   "url": "https://github.com/theoriclabs/leanontology",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b",
    "name": "leanontology",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b",
    "inherited": false,
-   "dir": "../leanontology",
-   "configFile": "lakefile.toml"},
-  {"type": "path",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/LeanDB",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "d5253e5b0d83fc528927f340d1e50baab3e94999",
    "name": "leandb",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "d5253e5b0d83fc528927f340d1e50baab3e94999",
    "inherited": false,
-   "dir": "../LeanDB",
-   "configFile": "lakefile.toml"},
-  {"type": "path",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leanapi",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "686646a5c28c6b8df7424bf9721a0cc01d63a849",
    "name": "leanapi",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "686646a5c28c6b8df7424bf9721a0cc01d63a849",
    "inherited": false,
-   "dir": "../leanapi",
-   "configFile": "lakefile.toml"},
-  {"type": "path",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/leanprover/leansqlite",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "0be4df908d1a8e75b58961041e2b4973692623df",
    "name": "leansqlite",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "0be4df908d1a8e75b58961041e2b4973692623df",
    "inherited": true,
-   "dir": "../LeanDB/.lake/packages/leansqlite",
-   "configFile": "lakefile.lean"},
-  {"type": "path",
+   "configFile": "lakefile.lean"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leancrypto",
+   "type": "git",
+   "subDir": null,
    "scope": "",
+   "rev": "a9c7adab037f4f42463ea1ec15c9fc1f6c8e23e8",
    "name": "leancrypto",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "v0.1.0",
    "inherited": true,
-   "dir": "../leanapi/.lake/packages/leancrypto",
-   "configFile": "lakefile.lean"}],
+   "configFile": "lakefile.lean"
+  }
+ ],
  "name": "leanreact",
  "lakeDir": ".lake",
- "fixedToolchain": false}
+ "fixedToolchain": false
+}

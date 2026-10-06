@@ -1,9 +1,7 @@
 name = "tickets_native"
 version = "0.1.0"
 defaultTargets = ["tickets_server", "tickets_protocol", "tickets_checks", "tickets_http_checks"]
-# Share the adapter's dependency checkouts (LA-12): one clone per pinned revision (leanhttp,
-# leanws). The layers below LeanReact are development path pins on the sibling checkouts
-# (`npm run test:manifest` accepts them; `--release` refuses them until DDD-LAPI-04).
+# Share the adapter's dependency checkouts (LA-12): one clone per pinned revision.
 packagesDir = "../../adapters/native/.lake/packages"
 
 [[require]]
@@ -14,8 +12,7 @@ path = "../.."
 name = "leanapp_native"
 path = "../../adapters/native"
 
-# LeanDB, LeanAPI, leanontology and leansqlite come through the adapter as path dependencies on
-# the sibling checkouts (development mode until DDD-LAPI-04 pins Git revisions).
+# LeanDB, LeanAPI, leanontology and leansqlite come through the adapter, at its pinned revisions.
 
 [[require]]
 name = "leanhttp"

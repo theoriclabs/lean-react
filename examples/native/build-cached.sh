@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the four native Tickets executables with Lake (LeanDB, LeanAPI and leanontology are
-# path dependencies on the sibling checkouts; leanhttp/leanws are the adapter's pinned clones).
+# Build the four native Tickets executables with Lake (LeanDB, LeanAPI, leanontology, leanhttp
+# and leanws are the adapter's pinned clones).
 # The binaries are in examples/native/.lake/build/bin.
 set -euo pipefail
 native_dir="$(cd "$(dirname "$0")" && pwd)"

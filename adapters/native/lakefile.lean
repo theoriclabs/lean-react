@@ -20,21 +20,19 @@ package leanapp_native where
 /-- The portable workspace this adapter belongs to. -/
 require leanreact from (get_config? leanreact).getD "../.."
 
-/-! Development mode (milestone 3): the layers below LeanReact are path dependencies on the
-sibling checkouts, the same checkouts LeanReact itself requires, so every package shares one
-build. That covers LeanDB, LeanAPI (its `LeanApi.Publication` is the application assembly this
-adapter hosts) and leanontology, and resolves `leansqlite` to LeanDB's own checkout (one copy;
-LeanDB builds against it). DDD-LAPI-04 replaces these paths with pinned Git revisions for
-fresh clones; until then `npm run test:manifest` accepts them as development path pins (and
-`--release` refuses them, the LA-12 rule). `-Kleandb=PATH` etc. still override a source.
-leanhttp and leanws stay pinned to Git revisions. -/
+/-! The layers below LeanReact, at the revisions LeanReact itself pins: LeanDB, LeanAPI (its
+`LeanApi.Publication` is the application assembly this adapter hosts), leanontology, and
+LeanDB's `leansqlite`. `-K<name>=PATH` overrides one with a local source tree; never commit a
+manifest that records such a path. -/
 
 @[package_dep] def leandb : Dependency := {
   name := `leandb
   scope := ""
   version := .none
   opts := {}
-  src? := some <| .path ((get_config? leandb).getD "../../../LeanDB")
+  src? := some <| match get_config? leandb with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/LeanDB" (some "d5253e5b0d83fc528927f340d1e50baab3e94999") none
 }
 
 @[package_dep] def leanapi : Dependency := {
@@ -42,7 +40,9 @@ leanhttp and leanws stay pinned to Git revisions. -/
   scope := ""
   version := .none
   opts := {}
-  src? := some <| .path ((get_config? leanapi).getD "../../../leanapi")
+  src? := some <| match get_config? leanapi with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanapi" (some "686646a5c28c6b8df7424bf9721a0cc01d63a849") none
 }
 
 @[package_dep] def leanontology : Dependency := {
@@ -50,7 +50,9 @@ leanhttp and leanws stay pinned to Git revisions. -/
   scope := ""
   version := .none
   opts := {}
-  src? := some <| .path ((get_config? leanontology).getD "../../../leanontology")
+  src? := some <| match get_config? leanontology with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanontology" (some "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b") none
 }
 
 @[package_dep] def leanhttp : Dependency := {
@@ -79,7 +81,9 @@ leanhttp and leanws stay pinned to Git revisions. -/
   scope := ""
   version := .none
   opts := {}
-  src? := some <| .path ((get_config? leansqlite).getD "../../../LeanDB/.lake/packages/leansqlite")
+  src? := some <| match get_config? leansqlite with
+    | some path => .path path
+    | none => .git "https://github.com/leanprover/leansqlite" (some "0be4df908d1a8e75b58961041e2b4973692623df") none
 }
 
 target leanapp_auth.o pkg : System.FilePath := do

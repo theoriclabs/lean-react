@@ -154,7 +154,7 @@ def AccountsApp.main {s Profile} [IsSchema s] [LeanDb.Model.Entity Profile]
     (fun config => do
       let bundle ← app.browser.locate
       let native := { app.native with pages := accountPages app.browser bundle }
-      native.withService config fun _ service => LeanApi.serve service { port := config.port })
+      native.withService config fun _ service => LeanApi.serve service { host := config.host, port := config.port })
     args config
 
 def PublicPagesApp.main {s} [IsSchema s] (app : PublicPagesApp s) (args : List String)
@@ -163,7 +163,7 @@ def PublicPagesApp.main {s} [IsSchema s] (app : PublicPagesApp s) (args : List S
     (fun config => do
       let bundle ← app.browser.locate
       let native := { app.native with pages := publicPages app.browser bundle }
-      native.withService config fun service => LeanApi.serve service { port := config.port })
+      native.withService config fun service => LeanApi.serve service { host := config.host, port := config.port })
     args config
 
 /-! ## `app% Name where app := X` -/

@@ -1,23 +1,26 @@
 # LeanReact: the UI layer (LeanReact, LeanReact.Domain, LeanJS) and full-stack serving
-# (LeanReact.Server). It builds on the layers below it, which it requires as path
-# dependencies on the sibling checkouts during development (pinned git requires for fresh
-# clones are DDD-LAPI-04): leanontology (wire codecs, scalars), LeanDB (`LeanDb.Model`,
-# native storage) and LeanAPI (`LeanApi.Core`, `LeanContract`, native serving).
+# (LeanReact.Server). It builds on the layers below it, required from git at pinned revisions:
+# leanontology (wire codecs, scalars), LeanDB (`LeanDb.Model`, native storage) and LeanAPI
+# (`LeanApi.Core`, `LeanContract`, native serving). LeanAPI pins the same LeanDB and
+# leanontology revisions.
 name = "leanreact"
 version = "0.3.0"
 defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer"]
 
 [[require]]
 name = "leanontology"
-path = "../leanontology"
+git = "https://github.com/theoriclabs/leanontology"
+rev = "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b"
 
 [[require]]
 name = "leandb"
-path = "../LeanDB"
+git = "https://github.com/theoriclabs/LeanDB"
+rev = "d5253e5b0d83fc528927f340d1e50baab3e94999"
 
 [[require]]
 name = "leanapi"
-path = "../leanapi"
+git = "https://github.com/theoriclabs/leanapi"
+rev = "686646a5c28c6b8df7424bf9721a0cc01d63a849"
 
 [[input_file]]
 name = "leanJsRuntime"
