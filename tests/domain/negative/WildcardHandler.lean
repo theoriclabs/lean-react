@@ -1,6 +1,7 @@
-import tests.domain.Partiful
+/- A wildcard in `onError` would keep compiling through every new error case. -/
+import TestsCore.PostPart1
 import LeanReact.Domain
-open LeanApp.Domain LeanReact.Domain Ontology Partiful
-namespace Partiful
-def wrong := form rsvp onError fun | _ => notice "oops"
-end Partiful
+open LeanDb.Model LeanApi.Core LeanReact
+
+def rsvpButton (party : Ref Party) : Action Unit :=
+  call (api.rsvp party) (onError := fun | _ => notice "oops")

@@ -1,9 +1,7 @@
-import LeanReact.Domain.Screen
 import LeanReact.Domain.App
 import Lean.Elab.Term
 
 namespace LeanReact.Domain
-export LeanApp.Domain (Disclosure)
 export LeanReact (Element)
 open Lean
 
@@ -57,18 +55,13 @@ private def checkHandler (handler : TSyntax `term) : MacroM Unit := do
   if rejectsNamedCatchAll handler then Macro.throwErrorAt handler "named catch-all domain-error patterns are forbidden; use explicit constructor branches"
   unless matchesErrorArgument handler do Macro.throwErrorAt handler "onError must match its error argument directly with explicit constructor branches"
 
-syntax (name := namedFieldError) "fieldError " "." ident term:max : term
-macro_rules
-  | `(fieldError .$name:ident $message:term) => `(fieldErrorNamed $(Syntax.mkStrLit name.getId.toString) $message)
-
 /-- `fieldError "email" "…"`: a message on the named field (checked against the input record). -/
 syntax (name := namedFieldErrorString) "fieldError " str term:max : term
 macro_rules
   | `(fieldError $name:str $message:term) => `(fieldErrorNamed $name $message)
 
 /-! Endpoint surface (DDD-LR-06): named arguments, `onError` always required. -/
--- `onSuccess`/`onError` are keywords of the milestone 1 sugar, so they are named explicitly.
-syntax endpointArg := "(" ("onSuccess" <|> "onError" <|> ident) " := " term ")"
+syntax endpointArg := "(" ident " := " term ")"
 syntax (name := endpointFormSyntax) "form " term:max (ppSpace endpointArg)+ : term
 syntax (name := endpointCallSyntax) "call " term:max (ppSpace endpointArg)+ : term
 syntax (name := endpointLoadSyntax) "load " term:max (ppSpace endpointArg)+ ppSpace term : term
@@ -115,31 +108,6 @@ macro_rules
     let failure ← requiredError "load" named tk
     `(LeanReact.Domain.endpointLoad $endpoint $failure $view)
 
-syntax (name := domainForm) "form " term:max " onError " term (" onSuccess " term)? : term
-syntax (name := domainButton) "button " term:max term:max " onError " term (" onSuccess " term)? : term
-syntax (name := domainScreen) "screen " term:max term:max " onError " term (" withActions " term)? : term
-syntax (name := domainScreenActions) "screen " term:max term:max " onError " term " actions " term : term
-macro_rules
-  | `(screen $operation:term $view:term onError $handler:term actions $controls:term) => do
-    checkHandler handler
-    `(screenWith $operation $view $handler $controls)
-
-macro_rules
-  | `(form $operation:term onError $handler:term $[onSuccess $success:term]?) => do
-    checkHandler handler
-    match success with
-    | none => `(formWith $operation $handler)
-    | some callback => `(formWith $operation $handler $callback)
-  | `(button $label:term $operation:term onError $handler:term $[onSuccess $success:term]?) => do
-    checkHandler handler
-    match success with
-    | none => `(buttonWith $label $operation $handler)
-    | some callback => `(buttonWith $label $operation $handler $callback)
-  | `(screen $operation:term $view:term onError $handler:term $[withActions $controls:term]?) => do
-    checkHandler handler
-    match controls with
-    | none => `(screenWith $operation $view $handler)
-    | some controls => `(screenWith $operation $view $handler $controls)
 end LeanReact.Domain
 
 namespace LeanReact

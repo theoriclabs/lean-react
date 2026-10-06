@@ -1,10 +1,10 @@
-import LeanApp
+import LeanApi.Publication
 import LeanContract.Http
 import LeanAppNative.Metrics
 import Std.Http
 
 namespace LeanAppNative
-open LeanApp Contract Ontology
+open LeanApi.Publication Contract Ontology
 
 structure HttpReply where
   status : Nat

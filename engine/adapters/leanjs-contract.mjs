@@ -1,7 +1,7 @@
 // Generic bridge between a generated HTTP client and the checked Lean Contract interpreter.
 // Domain values/errors use their compiled Lean codecs; this file contains no scalar validators.
 import { action, runAction } from '../runtime/actions.mjs';
-import { CallFailure } from '../LeanContract/Fetch.mjs';
+import { CallFailure } from '../../../leanapi/LeanContract/Fetch.mjs';
 const ctor = (tag, fields = []) => ({tag, fields});
 const bool = value => ctor(value ? 'Bool.true' : 'Bool.false');
 const identity = value => ({namespace: value.fields[0], name: value.fields[1], version: value.fields[2]});

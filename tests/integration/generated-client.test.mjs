@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { operations, manifest, manifestPath, createClient, canonical, types } from '../../examples/adapters/tickets-client/operations.mjs';
-import { CallFailure, parseJson } from '../../engine/LeanContract/Fetch.mjs';
+import { CallFailure, parseJson } from '../../../leanapi/LeanContract/Fetch.mjs';
 
 const clientDir = resolve('examples/adapters/tickets-client');
 const lean = (file, ...args) => execFileSync('lake', ['env', 'lean', '--run', file, ...args], { encoding: 'utf8' });

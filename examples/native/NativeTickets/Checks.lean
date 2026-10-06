@@ -63,7 +63,9 @@ def scenario (ops : PublicOperations) (transport : Transport IO) : IO Unit := do
   let missingId ← requireOk (EntityId.parse "tickets-demo" "missing-public-key") "missing ID"
   match ← interpreter.call ops.save { input with id := missingId } with
   | .error (.domain .notFound) => pure ()
-  | _ => throw (IO.userError "FAIL: missing save must be typed notFound")
+  | .error (.domain _) => throw (IO.userError "FAIL: missing save must be typed notFound, got another domain error")
+  | .error other => throw (IO.userError s!"FAIL: missing save must be typed notFound, got {repr (other.mapDomain fun _ => ())}")
+  | .ok _ => throw (IO.userError "FAIL: missing save must be typed notFound, but it succeeded")
   let wrongScope ← requireOk (EntityId.parse "another-instance" current.id.key) "different scope"
   match ← interpreter.call ops.save { input with id := wrongScope } with
   | .error (.domain .notFound) => pure ()
@@ -78,10 +80,12 @@ def scenario (ops : PublicOperations) (transport : Transport IO) : IO Unit := do
   | _ => throw (IO.userError "FAIL: changed client contract accepted")
   let saveJson := ops.codecs.saveInput.encode input
   let fields ← requireOk saveJson.getObj? "save fields"
-  let badRevision := Lean.Json.obj (fields.insert "expectedRevision" (.num 9007199254740993))
+  -- Decision 15: a natural is a bare JSON integer, exact at any size (Lean's JSON numbers are
+  -- exact); a fraction is not a natural and is rejected at its field.
+  let badRevision := Lean.Json.obj (fields.insert "expectedRevision" (.num ⟨15, 1⟩))
   match ← transport.send ⟨ops.save.identity, .command, badRevision⟩ with
-  | .error (.decode errors) => check (errors.first.path == [.key "expectedRevision"]) "numeric revision rejected"
-  | _ => throw (IO.userError "FAIL: lossy numeric revision accepted")
+  | .error (.decode errors) => check (errors.first.path == [.key "expectedRevision"]) "fractional revision rejected"
+  | _ => throw (IO.userError "FAIL: fractional revision accepted")
   let userId ← requireOk (EntityId.parse (α := User) "tickets-demo" current.id.key) "nominal mismatch ID"
   let badId := Lean.Json.obj (fields.insert "id" (userIdCodec.encode userId))
   match ← transport.send ⟨ops.save.identity, .command, badId⟩ with
@@ -97,18 +101,18 @@ def roleMatrix (ops : PublicOperations) (store : Store) : IO Unit := do
   let app ← requireOk (application ops store.service) "application"
   let missingId ← requireOk (EntityId.parse "tickets-demo" "matrix-probe") "probe ID"
   let probe : SaveTicket := ⟨missingId, 0, ⟨"Role matrix probe"⟩, .backlog⟩
-  let cases := LeanApp.Testing.exhaustiveMatrix app [Role.viewer, .editor, .owner]
+  let cases := LeanApi.Publication.Testing.exhaustiveMatrix app [Role.viewer, .editor, .owner]
     (fun id => if id == listIdentity then some .viewer else if id == saveIdentity then some .editor else none)
     (fun id => if id == saveIdentity then ops.codecs.saveInput.encode probe else .null)
-  let issue := fun (actor tenant : String) => LeanApp.TrustedNative.issueContext ⟨actor, tenant, 0⟩ "matrix"
-  let contexts : LeanApp.Testing.Fixture Role := { context := fun
+  let issue := fun (actor tenant : String) => LeanApi.Publication.TrustedNative.issueContext ⟨actor, tenant, 0⟩ "matrix"
+  let contexts : LeanApi.Publication.Testing.Fixture Role := { context := fun
     | .anonymous => .anonymous "matrix"
     | .role .owner | .owner => localFixtureContext
     | .role .editor => issue "fixture-editor" localTenant
     | .role .viewer => issue "fixture-viewer" localTenant
     | .otherTenant => issue "local-fixture" "another-tenant" }
-  let failures ← LeanApp.Testing.runMatrix app contexts cases
-  unless failures.isEmpty do throw (IO.userError s!"FAIL: role matrix\n{LeanApp.Testing.report failures}")
+  let failures ← LeanApi.Publication.Testing.runMatrix app contexts cases
+  unless failures.isEmpty do throw (IO.userError s!"FAIL: role matrix\n{LeanApi.Publication.Testing.report failures}")
   check (cases.size == 10) "matrix covers 3 roles × 2 operations × {anonymous, other tenant}"
   check (approvedMetadata ops == ops.approved) "bindings publish the portable contract's HTTP metadata"
   IO.println "PASS role matrix over the native application"

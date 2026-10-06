@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 
 const directory = await mkdtemp(join(tmpdir(), 'leanreact-browser-'));
-const backend = spawn('examples/native/.lake/cached/bin/tickets_server', ['0', join(directory, 'tickets.sqlite')],
+const backend = spawn('examples/native/.lake/build/bin/tickets_server', ['0', join(directory, 'tickets.sqlite')],
   { stdio: ['ignore', 'ignore', 'pipe'] });
 const stop = () => { if (backend.exitCode === null) backend.kill('SIGTERM'); };
 process.on('exit', stop);

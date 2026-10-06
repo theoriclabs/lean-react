@@ -94,7 +94,7 @@ def Store.list (store : Store) : IO (Array TicketSummary) :=
 def Store.save (store : Store) (input : SaveTicket) : IO (Except SaveError TicketSummary) :=
   store.connection.atomically fun ref => do
     -- Direct native callers also use the domain validator. Wire callers already decoded it.
-    if let .error error := Title.parse input.title.value then
+    if let .error error := Examples.Tickets.Title.parse input.title.value then
       throw (IO.userError (TitleError.message error))
     let conn ← ref.get
     requireDb <| (LeanDb.transaction do

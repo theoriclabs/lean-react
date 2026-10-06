@@ -20,9 +20,9 @@ Start with the task you want to do. The café runs a shared Lean domain model on
 
 | Area | Reference |
 | --- | --- |
-| Application assembly and capabilities | [Interface contract](FULLSTACK_INTERFACES.md), [binding source](../engine/LeanApp/Binding.lean), [executable assembly fixture](../tests/app/Main.lean) |
-| Identity, validation and codecs | [LeanOntology API](../engine/LeanOntology/API.md) |
-| Typed operations and transport | [LeanContract operations](../engine/LeanContract/Operation.lean), [HTTP protocol](../engine/LeanContract/Http.lean) |
+| Application assembly and capabilities | [Interface contract](FULLSTACK_INTERFACES.md), [binding source](../../leanapi/LeanApi/Publication/Binding.lean), [executable assembly fixture](../tests/app/Main.lean) |
+| Identity, validation and codecs | [LeanOntology API](../../leanontology/LeanOntology/API.md) |
+| Typed operations and transport | [LeanContract operations](../../leanapi/LeanContract/Operation.lean), [HTTP protocol](../../leanapi/LeanContract/Http.lean) |
 | React authoring | [LeanReact API](../engine/LeanReact/API.md), [composition guide](COMPOSABILITY.md) |
 | Generated JavaScript representations | [LeanJS ABI](../engine/LeanJS/ABI.md) |
 | Reusable implementation and example locations | [Engine map](../engine/README.md), [examples map](../examples/README.md) |

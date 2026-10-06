@@ -1,4 +1,4 @@
-import LeanApp
+import LeanApi.Publication
 import LeanAppNative.Runtime
 import LeanDb.Derive
 import LeanAppNative.Auth.Crypto
@@ -6,7 +6,7 @@ import LeanAppNative.Metrics
 import Std.Time
 
 namespace LeanAppNative.Auth
-open LeanDb LeanApp
+open LeanDb LeanApi.Publication
 
 inductive Error where
   | invalidUsername | invalidPassword | usernameUnavailable | invalidCredentials

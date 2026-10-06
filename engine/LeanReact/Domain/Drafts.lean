@@ -1,8 +1,8 @@
-import LeanApp.Domain
+import LeanDb.Model
 import LeanReact.Forms
 
 namespace LeanReact.Domain
-open LeanApp.Domain Ontology
+open LeanDb.Model Ontology
 
 private theorem fieldSmaller (entry : String × WireSchema) : sizeOf entry.2 < sizeOf entry := by
   rcases entry with ⟨name, schema⟩

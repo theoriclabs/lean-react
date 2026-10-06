@@ -105,8 +105,9 @@ private def field (value : Json) (name : String) : IO Json :=
 private def operation (name : String) (version := "1") : Json :=
   Json.mkObj [("namespace", toJson "leanreact.tickets"), ("name", toJson name), ("version", toJson version)]
 
+/-- Decision 15: a natural on the wire is a bare JSON integer, exact at any size. -/
 private def nat (value : Nat) : Json :=
-  Json.mkObj [("tag", toJson "nat"), ("value", toJson (toString value))]
+  .num ⟨Int.ofNat value, 0⟩
 
 private abbrev SessionChild := IO.Process.Child { stdin := .null, stdout := .piped }
 
@@ -197,9 +198,10 @@ private def protocol (executable database : String) : IO Unit := do
       "Conflict must return the current persisted value"
     let missing := save.setObjVal! "id" (id.setObjVal! "key" (toJson "not-present"))
     let missingReply ← expectReply (← call input output "save" missing) 404 "domainError"
-    check ((← field missingReply "value") == Json.mkObj [("tag", toJson "notFound"), ("value", .null)])
+    -- Decision 15: a payload-free constructor is the bare string.
+    check ((← field missingReply "value") == toJson "notFound")
       "Missing identity must return typed notFound"
-    for bad in #[save.setObjVal! "title" (toJson ""), save.setObjVal! "expectedRevision" (toJson huge),
+    for bad in #[save.setObjVal! "title" (toJson ""), save.setObjVal! "expectedRevision" (Json.num ⟨15, 1⟩),
         save.setObjVal! "status" (toJson "not-a-status"), save.setObjVal! "extra" (toJson true)] do
       let reply ← expectReply (← call input output "save" bad) 400 "decode"
       check (!(← IO.ofExcept (← field reply "errors").getArr?).isEmpty) "Decode failure must explain its errors"

@@ -20,11 +20,10 @@ package leanapp_native where
 /-- The portable workspace this adapter belongs to. -/
 require leanreact from (get_config? leanreact).getD "../.."
 
-/-! Published pins (LA-12). Every native dependency is fetched from its immutable
-Git revision by default, so a fresh clone builds with no sibling checkouts.
-`-Kleandb=PATH`, `-Kleanhttp=PATH`, `-Kleanws=PATH` and `-Kleansqlite=PATH`
-override a pin with a local source tree for development; the committed manifest
-must never record such a path (`npm run test:manifest`). -/
+/-! The layers below LeanReact, at the revisions LeanReact itself pins: LeanDB, LeanAPI (its
+`LeanApi.Publication` is the application assembly this adapter hosts), leanontology, and
+LeanDB's `leansqlite`. `-K<name>=PATH` overrides one with a local source tree; never commit a
+manifest that records such a path. -/
 
 @[package_dep] def leandb : Dependency := {
   name := `leandb
@@ -33,7 +32,27 @@ must never record such a path (`npm run test:manifest`). -/
   opts := {}
   src? := some <| match get_config? leandb with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/LeanDB" (some "v0.4.0") none
+    | none => .git "https://github.com/theoriclabs/LeanDB" (some "d5253e5b0d83fc528927f340d1e50baab3e94999") none
+}
+
+@[package_dep] def leanapi : Dependency := {
+  name := `leanapi
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanapi with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanapi" (some "b66c2991fae8fbe55b5c77d14b0216016855c6c0") none
+}
+
+@[package_dep] def leanontology : Dependency := {
+  name := `leanontology
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanontology with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanontology" (some "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b") none
 }
 
 @[package_dep] def leanhttp : Dependency := {

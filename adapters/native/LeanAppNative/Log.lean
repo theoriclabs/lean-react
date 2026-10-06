@@ -1,11 +1,11 @@
-import LeanApp
+import LeanApi.Publication
 import LeanAppNative.Sha256
 import Std.Time
 
 /-! One JSON line per request (`v:1`). Never bodies, tokens, usernames or SQL: the principal
 appears only as a truncated SHA-256 of the actor id, and error messages only in verbose mode. -/
 namespace LeanAppNative.Log
-open LeanApp Contract
+open LeanApi.Publication Contract
 
 inductive Sink where
   | none

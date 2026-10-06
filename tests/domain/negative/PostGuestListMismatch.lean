@@ -1,7 +1,7 @@
 /- Changing `PartyPage.guests` to `GuestList` breaks a view written for `List Guest`. -/
-import tests.domain.PostPart1
+import TestsCore.PostPart1
 import LeanReact.Domain
-open LeanApp.Domain LeanReact
+open LeanDb.Model LeanApi.Core LeanReact
 
 def guestsView (guests : List Guest) : Element :=
   DOM.ul {} (guests.map fun g => DOM.li {} #[text g.name]).toArray

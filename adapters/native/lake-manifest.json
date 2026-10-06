@@ -1,27 +1,54 @@
-{"version": "1.2.0",
+{
+ "version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages":
- [{"url": "https://github.com/leanprover/leansqlite",
+ "packages": [
+  {
+   "type": "path",
+   "scope": "",
+   "name": "leanreact",
+   "manifestFile": "lake-manifest.json",
+   "inherited": false,
+   "dir": "../..",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/LeanDB",
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "0be4df908d1a8e75b58961041e2b4973692623df",
-   "name": "leansqlite",
+   "rev": "d5253e5b0d83fc528927f340d1e50baab3e94999",
+   "name": "leandb",
    "manifestFile": "lake-manifest.json",
-   "inputRev": "0be4df908d1a8e75b58961041e2b4973692623df",
+   "inputRev": "d5253e5b0d83fc528927f340d1e50baab3e94999",
    "inherited": false,
-   "configFile": "lakefile.lean"},
-  {"url": "https://github.com/theoriclabs/leanws",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leanapi",
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "40900ccb00e04186360ba0a235c560517b7ecb57",
-   "name": "leanws",
+   "rev": "b66c2991fae8fbe55b5c77d14b0216016855c6c0",
+   "name": "leanapi",
    "manifestFile": "lake-manifest.json",
-   "inputRev": "40900ccb00e04186360ba0a235c560517b7ecb57",
+   "inputRev": "b66c2991fae8fbe55b5c77d14b0216016855c6c0",
    "inherited": false,
-   "configFile": "lakefile.lean"},
-  {"url": "https://github.com/theoriclabs/leanhttp",
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leanontology",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b",
+   "name": "leanontology",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b",
+   "inherited": false,
+   "configFile": "lakefile.toml"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leanhttp",
    "type": "git",
    "subDir": null,
    "scope": "",
@@ -30,24 +57,46 @@
    "manifestFile": "lake-manifest.json",
    "inputRev": "v0.3.1",
    "inherited": false,
-   "configFile": "lakefile.lean"},
-  {"url": "https://github.com/theoriclabs/LeanDB",
+   "configFile": "lakefile.lean"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leanws",
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "65b7b9236ee11dce6f9cd6417e118cff6cbcedac",
-   "name": "leandb",
+   "rev": "40900ccb00e04186360ba0a235c560517b7ecb57",
+   "name": "leanws",
    "manifestFile": "lake-manifest.json",
-   "inputRev": "v0.4.0",
+   "inputRev": "40900ccb00e04186360ba0a235c560517b7ecb57",
    "inherited": false,
-   "configFile": "lakefile.toml"},
-  {"type": "path",
+   "configFile": "lakefile.lean"
+  },
+  {
+   "url": "https://github.com/leanprover/leansqlite",
+   "type": "git",
+   "subDir": null,
    "scope": "",
-   "name": "leanreact",
+   "rev": "0be4df908d1a8e75b58961041e2b4973692623df",
+   "name": "leansqlite",
    "manifestFile": "lake-manifest.json",
+   "inputRev": "0be4df908d1a8e75b58961041e2b4973692623df",
    "inherited": false,
-   "dir": "../..",
-   "configFile": "lakefile.toml"}],
+   "configFile": "lakefile.lean"
+  },
+  {
+   "url": "https://github.com/theoriclabs/leancrypto",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "a9c7adab037f4f42463ea1ec15c9fc1f6c8e23e8",
+   "name": "leancrypto",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "v0.1.0",
+   "inherited": true,
+   "configFile": "lakefile.lean"
+  }
+ ],
  "name": "leanapp_native",
  "lakeDir": ".lake",
- "fixedToolchain": false}
+ "fixedToolchain": false
+}

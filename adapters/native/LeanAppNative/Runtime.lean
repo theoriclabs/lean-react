@@ -134,6 +134,9 @@ private def mapRuntimeError : LeanDb.Runtime.RuntimeError → AdmissionError
   | .notReady _ => .draining
   | .reentrant => .host (IO.userError "withConnection called reentrantly from its own callback")
   | .gated e => .notVerified e
+  -- LeanDB's snapshot/restore states (after v0.4.0): this service never snapshots, so either is
+  -- a host fault reported with LeanDB's own message.
+  | e@.snapshotBusy | e@.snapshotAborted => .host (IO.userError e.message)
 
 /-- Admit public application data work and run `callback` on the writer, serialized. `α` may
 itself be an `Except ε β`, preserving the application's domain result independently of admission.

@@ -8,8 +8,8 @@ private instance : Inhabited ValidationError := ⟨{ code := "missing-test-error
 private def check (condition : Bool) (message : String) : IO Unit :=
   unless condition do throw <| IO.userError message
 
-private def titleParser : DraftParser String Title :=
-  DraftParser.ofExcept Title.parse Title.value fun error =>
+private def titleParser : DraftParser String Examples.Tickets.Title :=
+  DraftParser.ofExcept Examples.Tickets.Title.parse Examples.Tickets.Title.value fun error =>
     match error with
     | .empty => ValidationErrors.single "title.empty"
     | .tooLong length => ValidationErrors.single "title.tooLong" [] [("length", toString length)]
@@ -74,7 +74,7 @@ def main : IO Unit := do
   check ((errorsOf (titleParser.optional.parse (some ""))).length == 1) "present invalid optional accepted"
   let listErrors := errorsOf (titleParser.list.parse #["", "valid", ""])
   check (listErrors.length == 2 && listErrors[0]!.path == [.index 0] && listErrors[1]!.path == [.index 2]) "indexed list errors"
-  check ((match (titleParser.map Title.value Title.mk).parse "valid" with | .ok value => value == "valid" | _ => false)) "parser map"
+  check ((match (titleParser.map Examples.Tickets.Title.value Examples.Tickets.Title.mk).parse "valid" with | .ok value => value == "valid" | _ => false)) "parser map"
   let checked := titleParser.checked (fun title => if title.value == "reserved" then Validation.fail "reserved" else .ok title) id
   check ((errorsOf (checked.parse "reserved")).head!.code == "reserved") "dependent parser check"
 

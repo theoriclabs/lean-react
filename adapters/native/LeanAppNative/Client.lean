@@ -2,7 +2,7 @@ import LeanAppNative.Server
 import LeanHttp
 
 namespace LeanAppNative
-open LeanApp Contract Ontology
+open LeanApi.Publication Contract Ontology
 
 structure Client where
   private mk ::

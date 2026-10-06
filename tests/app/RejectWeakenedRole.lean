@@ -7,4 +7,4 @@ def main : IO Unit := do
   if failures.isEmpty then
     IO.println "PASS: weakened application passed the matrix (unexpected)"
   else
-    throw (IO.userError s!"acl.matrix_failed\n{LeanApp.Testing.report failures}")
+    throw (IO.userError s!"acl.matrix_failed\n{LeanApi.Publication.Testing.report failures}")

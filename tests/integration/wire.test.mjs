@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as domain from '../../examples/generated/domain.mjs';
 import { operations, decodeHttpReply, CallFailure } from '../../examples/adapters/tickets-client/operations.mjs';
-import { stringify, parseJson } from '../../engine/LeanContract/Fetch.mjs';
-import { nat, str } from '../../engine/LeanContract/Codecs.mjs';
+import { stringify, parseJson } from '../../../leanapi/LeanContract/Fetch.mjs';
+import { nat, str } from '../../../leanapi/LeanContract/Codecs.mjs';
 import { summaryFromLean, summaryToLean, createTicketsClient } from '../../examples/adapters/tickets-service.mjs';
 
 const seed = domain['Examples.Tickets.seed'].fields[0];

@@ -1,6 +1,6 @@
 import LeanAppNative.Client
 
-open LeanAppNative LeanApp Contract Ontology
+open LeanAppNative LeanApi.Publication Contract Ontology
 
 private def check (label : String) (condition : Bool) : IO Unit := do
   unless condition do throw (IO.userError s!"FAIL: {label}")

@@ -1,7 +1,7 @@
 import LeanAppNative.Auth.Http
 
 namespace LeanAppNative.Auth.Demo
-open LeanApp Contract Ontology LeanDb
+open LeanApi.Publication Contract Ontology LeanDb
 
 def base : Base := { name := "leanapp_auth_demo", tables := Auth.tables }
 

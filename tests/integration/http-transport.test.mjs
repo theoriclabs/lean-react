@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHttpClient, defineHttpOperation, decodeHttpReply, encodeNat, decodeNat, CallFailure } from '../../engine/LeanContract/Fetch.mjs';
+import { createHttpClient, defineHttpOperation, decodeHttpReply, encodeNat, decodeNat, CallFailure } from '../../../leanapi/LeanContract/Fetch.mjs';
 
 const identity = { namespace: 'independent.inventory', name: 'reserve', version: '7' };
 const operation = defineHttpOperation({

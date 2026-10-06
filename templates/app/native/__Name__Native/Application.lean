@@ -1,7 +1,7 @@
 import {{Name}}Native.Storage
 
 namespace {{Name}}Native
-open LeanApp Contract Ontology {{Name}}
+open LeanApi.Publication Contract Ontology {{Name}}
 
 inductive Read : Type → Type where
   | notes : Read (Array Note)

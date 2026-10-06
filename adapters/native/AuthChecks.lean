@@ -1,7 +1,7 @@
 import LeanAppNative.Auth.Demo
 import LeanDb.Migrate
 
-open LeanAppNative LeanAppNative.Auth LeanApp
+open LeanAppNative LeanAppNative.Auth LeanApi.Publication
 
 /-! The session table before LA-02, under the same table name, for the migration check. -/
 namespace Legacy
