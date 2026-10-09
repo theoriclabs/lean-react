@@ -85,13 +85,27 @@ def Browser.locate (browser : Browser) : IO System.FilePath := do
   throw (IO.userError s!"compiled browser bundle missing (looked for app.mjs in {candidates}); \
     build the app's browser target or set LEANREACT_BROWSER_DIR")
 
+/-- Application-owned HTML shell settings. Raw CSS and head HTML are trusted, not escaped. -/
+structure Shell where
+  title : Option String := none
+  style : Option String := none
+  /-- URLs under /assets, relative to the browser bundle directory. -/
+  stylesheets : List String := []
+  /-- Label and path pairs; none retains the static page paths, some [] omits the nav. -/
+  navigation : Option (List (String × String)) := none
+  head : String := ""
+
 /-- The HTML shell every page shares: title, the static page paths as navigation, the
 bootstrap data and the compiled browser entry. -/
-def html (title : String) (navigation : List String) (bootstrap : Lean.Json) : Res :=
+def html (title : String) (navigation : List String) (bootstrap : Lean.Json) (shell : Shell := {}) : Res :=
   let escape := fun (text : String) => ((text.replace "&" "&amp;").replace "<" "&lt;").replace "\"" "&quot;"
   let escaped := bootstrap.compress.replace "<" "\\u003c"
-  let links := String.join (navigation.map fun path => "<a href=\"" ++ escape path ++ "\">" ++ escape path ++ "</a>")
-  (Res.html ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" ++ escape title ++ "</title><style>body{font:16px system-ui;max-width:42rem;margin:3rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea,button{font:inherit;padding:.5rem}button{margin:.5rem}nav{display:flex;gap:1rem}[role=alert]{color:#a21}</style></head><body><nav>" ++ links ++ "</nav><main id=\"root\"></main><script type=\"application/json\" id=\"leanapp-bootstrap\">" ++ escaped ++ "</script><script type=\"module\" src=\"/assets/app.mjs\"></script></body></html>")).setHeader "cache-control" "private, no-store"
+  let links := String.join ((shell.navigation.getD (navigation.map fun path => (path, path))).map
+    fun (label, path) => "<a href=\"" ++ escape path ++ "\">" ++ escape label ++ "</a>")
+  let nav := if shell.navigation == some [] then "" else "<nav>" ++ links ++ "</nav>"
+  let stylesheets := String.join (shell.stylesheets.map fun path =>
+    "<link rel=\"stylesheet\" href=\"" ++ escape path ++ "\">")
+  (Res.html ("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>" ++ escape (shell.title.getD title) ++ "</title><style>" ++ shell.style.getD "body{font:16px system-ui;max-width:42rem;margin:3rem auto;padding:1rem}label{display:block;margin:1rem 0}input,select,textarea,button{font:inherit;padding:.5rem}button{margin:.5rem}nav{display:flex;gap:1rem}[role=alert]{color:#a21}" ++ "</style>" ++ stylesheets ++ shell.head ++ "</head><body>" ++ nav ++ "<main id=\"root\"></main><script type=\"application/json\" id=\"leanapp-bootstrap\">" ++ escaped ++ "</script><script type=\"module\" src=\"/assets/app.mjs\"></script></body></html>")).setHeader "cache-control" "private, no-store"
 
 /-- The compiled bundle, as a GET route. -/
 def asset (bundle : System.FilePath) : LeanApi.Native.PageRoute :=
@@ -99,13 +113,25 @@ def asset (bundle : System.FilePath) : LeanApi.Native.PageRoute :=
       return (Res.bytes (← IO.FS.readBinFile (bundle / "app.mjs")) "text/javascript; charset=utf-8").setHeader
         "cache-control" "private, no-store" }
 
+/-- Explicit stylesheet routes only; never expose arbitrary files outside the bundle. -/
+def stylesheetAssets (bundle : System.FilePath) (shell : Shell) : List LeanApi.Native.PageRoute :=
+  shell.stylesheets.map fun path =>
+    { path, handler := fun _ => do
+        let relative := path.drop 8 |>.toString
+        unless path.startsWith "/assets/" && relative.endsWith ".css" &&
+            (relative.splitOn "/").all (fun part => part != ".." && part != "." && !part.isEmpty) &&
+            !relative.contains '\\' do
+          return Res.text "not found" 404
+        return (Res.bytes (← IO.FS.readBinFile (bundle / relative)) "text/css; charset=utf-8").setHeader
+          "cache-control" "private, no-store" }
+
 private def navigation (browser : Browser) : List String :=
   browser.pages.filter fun path => !path.contains ':'
 
 /-- The page routes of an app with accounts: each page resolves the signed-in profile (the
 same session check as the api) and hydrates it, with the CSRF cookie's name. -/
 def accountPages {s Profile} [IsSchema s] [LeanDb.Model.Entity Profile] (browser : Browser)
-    (bundle : System.FilePath) (context : LeanApi.Native.Context s Profile) : List LeanApi.Native.PageRoute :=
+    (bundle : System.FilePath) (context : LeanApi.Native.Context s Profile) (shell : Shell := {}) : List LeanApi.Native.PageRoute :=
   let codecs := match Contract.Http.codecs with | .ok codecs => some codecs | .error _ => none
   let failed := fun (code : String) (status : Nat) => match codecs with
     | some codecs => frameworkReply codecs (fault (Error := Empty) code status)
@@ -121,14 +147,14 @@ def accountPages {s Profile} [IsSchema s] [LeanDb.Model.Entity Profile] (browser
       | none => Res.text "internal" 500
     | .ok (.ok (.ok (.ok actor))) =>
       let actor := actor.map (fun row => Wire.codec.encode row.id) |>.getD .null
-      return html browser.title (navigation browser) (.mkObj [("actor", actor), ("csrfCookie", .str context.cookies.csrfName)])
-  (browser.pages.map fun path => ({ path, handler := page } : LeanApi.Native.PageRoute)) ++ [asset bundle]
+      return html browser.title (navigation browser) (.mkObj [("actor", actor), ("csrfCookie", .str context.cookies.csrfName)]) shell
+  (browser.pages.map fun path => ({ path, handler := page } : LeanApi.Native.PageRoute)) ++ [asset bundle] ++ stylesheetAssets bundle shell
 
 /-- The page routes of an app with no accounts. -/
-def publicPages (browser : Browser) (bundle : System.FilePath) : List LeanApi.Native.PageRoute :=
+def publicPages (browser : Browser) (bundle : System.FilePath) (shell : Shell := {}) : List LeanApi.Native.PageRoute :=
   let page : Req → IO Res := fun _ =>
-    return html browser.title (navigation browser) (.mkObj [("actor", .null), ("csrfCookie", .str "")])
-  (browser.pages.map fun path => ({ path, handler := page } : LeanApi.Native.PageRoute)) ++ [asset bundle]
+    return html browser.title (navigation browser) (.mkObj [("actor", .null), ("csrfCookie", .str "")]) shell
+  (browser.pages.map fun path => ({ path, handler := page } : LeanApi.Native.PageRoute)) ++ [asset bundle] ++ stylesheetAssets bundle shell
 
 /-- A full-stack app with accounts: LeanAPI's native app and the browser side. -/
 structure AccountsApp (s Profile : Type) [IsSchema s] [LeanDb.Model.Entity Profile] : Type 1 where
@@ -149,20 +175,20 @@ def emitBrowser (client : System.FilePath → IO Unit) (browser : Browser)
 /-- The executable: `LEANAPP_EMIT_CLIENT` emits the browser's client files; `migrate --check` /
 `migrate`; otherwise the startup gate, then the api and the pages. -/
 def AccountsApp.main {s Profile} [IsSchema s] [LeanDb.Model.Entity Profile]
-    (app : AccountsApp s Profile) (args : List String) (config : AppConfig := {}) : IO UInt32 :=
+    (app : AccountsApp s Profile) (args : List String) (config : AppConfig := {}) (shell : Shell := {}) : IO UInt32 :=
   runApp s app.native.migrations (emitBrowser app.native.emitClient app.browser app.native.authOperations)
     (fun config => do
       let bundle ← app.browser.locate
-      let native := { app.native with pages := accountPages app.browser bundle }
+      let native := { app.native with pages := accountPages app.browser bundle (shell := shell) }
       native.withService config fun _ service => LeanApi.serve service { host := config.host, port := config.port })
     args config
 
 def PublicPagesApp.main {s} [IsSchema s] (app : PublicPagesApp s) (args : List String)
-    (config : AppConfig := {}) : IO UInt32 :=
+    (config : AppConfig := {}) (shell : Shell := {}) : IO UInt32 :=
   runApp s app.native.migrations (emitBrowser app.native.emitClient app.browser [])
     (fun config => do
       let bundle ← app.browser.locate
-      let native := { app.native with pages := publicPages app.browser bundle }
+      let native := { app.native with pages := publicPages app.browser bundle shell }
       native.withService config fun service => LeanApi.serve service { host := config.host, port := config.port })
     args config
 
