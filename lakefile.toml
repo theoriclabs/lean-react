@@ -5,7 +5,7 @@
 # leanontology revisions.
 name = "leanreact"
 version = "0.3.0"
-defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer"]
+defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer", "AssistantUI"]
 
 [[require]]
 name = "leanontology"
@@ -52,6 +52,12 @@ roots = ["LeanReact.Server"]
 name = "LeanJS"
 srcDir = "engine"
 needs = ["leanJsRuntime"]
+
+# assistant-ui in Lean (portable): a typed chat thread over the assistant-ui React primitives.
+# The host side is adapters/assistant-ui/index.mjs; see adapters/assistant-ui/README.md.
+[[lean_lib]]
+name = "AssistantUI"
+srcDir = "adapters/assistant-ui"
 
 [[lean_lib]]
 name = "Examples"

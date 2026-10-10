@@ -11,3 +11,4 @@ import Examples.Feedback
 import Examples.Sparkline
 import Examples.Routing
 import Examples.Tickets.Client
+import Examples.Chat

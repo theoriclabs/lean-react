@@ -53,7 +53,7 @@ if (process.argv.includes('--watch')) {
       if (pending) { pending = false; void rebuild(); }
     }
   };
-  for (const dir of ['engine', 'examples']) {
+  for (const dir of ['engine', 'examples', 'adapters/assistant-ui']) {
     const path = resolve(projectRoot, dir);
     try { if (!(await stat(path)).isDirectory()) continue; } catch { continue; }
     watch(path, { recursive: true }, (_event, filename) => {

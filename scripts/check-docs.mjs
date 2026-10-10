@@ -16,6 +16,7 @@ const documents = [
   'docs/AUTH.md', 'docs/HOSTING.md', 'docs/RELEASE.md',
   'docs/AUTHORIZATION_DEMO.md',
   'docs/PRIVATE_NOTES.md', 'deploy/notes/README.md',
+  'adapters/assistant-ui/README.md',
   'docs/whatbugs_can_we_prevent/checkout_state_explosion.md',
 ];
 // `<!-- lean-check: name -->` snippets must compile.

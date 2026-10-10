@@ -6,6 +6,7 @@ import Examples.Showcase
 import Examples.Feedback
 import Examples.Sparkline
 import Examples.Routing
+import Examples.Chat
 
 run_meta do
   IO.FS.createDirAll "examples/generated"
@@ -17,7 +18,9 @@ run_meta do
     `Examples.Feedback.App,
     `Examples.Sparkline.Demo, `Examples.Sparkline.DemoProps.mk, `Examples.Sparkline.SparklineOps.mk,
     `Examples.Sparkline.SparklineOps.silent,
-    `Examples.Routing.App, `Examples.Routing.codec, `LeanReact.Query.parse, `LeanReact.Query.encode]
+    `Examples.Routing.App, `Examples.Routing.codec, `LeanReact.Query.parse, `LeanReact.Query.encode,
+    `Examples.Chat.Demo, `Examples.Chat.DemoProps.mk, `Examples.Chat.transcript,
+    `AssistantUI.ThreadOps.silent, `AssistantUI.Message.ofTranscript]
     { Examples.reactOptions with intrinsics := Examples.reactIntrinsics ++ #[{
         leanName := `Examples.Composition.instTypeNameFormatter
         module := Examples.reactModule

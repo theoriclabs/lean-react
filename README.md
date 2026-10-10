@@ -114,6 +114,8 @@ Use regular CSS files and `className` props. JavaScript and TypeScript can consu
 
 Existing React libraries need an explicit binding between their props and Lean. There is a working foreign-component example in the [interop guide](docs/HOW_TO.md#existing-react-components-including-shadcn). shadcn and Tailwind are not configured out of the box.
 
+For chat interfaces, [assistant-ui for Lean](adapters/assistant-ui/README.md) is such a binding, packaged: a typed thread over the assistant-ui primitives, with a transcript fold in Lean. The thread UI itself is [assistant-ui](https://github.com/assistant-ui/assistant-ui), MIT licensed, by AgentbaseAI Inc.
+
 ## Run locally
 
 You’ll need Git, Node 22.13 or newer, and [elan, the Lean version manager](https://github.com/leanprover/elan#installation). Think of elan like nvm: it installs the Lean version this project selects. Follow its installation instructions for your OS, then open a new terminal.

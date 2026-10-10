@@ -84,7 +84,7 @@ Shared domain definitions, called *ontologies* in this project, describe applica
 
 Use regular CSS files and `className` props. JavaScript and TypeScript can consume the generated components too.
 
-Existing React libraries need an explicit binding between their props and Lean. There’s a working foreign-component example in the [interop guide](HOW_TO.md#existing-react-components-including-shadcn). shadcn and Tailwind aren’t configured out of the box.
+Existing React libraries need an explicit binding between their props and Lean. There’s a working foreign-component example in the [interop guide](HOW_TO.md#existing-react-components-including-shadcn). shadcn and Tailwind aren’t configured out of the box. For chat interfaces, [assistant-ui for Lean](../adapters/assistant-ui/README.md) packages such a binding: a typed thread over the assistant-ui primitives.
 
 ## What to expect from v0.1
 

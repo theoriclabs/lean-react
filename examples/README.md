@@ -29,7 +29,7 @@ npm run example:consumer
 
 `lake build Examples` builds the Lean example library explicitly. Its source root is `examples/lean`, so module imports retain the `Examples.*` namespace without a filesystem case collision. The browser generators write to `examples/generated/`; the bundler writes to `examples/dist/`.
 
-The default page is the showcase with a live Lean counter and the Tickets playground. `/?example=collections#playground` runs the Lean collection editor with nested field validation; `/?example=libraries#playground` runs a provider and consumer emitted into separate libraries that import one shared context. Source excerpts are bundled directly from the corresponding Lean files. See the [composition guide](../docs/COMPOSABILITY.md) and [generator](lean/Examples/GenerateComposability.lean).
+The default page is the showcase with a live Lean counter and the Tickets playground. `/?example=collections#playground` runs the Lean collection editor with nested field validation; `/?example=libraries#playground` runs a provider and consumer emitted into separate libraries that import one shared context; `/?example=chat#playground` renders a chat thread through [assistant-ui for Lean](../adapters/assistant-ui/README.md). Source excerpts are bundled directly from the corresponding Lean files. See the [composition guide](../docs/COMPOSABILITY.md) and [generator](lean/Examples/GenerateComposability.lean).
 
 `npm run screenshots` builds the website and captures actual browser interactions for the README. Desktop images go in `docs/images/`; mobile inspection output stays under ignored `.verification/showcase/`. It uses the existing Playwright dependency and introduces no additional tooling language or package.
 

@@ -45,6 +45,7 @@ export async function buildExample({ compile = true } = {}) {
   await copyFile(resolve(projectRoot, 'examples/web/index.html'), resolve(projectRoot, 'examples/dist/index.html'));
   await copyFile(resolve(projectRoot, 'examples/web/style.css'), resolve(projectRoot, 'examples/dist/style.css'));
   await copyFile(resolve(projectRoot, 'examples/web/favicon.svg'), resolve(projectRoot, 'examples/dist/favicon.svg'));
+  await copyFile(resolve(projectRoot, 'adapters/assistant-ui/thread.css'), resolve(projectRoot, 'examples/dist/thread.css'));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

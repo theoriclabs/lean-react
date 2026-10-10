@@ -1,0 +1,24 @@
+{
+  "name": "assistant-ui-lean",
+  "version": "0.1.0",
+  "description": "assistant-ui for Lean: a typed chat thread (LeanReact foreign component) over the assistant-ui React primitives",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/theoriclabs/lean-react.git",
+    "directory": "adapters/assistant-ui"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./index.mjs",
+    "./thread.css": "./thread.css"
+  },
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "0.15.26"
+  }
+}

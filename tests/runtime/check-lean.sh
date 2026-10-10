@@ -5,7 +5,7 @@ build_dir="$PWD/tests/runtime/lean-build"
 mkdir -p "$build_dir"
 # LeanReact core and the Tickets example domain; LeanOntology and LeanContract come from the
 # required packages (leanontology, leanapi).
-lake build LeanReact Examples.Tickets.Domain
+lake build LeanReact AssistantUI Examples.Tickets.Domain
 export LEAN_PATH="$(lake env printenv LEAN_PATH)"
 if ! lean tests/runtime/Probe.lean > "$build_dir/typechecks.log" 2>&1; then
   cat "$build_dir/typechecks.log"
@@ -17,6 +17,7 @@ lean --run tests/runtime/Reference.lean
 lean --run tests/runtime/Router.lean
 lean --run tests/runtime/Forms.lean
 lean --run tests/runtime/Resources.lean
+lean --run tests/runtime/AssistantUI.lean
 if ! lean tests/runtime/P06Types.lean > "$build_dir/p06-typechecks.log" 2>&1; then
   cat "$build_dir/p06-typechecks.log"
   exit 1

@@ -1,0 +1,91 @@
+/* assistant-ui for Lean: a small default look for the unstyled primitives. Every colour and size
+   is read through a CSS variable with a fallback, so an application sets `--aui-*` tokens on an
+   ancestor instead of overriding rules. (The tokens are never defined here: defining `--aui-ink`
+   as `var(--aui-ink, …)` on the same element would be a cycle and invalidate it.) */
+.aui-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--aui-ink, #25332b);
+  background: var(--aui-paper, #fffef9);
+  border: 1px solid var(--aui-line, #dce1d4);
+  border-radius: var(--aui-radius, 0.75rem);
+}
+.aui-thread-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--aui-gap, 0.75rem);
+  padding: var(--aui-gap, 0.75rem);
+}
+.aui-empty, .aui-tool-pending { color: var(--aui-muted, #70776e); margin: 0; }
+.aui-load-earlier { align-self: center; }
+.aui-message {
+  max-width: 48rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--aui-radius, 0.75rem);
+  border: 1px solid transparent;
+}
+.aui-message[data-role="user"] { align-self: flex-end; background: var(--aui-user, #edf1e4); }
+.aui-message[data-role="assistant"] { align-self: flex-start; border-color: var(--aui-line, #dce1d4); }
+.aui-message[data-role="system"] { align-self: center; color: var(--aui-muted, #70776e); font-size: 0.9em; }
+.aui-text, .aui-reasoning { margin: 0.25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.aui-reasoning { color: var(--aui-muted, #70776e); font-style: italic; }
+.aui-image { display: block; max-width: 100%; height: auto; margin: 0.4rem 0; border: 1px solid var(--aui-line, #dce1d4); border-radius: calc(var(--aui-radius, 0.75rem) / 2); }
+.aui-tool-call {
+  margin: 0.4rem 0;
+  padding: 0.3rem 0.6rem;
+  border: 1px dashed var(--aui-line, #dce1d4);
+  border-radius: calc(var(--aui-radius, 0.75rem) / 2);
+}
+.aui-tool-head { display: flex; gap: 0.6rem; align-items: baseline; min-width: 0; cursor: pointer; }
+.aui-tool-name { flex: none; font-family: var(--aui-mono, "SFMono-Regular", Consolas, "Liberation Mono", monospace); font-size: 0.9em; }
+.aui-tool-summary {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--aui-muted, #70776e); font-family: var(--aui-mono, "SFMono-Regular", Consolas, "Liberation Mono", monospace); font-size: 0.8em;
+}
+.aui-tool-field { margin: 0.3rem 0; }
+.aui-tool-key { display: block; font-size: 0.7em; letter-spacing: 0.06em; text-transform: uppercase; color: var(--aui-muted, #70776e); }
+.aui-tool-value, .aui-tool-arguments, .aui-tool-result {
+  margin: 0.3rem 0;
+  padding: 0.4rem 0.6rem;
+  font-family: var(--aui-mono, "SFMono-Regular", Consolas, "Liberation Mono", monospace);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--aui-user, #edf1e4);
+  border-radius: calc(var(--aui-radius, 0.75rem) / 2);
+}
+.aui-tool-error { color: var(--aui-error, #8a2f2f); }
+.aui-composer {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: var(--aui-gap, 0.75rem);
+  border-top: 1px solid var(--aui-line, #dce1d4);
+}
+.aui-composer-input {
+  flex: 1 1 auto;
+  min-height: 2.5rem;
+  max-height: 12rem;
+  resize: none;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  color: inherit;
+  background: var(--aui-paper, #fffef9);
+  border: 1px solid var(--aui-line, #dce1d4);
+  border-radius: calc(var(--aui-radius, 0.75rem) / 1.5);
+}
+.aui-composer-send, .aui-composer-cancel {
+  padding: 0.5rem 1rem;
+  font: inherit;
+  color: var(--aui-paper, #fffef9);
+  background: var(--aui-accent, #24583e);
+  border: 0;
+  border-radius: calc(var(--aui-radius, 0.75rem) / 1.5);
+  cursor: pointer;
+}
+.aui-composer-send:disabled { opacity: 0.5; cursor: default; }
+.aui-composer-cancel { background: var(--aui-error, #8a2f2f); }

@@ -22,6 +22,7 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Call a foreign React component | A named intrinsic with a typed Lean reference, callback, and child element | Generated-component integration tests |
 | Build a form from typed controls | `DOM.form`, `textarea`, `select`, blur validation, paste snapshots, `KeyOutcome` | Generated-component integration, reference and browser tests |
 | Drive an imperative JavaScript widget | `foreign`, `Handle`, `HandleResult`, a `useCell`-held handle, `registerForeign` | Generated-component integration, reference and browser tests |
+| Render a chat thread with assistant-ui | `AssistantUI.thread`, `threadWithHandle`, `Message.ofTranscript`, the `adapters/assistant-ui` host adapter | Native checks (`tests/runtime/AssistantUI.lean`) and jsdom integration (`tests/integration/assistant-ui.test.mjs`) |
 | Route between screens | A `Route` type with a `RouteCodec`, `routerProvider`, `useRoute`, `Router.link` | Generated-component integration, reference and browser tests |
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |

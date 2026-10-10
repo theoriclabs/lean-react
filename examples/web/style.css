@@ -109,6 +109,7 @@ h3 { font-size: 16px; font-weight: 580; letter-spacing: -.3px; margin: 9px 0; }
 .example-surface button.primary, .example-surface button[aria-pressed="true"] { background: var(--green); color: white; border-color: var(--green); }
 .panel { background: #fffef9; border: 1px solid var(--line); border-radius: 7px; padding: 23px; margin-bottom: 16px; }
 .panel:last-child { margin-bottom: 0; }
+.chat-demo .aui-thread { max-height: 34rem; margin-bottom: 16px; }
 .toolbar, .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 15px 0 20px; }
 input, textarea, select { padding: 10px 12px; background: #fffefb; color: var(--ink); border: 1px solid #ccd7c2; border-radius: 5px; font-size: 13px; min-width: 0; }
 input[type="text"], textarea { width: 100%; }

@@ -32,6 +32,7 @@ lean-react repository
 │   ├── adapters/         generated Lean values ↔ React
 │   └── browser/          the browser entry of an app% application
 ├── adapters/native/      optional LeanDB/HTTP/auth integration (leanapp_native)
+├── adapters/assistant-ui/ assistant-ui for Lean: a typed chat thread
 ├── examples/             application models, UIs and application-specific adapters
 ├── templates/app/        the scaffold for a new application
 ├── tests/                portable, native and browser checks

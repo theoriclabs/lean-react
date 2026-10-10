@@ -32,6 +32,7 @@ Read only the example and reference relevant to the task:
 - Shared contexts and separate compiled libraries: [library generator](examples/lean/Examples/GenerateComposability.lean), [linking guide](docs/COMPOSABILITY.md).
 - Shared domain rules, IDs, and operations: [Tickets domain](examples/lean/Examples/Tickets/Domain.lean), [contracts](examples/lean/Examples/Tickets/Contracts.lean), [ontology source](https://github.com/theoriclabs/leanontology/blob/322a4c12631dd8ece6ae9841a5e6b630d08d1e3b/LeanOntology.lean).
 - A foreign React component or a TS consumer: [Lean binding](examples/lean/Examples/Foreign.lean), [host adapter](examples/adapters/example-foreign.mjs), [TS consumer](examples/consumer/typescript.tsx). An imperative widget with a typed handle: [Sparkline.lean](examples/lean/Examples/Sparkline.lean), [example-sparkline.mjs](examples/adapters/example-sparkline.mjs).
+- A chat thread or a transcript UI: [assistant-ui for Lean](adapters/assistant-ui/README.md) (`AssistantUI.thread`, `Message.ofTranscript`), example [Chat.lean](examples/lean/Examples/Chat.lean), host adapter [adapters/assistant-ui/index.mjs](adapters/assistant-ui/index.mjs).
 - Runtime/ABI or unsupported compiler dependencies: [compiler](engine/LeanJS/Compiler.lean), [ABI](engine/LeanJS/ABI.md), [implemented scope](docs/IMPLEMENTED.md).
 - Optional LeanDB/LeanHttp integration: [native guide](docs/NATIVE.md). Lake fetches these dependencies from pinned Git revisions on the first build; no sibling checkouts are needed.
 

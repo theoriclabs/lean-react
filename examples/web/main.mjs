@@ -10,9 +10,11 @@ import collectionsSource from '../lean/Examples/Collections.lean';
 import librariesSource from '../lean/Examples/Libraries/App.lean';
 import feedbackSource from '../lean/Examples/Feedback.lean';
 import sparklineSource from '../lean/Examples/Sparkline.lean';
+import chatSource from '../lean/Examples/Chat.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
 import { createTicketsService, createTicketsLoader } from '../adapters/tickets-service.mjs';
 import '../adapters/example-sparkline.mjs';
+import '../../adapters/assistant-ui/index.mjs';
 
 const parameters = new URLSearchParams(location.search);
 const remote = parameters.get('service') === 'native';
@@ -41,6 +43,11 @@ const examples = {
     description: 'Draw on a plain JavaScript canvas widget through a typed handle. Unmount it and draw again: the handle answers with a typed result instead of touching a dead node.',
     file: 'Sparkline.lean', source: sparklineSource,
     start: 'structure SparklineOps', end: 'def series',
+  },
+  chat: {
+    description: 'A chat thread rendered by assistant-ui. Lean folds the transcript, appends each turn and decides what the composer may do; send a message, stop the turn, or draft a reply through the typed handle.',
+    file: 'Chat.lean', source: chatSource,
+    start: 'def transcript', end: 'structure DemoProps',
   },
 };
 const requestedExample = parameters.get('example');
@@ -109,7 +116,9 @@ const element = example === 'collections' ? mountElement(collections['Examples.C
   : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
   : example === 'forms' ? mountElement(smoke['Examples.Feedback.App'])
   : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
-    ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']])) : remote
+    ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']]))
+  : example === 'chat' ? mountElement(smoke['Examples.Chat.Demo'],
+    ctor('Examples.Chat.DemoProps.mk', [smoke['AssistantUI.ThreadOps.silent']])) : remote
   ? mountElement(tickets['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [
     'native-tickets', createTicketsService(), createTicketsLoader(),
   ]))

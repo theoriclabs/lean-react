@@ -384,6 +384,10 @@ Props and callbacks are enough when the component is a function of its inputs. E
 
 The maintained example is a `<canvas>` sparkline with `draw(points)` and `clear`: [Sparkline.lean](../examples/lean/Examples/Sparkline.lean), [example-sparkline.mjs](../examples/adapters/example-sparkline.mjs), tested in `tests/integration/handles.test.mjs`, `tests/runtime/Reference.lean`, and `tests/browser/handles.spec.mjs`.
 
+#### A chat thread with assistant-ui
+
+The same protocol carries a whole component library. [assistant-ui for Lean](../adapters/assistant-ui/README.md) is a packaged binding: `AssistantUI.thread props` renders a chat thread through [assistant-ui](https://github.com/assistant-ui/assistant-ui), with the messages, the running flag and the composer's actions as Lean values, `Message.ofTranscript` folding a flat transcript into messages in Lean, and `threadWithHandle` for a typed `setDraft`/`submit`/`focus` handle. [Chat.lean](../examples/lean/Examples/Chat.lean) is the playground example.
+
 A shadcn component would use the same binding pattern, plus its actual CSS/theme setup. shadcn is not installed or qualified here. A simple Button needs a much smaller contract than a Dialog with refs, portals, focus management, or `asChild`. Implement and test those capabilities explicitly for the component you choose. The Lean DOM API supplies typed click/change/input/paste/focus/blur/key/mouse/scroll/submit snapshots and typed handles for foreign components; it does not provide refs on ordinary DOM elements or arbitrary browser events.
 
 ### JavaScript and TypeScript consumers
