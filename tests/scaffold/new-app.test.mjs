@@ -48,8 +48,11 @@ test('new-app scaffolds a complete, substituted project', { timeout: 120000 }, a
   const head = await run('git', ['describe', '--tags', '--exact-match', 'HEAD'], { cwd: root })
     .then(r => r.stdout.trim(), () => run('git', ['rev-parse', 'HEAD'], { cwd: root }).then(r => r.stdout.trim()));
   assert.ok(lakefile.includes(`.git "https://github.com/theoriclabs/lean-react" (some "${head}") none`), `lean-react pinned to ${head}`);
-  for (const pin of ['theoriclabs/LeanDB" (some "v0.4.0")', 'theoriclabs/leanhttp" (some "v0.3.1")', 'theoriclabs/leanws" (some "40900ccb', 'leanprover/leansqlite" (some "0be4df90'])
-    assert.ok(lakefile.includes(pin), `native pin present: ${pin}`);
+  // The other pins are whatever the template pins today (check-manifests keeps those consistent).
+  const template = await readFile(resolve(root, 'templates/app/native/lakefile.lean'), 'utf8');
+  const pins = [...template.matchAll(/\.git "([^"]+)" \(some "([^"]+)"\)/g)].filter(([, url]) => !url.includes('{{'));
+  assert.ok(pins.length >= 4, 'the template pins its native dependencies');
+  for (const [pin] of pins) assert.ok(lakefile.includes(pin), `native pin present: ${pin}`);
   assert.ok((await readFile(join(dir, 'DemoNotes/Contracts.lean'), 'utf8')).includes('def packageId := "demo"'));
   // web/main.mjs is JSX for esbuild; every Node-executed script must parse as plain ESM.
   for (const file of files.filter(f => f.endsWith('.mjs') && !relative(dir, f).startsWith('web/'))) await run('node', ['--check', file]);
