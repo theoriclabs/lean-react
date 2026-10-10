@@ -1,6 +1,6 @@
 {
-  "name": "leanapp-workspace",
-  "description": "LeanApp monorepo: domain-first full-stack applications, LeanReact and the LeanJS compiler",
+  "name": "leanreact-workspace",
+  "description": "LeanReact monorepo: React components in Lean, the LeanJS compiler, and full-stack serving over LeanAPI",
   "version": "0.2.0-rc.1",
   "private": true,
   "license": "MIT",

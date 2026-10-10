@@ -1,4 +1,4 @@
-# LeanApp documentation
+# LeanReact documentation
 
 [LeanReact](../README.md) · [Live café](https://proof-and-pour-production.up.railway.app) · [Private Notes](https://private-notes-production.up.railway.app) · [Release evidence](RELEASE.md)
 
@@ -20,9 +20,9 @@ Start with the task you want to do. The café runs a shared Lean domain model on
 
 | Area | Reference |
 | --- | --- |
-| Application assembly and capabilities | [Interface contract](FULLSTACK_INTERFACES.md), [binding source](../../leanapi/LeanApi/Publication/Binding.lean), [executable assembly fixture](../tests/app/Main.lean) |
-| Identity, validation and codecs | [LeanOntology API](../../leanontology/LeanOntology/API.md) |
-| Typed operations and transport | [LeanContract operations](../../leanapi/LeanContract/Operation.lean), [HTTP protocol](../../leanapi/LeanContract/Http.lean) |
+| Application assembly and capabilities | [Interface contract](FULLSTACK_INTERFACES.md), [binding source](https://github.com/theoriclabs/leanapi/blob/b66c2991fae8fbe55b5c77d14b0216016855c6c0/LeanApi/Publication/Binding.lean), [executable assembly fixture](../tests/app/Main.lean) |
+| Identity, validation and codecs | [LeanOntology API](https://github.com/theoriclabs/leanontology/blob/322a4c12631dd8ece6ae9841a5e6b630d08d1e3b/LeanOntology/API.md) |
+| Typed operations and transport | [LeanContract operations](https://github.com/theoriclabs/leanapi/blob/b66c2991fae8fbe55b5c77d14b0216016855c6c0/LeanContract/Operation.lean), [HTTP protocol](https://github.com/theoriclabs/leanapi/blob/b66c2991fae8fbe55b5c77d14b0216016855c6c0/LeanContract/Http.lean) |
 | React authoring | [LeanReact API](../engine/LeanReact/API.md), [composition guide](COMPOSABILITY.md) |
 | Generated JavaScript representations | [LeanJS ABI](../engine/LeanJS/ABI.md) |
 | Reusable implementation and example locations | [Engine map](../engine/README.md), [examples map](../examples/README.md) |
@@ -34,4 +34,4 @@ The Tickets server is an unauthenticated local fixture. Use the café's auth/hos
 
 [Release evidence](RELEASE.md) records the hosted image, tests and known limits. [Frontend implementation](IMPLEMENTED.md) covers LeanReact and its compiler/runtime integrations, not the whole framework.
 
-This repository is now the LeanApp monorepo. Its GitHub URL and the compatible Lake package name remain `lean-react` and `leanreact`, respectively. Public product naming does not change module imports or the exact wire identities of existing applications. [Architecture](ARCHITECTURE.md#names-and-compatibility) records that decision.
+This repository is LeanReact, the UI layer. The application layer that lived here as LeanApp until 2026-10-05 is now the leanontology, LeanDB and LeanAPI packages, required at pinned revisions. The GitHub URL and the Lake package name remain `lean-react` and `leanreact`, and the wire identities of existing applications are unchanged. [Architecture](ARCHITECTURE.md#names-and-compatibility) records the split.

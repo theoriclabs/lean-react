@@ -1,48 +1,51 @@
-# LeanApp architecture
+# Architecture
 
 [Documentation](README.md) · [Domain modeling](DOMAIN_MODELING.md) · [Interface contract](FULLSTACK_INTERFACES.md)
 
-The domain model owns application meaning. React presents it, storage persists selected representations, and HTTP carries approved operations. LeanApp assembles those pieces without requiring domain types to inherit from a framework class or mirror a database table.
+The domain model owns application meaning. React presents it, storage persists selected representations, and HTTP carries approved operations. LeanAPI assembles those pieces without requiring domain types to inherit from a framework class or mirror a database table.
 
 ## Names and compatibility
 
-LeanApp is the product and framework developed in this monorepo. LeanReact is its frontend library, and LeanJS is its compiler for the supported Lean-to-JavaScript subset. LeanDB and LeanHttp remain independent libraries maintained outside this repository.
+LeanReact is the UI layer of a stack of packages on one Lean toolchain: leanontology (scalars and wire codecs), LeanDB (`LeanDb.Model`, native storage), LeanAPI (`LeanApi.Core` operations and endpoints, `LeanContract`, native serving) and this repository (LeanReact, `LeanReact.Domain`, `LeanReact.Server`, LeanJS). Until 2026-10-05 the application layer lived here under the name LeanApp (`engine/LeanApp`, `engine/LeanOntology`, `engine/LeanContract`); milestone 3 moved it into those packages, and `LeanApi.Publication` is the former `LeanApp` assembly. No module named `LeanApp` remains.
 
 | Name | Meaning and compatibility decision |
 | --- | --- |
-| LeanApp | Overall framework/product; portable module namespace `LeanApp`. |
-| LeanReact | Frontend library; `import LeanReact` and `LeanReact.Compiler` remain unchanged. |
-| LeanJS | Compiler and generated-value ABI; `import LeanJS` remains unchanged. |
-| `leanapp-workspace` | Private root npm workspace, with shared dependencies and development commands. It is not an installable framework release. |
-| `leanreact` | Existing root Lake package name. Retained so native requirements and `-Kleanreact=PATH` keep working. |
-| `theoriclabs/lean-react` | Existing GitHub repository URL. No second repository or remote rename is needed for this transition. |
+| LeanReact | The UI library; `import LeanReact` and `LeanReact.Compiler` are unchanged. `LeanReact.Domain` and `LeanReact.Server` are its bridges to LeanAPI. |
+| LeanJS | Compiler and generated-value ABI; `import LeanJS` is unchanged. |
+| `leanreact-workspace` | Private root npm workspace, with shared dependencies and development commands. It is not an installable framework release. |
+| `leanreact` | Root Lake package name. Retained so requirements and `-Kleanreact=PATH` keep working. |
+| `theoriclabs/lean-react` | Existing GitHub repository URL. |
+| LeanApp | The former name of the application layer. It survives in the native adapter package (`leanapp_native`, `LeanAppNative`), the `LEANAPP_*` environment variables and the `@leanapp/engine` bundler alias of scaffolded apps, which are compatibility surfaces of existing applications; renaming them is a versioned change, not branding work. |
 
-Wire namespaces such as `leanreact.tickets`, ABI identifiers and existing source paths are compatibility surfaces. Do not mechanically replace them with `leanapp`. Renaming a public protocol is a versioned protocol change, not branding work.
+Wire namespaces such as `leanreact.tickets`, ABI identifiers and existing source paths are compatibility surfaces too. Renaming a public protocol is a versioned protocol change.
 
 The libraries share a checkout and coordinated tests while their interfaces evolve. A monorepo does not mean every consumer must import or build every library. It also does not mean each module already has an independently published package.
 
 ## Source boundaries
 
 ```text
-LeanApp repository
+lean-react repository
 ├── engine/
-│   ├── LeanApp/          application assembly, policies, capabilities
-│   ├── LeanOntology/     identities, validation, descriptions, codecs
-│   ├── LeanContract/     typed operations and shared transports
-│   ├── LeanReact/        components, hooks, forms
+│   ├── LeanReact/        components, hooks, forms, resources, router; Domain/ and Server/ bridge to LeanAPI
 │   ├── LeanJS/           compiler and generated ABI
 │   ├── runtime/          JavaScript React/action/resource runtime
-│   └── adapters/         generated Lean values ↔ React
-├── adapters/native/     optional LeanDB/HTTP/auth integration
-├── examples/            application models, UIs and application-specific adapters
-├── tests/               portable, native and browser checks
-├── scripts/             shared build/test/packaging commands
-└── deploy/cafe/          café container
+│   ├── adapters/         generated Lean values ↔ React
+│   └── browser/          the browser entry of an app% application
+├── adapters/native/      optional LeanDB/HTTP/auth integration (leanapp_native)
+├── examples/             application models, UIs and application-specific adapters
+├── templates/app/        the scaffold for a new application
+├── tests/                portable, native and browser checks
+├── scripts/              shared build/test/packaging commands
+└── deploy/               container builds
 
-Independent dependencies
-├── LeanDB               typed SQLite persistence and instance runtime
-├── LeanHttp             outbound native HTTP over libcurl
-└── LeanSQLite           SQLite binding used by native storage
+Required packages, pinned by revision in lakefile.toml
+├── leanontology          scalars, identities, validation, wire codecs
+├── LeanDB                LeanDb.Model, typed SQLite persistence (leansqlite)
+└── LeanAPI               LeanApi.Core, LeanContract, LeanApi.Publication, native serving (leancrypto)
+
+Native adapter extras
+├── leanhttp              outbound native HTTP
+└── leanws                WebSocket serving
 ```
 
 Reusable engine modules do not import example applications. The root portable build does not depend on native SQLite or OpenSSL. The optional native Lake package depends on the portable package and independent native libraries. Domain-specific recipe code is an example integration, even where the current native build keeps it under `LeanAppNative.Cafe`.
@@ -51,7 +54,7 @@ The source snapshot for deployment copies an allowlisted subset of independent d
 
 ## Typed operations become explicit exports
 
-`Contract.Operation kind Input Output Error` retains the operation's input, output, error and execution kind. A `LeanApp.Binding` adds a policy and handler, plus an HTTP binding. The policy has no implicit allow-all default.
+`Contract.Operation kind Input Output Error` retains the operation's input, output, error and execution kind. A `LeanApi.Publication.Binding` adds a policy and handler, plus an HTTP binding. The policy has no implicit allow-all default.
 
 Query handlers receive `ReadCapability`; command handlers receive `CommandCapability`, which adds writes. The selected operation families define what those capabilities mean. Their interpreters are trusted host code: a read interpreter must actually be read-only. A command capability does not automatically wrap a transaction around arbitrary handler code.
 
@@ -59,7 +62,7 @@ Query handlers receive `ReadCapability`; command handlers receive `CommandCapabi
 
 Importing a module does not publish its tables. The public manifest describes approved operations and codecs, not private storage/admin APIs. HTTP dispatch checks that both the literal path and the wire operation identity select the same approved operation.
 
-See [Binding.lean](../../leanapi/LeanApi/Publication/Binding.lean), [Application.lean](../../leanapi/LeanApi/Publication/Application.lean) and the [in-memory fixture](../tests/app/Main.lean). The native café uses the approved registry and auth host; it does not claim every future application-host feature is integrated.
+See [Binding.lean](https://github.com/theoriclabs/leanapi/blob/b66c2991fae8fbe55b5c77d14b0216016855c6c0/LeanApi/Publication/Binding.lean), [Application.lean](https://github.com/theoriclabs/leanapi/blob/b66c2991fae8fbe55b5c77d14b0216016855c6c0/LeanApi/Publication/Application.lean) and the [in-memory fixture](../tests/app/Main.lean). The native café uses the approved registry and auth host; it does not claim every future application-host feature is integrated.
 
 ## A request through the café
 

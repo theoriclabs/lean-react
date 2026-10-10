@@ -6,7 +6,7 @@ Write React components in Lean. They compile to JavaScript and render with React
 
 ![LeanReact playground with a live counter beside its Lean source](docs/images/showcase.png)
 
-LeanReact is experimental. The [v0.1 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.1) is the frontend foundation; the [v0.2.0-rc.1 pre-release](https://github.com/theoriclabs/lean-react/releases/tag/v0.2.0-rc.1) adds the LeanApp full stack ([release evidence](docs/RELEASE.md)). APIs can change.
+LeanReact is experimental. The [v0.1 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.1) is the frontend foundation; the [v0.2.0-rc.1 pre-release](https://github.com/theoriclabs/lean-react/releases/tag/v0.2.0-rc.1) adds the full stack, then named LeanApp and since split into the LeanAPI and LeanDB packages ([release evidence](docs/RELEASE.md)). APIs can change.
 
 ## A counter in Lean
 

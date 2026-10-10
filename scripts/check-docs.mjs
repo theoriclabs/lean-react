@@ -80,13 +80,13 @@ console.log(`Checked ${links} local links/anchors across ${documents.length} dev
 
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 const lock = JSON.parse(await readFile(resolve(root, 'package-lock.json'), 'utf8'));
-assert.equal(pkg.name, 'leanapp-workspace'); assert.equal(pkg.private, true);
+assert.equal(pkg.name, 'leanreact-workspace'); assert.equal(pkg.private, true);
 assert.equal(lock.name, pkg.name); assert.equal(lock.packages[''].name, pkg.name);
 assert.equal(lock.version, pkg.version); assert.equal(lock.packages[''].version, pkg.version);
 assert.equal(pkg.license, 'MIT'); assert.equal(lock.packages[''].license, pkg.license);
 assert.match(await readFile(resolve(root, 'lakefile.toml'), 'utf8'), /^name = "leanreact"$/m);
 
-await run('lake', ['build', 'LeanApp', 'LeanReact', 'Ordering', 'Cafe', 'PrivateNotes'], { cwd: root });
+await run('lake', ['build', 'LeanReact', 'LeanReactDomain', 'Ordering', 'Cafe', 'PrivateNotes'], { cwd: root });
 await mkdir(resolve(root, '.lake'), { recursive: true });
 const out = await mkdtemp(resolve(root, '.lake/docs-check-'));
 for (const [name, source] of examples) {

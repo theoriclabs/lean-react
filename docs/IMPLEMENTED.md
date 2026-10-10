@@ -120,4 +120,4 @@ The compiler suite compares the native and generated results of every builtin on
 - LeanJS also compiles structures with proof fields, `Count`/`Fin` subtypes, proof arguments and identity casts (`tests/compiler/ProofFields.lean`).
 - The native server is a local fixture adapter. Authentication, authorization, deployment, and package publication are separate work. It binds loopback by default.
 
-The [compiler ABI](../engine/LeanJS/ABI.md), [ontology API](../../leanontology/LeanOntology/API.md), [React API](../engine/LeanReact/API.md), and [native guide](NATIVE.md) contain the detailed contracts and focused commands.
+The [compiler ABI](../engine/LeanJS/ABI.md), [ontology API](https://github.com/theoriclabs/leanontology/blob/322a4c12631dd8ece6ae9841a5e6b630d08d1e3b/LeanOntology/API.md), [React API](../engine/LeanReact/API.md), and [native guide](NATIVE.md) contain the detailed contracts and focused commands.
