@@ -34,3 +34,19 @@ jobs:
         run: node scripts/check-manifests.mjs
       - name: Build
         run: lake build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Compiler parity, runtime, integration, and scaffold checks
+        run: npm test
+      - name: Portable framework checks
+        run: |
+          bash tests/app/check.sh
+          bash tests/ordering/check.sh
+      - name: Browser checks
+        if: runner.os == 'Linux'
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:browser

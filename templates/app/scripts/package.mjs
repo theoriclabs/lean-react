@@ -53,6 +53,6 @@ for (const [dep, source] of Object.entries(dependencies))
 await copy(resolve(root, 'deploy/Dockerfile'), resolve(out, 'Dockerfile'));
 files.sort((a, b) => a.path.localeCompare(b.path));
 await writeFile(resolve(out, 'SOURCE-MANIFEST.json'), JSON.stringify({ format: 'leanapp-source-v1',
-  application: '{{name}}', lean: '4.33.0', files }, null, 2) + '\n', { flag: 'wx' });
+  application: '{{name}}', lean: '4.35.0', files }, null, 2) + '\n', { flag: 'wx' });
 console.log(out);
 console.log(`${files.length} source files; ${files.reduce((n, f) => n + f.bytes, 0)} bytes. No caches or databases.`);
