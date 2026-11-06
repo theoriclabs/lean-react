@@ -16,9 +16,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install OpenSSL (Linux)
+      - name: Install native dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev libcurl4-openssl-dev
       - name: Install OpenSSL (macOS)
         if: runner.os == 'macOS'
         run: brew install openssl@3 || true
@@ -33,9 +33,6 @@ jobs:
       - name: Every Lake manifest is pinned to Git revisions
         run: node scripts/check-manifests.mjs
       - name: Build
-        run: lake build
-      - name: Build native adapter
-        working-directory: adapters/native
         run: lake build
       - uses: actions/setup-node@v4
         with:
@@ -53,3 +50,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           npm run test:browser
+      - name: Build native adapter
+        if: ${{ !cancelled() }}
+        working-directory: adapters/native
+        run: lake build
