@@ -16,7 +16,7 @@ the shared domain and `LeanContract`; it has no native dependencies.
 
 ## Build and run
 
-Run from the repository root with the installed **Lean 4.33.0** toolchain:
+Run from the repository root with the installed **Lean 4.35.0** toolchain:
 
 ```sh
 bash examples/native/build-cached.sh
@@ -343,7 +343,7 @@ responses. The script stops only its own server process and retains logs/data.
 Verified in this worker:
 
 - `bash examples/native/build-cached.sh`: all four executables linked using
-  the cached real sibling libraries on Lean 4.33.0.
+  the cached real sibling libraries on Lean 4.35.0.
 - `bash tests/native/check.sh --no-build`: passed the native SQLite scenarios,
   concurrent-writer checks, executable wire protocol, and process-restart test.
 - The fixtures cover `2^128 + 9007199254740993`, increment it exactly, reject

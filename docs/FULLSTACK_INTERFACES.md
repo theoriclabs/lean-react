@@ -10,7 +10,7 @@ This is the implementation contract for application assembly. Passing a local fi
 
 ## Source and dependency identities
 
-The reviewed baseline uses Lean 4.33.0, compiler commit `d8b18978322de05a8f3dba51ef03cf5461676c17`. Keep the root and native `lean-toolchain` files in sync. LeanJS uses internal compiler APIs, so a toolchain upgrade requires its parity and rejection tests.
+The reviewed baseline uses Lean 4.35.0, compiler commit `eb6cafb7290e8bd5f2937522d8d804f58f02bafc`. Keep the root and native `lean-toolchain` files in sync. LeanJS uses internal compiler APIs, so a toolchain upgrade requires its parity and rejection tests.
 
 | Dependency | Pinned source | Override |
 | --- | --- | --- |

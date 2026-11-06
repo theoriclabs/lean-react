@@ -6,7 +6,7 @@ LeanReact is the frontend library within LeanApp. This tutorial needs no native 
 
 This guide takes you from the working showcase to a small form written in Lean, then shows how to compose editors, share domain definitions, and connect compiled libraries. It describes the implementation in this repository. LeanReact is experimental; nested routing, React Server Components, and automatic JS/TS bindings are still ahead.
 
-All commands run from the repository root unless stated otherwise. You need the toolchain in `lean-toolchain` (currently Lean 4.33.0), Node 22.13 or newer, and npm. Install Lean through [elan](https://github.com/leanprover/elan). React and the JavaScript build tools are already declared in `package.json`.
+All commands run from the repository root unless stated otherwise. You need the toolchain in `lean-toolchain` (currently Lean 4.35.0), Node 22.13 or newer, and npm. Install Lean through [elan](https://github.com/leanprover/elan). React and the JavaScript build tools are already declared in `package.json`.
 
 - [Run the showcase](#run-the-showcase)
 - [Build your first form](#build-your-first-form)

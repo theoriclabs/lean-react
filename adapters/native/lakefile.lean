@@ -14,7 +14,7 @@ def authCryptoLinkArgs : Array String :=
     | none => #[]) ++ #["-lcrypto"]
 
 package leanapp_native where
-  version := v!"0.2.0-rc.1"
+  version := v!"0.3.0"
   moreLinkArgs := authCryptoLinkArgs
 
 /-- The portable workspace this adapter belongs to. -/

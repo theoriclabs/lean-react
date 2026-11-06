@@ -57,12 +57,12 @@ export type LeanFunction<A extends unknown[], R> = { readonly leanArity: A['leng
 export interface LeanLibraryId { readonly packageName: string; readonly version: string; readonly moduleName: string }\n\
 export interface LeanExportSignature { readonly name: string; readonly arity: number; readonly typeHash: string }\n\
 export interface LeanLibraryInterface {\n\
-  readonly id: LeanLibraryId; readonly abi: 'leanjs-v0'; readonly lean: '4.33.0';\n\
+  readonly id: LeanLibraryId; readonly abi: 'leanjs-v0'; readonly lean: '4.35.0';\n\
   readonly exports: readonly LeanExportSignature[];\n\
 }\n\
 export interface LeanManifest {\n\
   readonly abi: 'leanjs-v0';\n\
-  readonly lean: '4.33.0';\n\
+  readonly lean: '4.35.0';\n\
   readonly exports: readonly string[];\n\
   readonly library: LeanLibraryInterface | null;\n\
   readonly imports: readonly LeanLibraryInterface[];\n\

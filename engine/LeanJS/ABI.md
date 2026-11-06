@@ -1,4 +1,4 @@
-# LeanJS ABI v0 — Lean 4.33.0
+# LeanJS ABI v0 — Lean 4.35.0
 
 ## Compiler boundary
 

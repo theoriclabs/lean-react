@@ -14,7 +14,7 @@ To try the result without installing anything, open the [hosted café](https://p
 | LeanReact frontend playground | None | `npm run dev` | `http://localhost:4173` |
 | Full-stack café | Reviewed LeanDB/LeanHttp sources, SQLite source, OpenSSL 3 development files and a C toolchain | Build below, then `npm run dev:cafe` | `http://127.0.0.1:4180` |
 
-Use Node 22.13 or newer and the exact Lean version in [lean-toolchain](../lean-toolchain), currently 4.33.0. [elan](https://github.com/leanprover/elan#installation) selects that toolchain when you run `lake` in this repository. LeanJS uses Lean compiler internals; substituting another Lean version is not a supported shortcut.
+Use Node 22.13 or newer and the exact Lean version in [lean-toolchain](../lean-toolchain), currently 4.35.0. [elan](https://github.com/leanprover/elan#installation) selects that toolchain when you run `lake` in this repository. LeanJS uses Lean compiler internals; substituting another Lean version is not a supported shortcut.
 
 From the repository root:
 

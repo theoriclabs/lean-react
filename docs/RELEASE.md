@@ -1,4 +1,27 @@
-# 0.2.0-rc.1 release
+# 0.3.0 release
+
+LeanReact 0.3.0 upgrades the framework, native adapters, and application scaffold to
+**Lean 4.35.0** (compiler commit `eb6cafb7290e8bd5f2937522d8d804f58f02bafc`).
+It is distributed as source through the GitHub release `v0.3.0`; the npm workspace
+is private and is not published to npm. The root Lake package, native adapter, and
+npm workspace declare version `0.3.0`.
+
+LeanJS-generated JavaScript, manifests, and TypeScript declarations now identify
+Lean 4.35.0. Rebuild producer and consumer artifacts together: manifests produced
+by the previous Lean version are rejected at the library boundary. Container
+recipes use the official 4.35.0 Linux archive and its published SHA-256 digest
+`7289597a44543246c9227b8cae501767e095ce17f6d448b95fc4a8dc97268f6d`.
+The existing immutable dependency revisions are retained.
+
+CI checks the build, native Lean/JavaScript compiler parity, deterministic output,
+compiler rejection cases, runtime and integration suites, scaffold generation,
+portable application and ordering checks on Linux and macOS. Linux also runs the
+frontend browser suite. Local release validation was limited by insufficient disk
+space; CI is the source of build and test evidence for this release. Hosted demo
+deployments and the broader native/hosted qualification from the historical
+release below have not been repeated for 0.3.0.
+
+## Historical: 0.2.0-rc.1 release
 
 This release candidate introduces LeanApp's full-stack foundation and the [live Proof & Pour café](https://proof-and-pour-production.up.railway.app). It is experimental: tagged `v0.2.0-rc.1` and published as a GitHub pre-release distributed as source on 19 September 2026; there is no npm package. The owner selected MIT licensing and approved Railway hosting in Harsh Gupta's Projects. The published v0.1 frontend release remains the latest non-pre-release. Package version fields are `0.2.0-rc.1`.
 
