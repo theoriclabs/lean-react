@@ -7,7 +7,8 @@ is private and is not published to npm. The root Lake package, native adapter, a
 npm workspace declare version `0.3.0`.
 
 LeanJS-generated JavaScript, manifests, and TypeScript declarations now identify
-Lean 4.35.0. Rebuild producer and consumer artifacts together: manifests produced
+Lean 4.35.0. Primitive decisions use Lean 4.35's `Decidable.intro` representation,
+with a retained `Bool` and an erased proof slot. Rebuild producer and consumer artifacts together: manifests produced
 by the previous Lean version are rejected at the library boundary. Container
 recipes use the official 4.35.0 Linux archive and its published SHA-256 digest
 `7289597a44543246c9227b8cae501767e095ce17f6d448b95fc4a8dc97268f6d`.

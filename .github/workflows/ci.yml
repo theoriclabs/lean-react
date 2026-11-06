@@ -34,6 +34,9 @@ jobs:
         run: node scripts/check-manifests.mjs
       - name: Build
         run: lake build
+      - name: Build native adapter
+        working-directory: adapters/native
+        run: lake build
       - uses: actions/setup-node@v4
         with:
           node-version: 24
