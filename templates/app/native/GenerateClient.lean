@@ -8,4 +8,4 @@ def main (args : List String) : IO Unit := do
   let .ok codecs := Contract.Http.codecs | throw (IO.userError "invalid codecs")
   let .ok statuses := {{Name}}Native.errorStatuses | throw (IO.userError "invalid error statuses")
   let out : System.FilePath := (args.head?).getD "../web/generated"
-  Contract.Generate.emitClient ops codecs statuses out (runtime := "@leanapp/engine/LeanContract")
+  Contract.Generate.emitClient ops codecs statuses out (runtime := "#leancontract")
