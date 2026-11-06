@@ -38,12 +38,13 @@ ordinary constructor values, with no one-field unboxing. For example:
 { tag: "Option.none", fields: [] }
 { tag: "List.cons", fields: [9n, {tag: "List.nil", fields: []}] }
 { tag: "Bool.true", fields: [] }
-{ tag: "Decidable.isTrue", fields: [null] }
+{ tag: "Decidable.intro", fields: [{tag: "Bool.true", fields: []}, null] }
 { tag: "PUnit.unit", fields: [] }   // `Unit.unit` is a definition reducing to this constructor
 ```
 
-`Bool` is **not** a JS boolean. `Decidable.isFalse` likewise has one erased proof
-field. `Nat.zero/succ` and `Int.ofNat/negSucc` construct and match bigint values.
+`Bool` is **not** a JS boolean. In Lean 4.35, `Decidable` retains a `Bool` field
+and an erased proof field; a false decision uses `Bool.false` in the first field.
+`Nat.zero/succ` and `Int.ofNat/negSucc` construct and match bigint values.
 `Array.mk` converts a tagged list into a JS array. The string-list bridge retains
 ordinary `Char.mk` → `UInt32.ofBitVec` → `Fin.mk` constructors, including the two
 proof slots; general fixed-width arithmetic is not part of this release.

@@ -1,7 +1,7 @@
 // LeanJS ABI v0: exact numbers, immutable data and callable closures.
 const $ctor = (tag, fields = []) => ({tag, fields});
 const $bool = b => $ctor(b ? 'Bool.true' : 'Bool.false');
-const $dec = b => $ctor(b ? 'Decidable.isTrue' : 'Decidable.isFalse', [null]);
+const $dec = b => $ctor('Decidable.intro', [$bool(b), null]);
 const $fn = (arity, body, bound = []) => {
   const f = (...args) => {
     const all = bound.concat(args);

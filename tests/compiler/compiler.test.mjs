@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as p from './generated.mjs';
 import * as intrinsic from './intrinsic-generated.mjs';
 import * as iteration from './iteration.mjs';
+import * as decisions from './decisions.mjs';
 const iter = name => iteration[`Corpus.${name}`];
 const f = name => p[`Corpus.${name}`];
 const ctor = (tag, fields = []) => ({tag, fields});
@@ -138,6 +139,16 @@ test('export and constructor metadata describe the adapter boundary', () => {
   assert.deepEqual(ticket.fieldInfo.map(f => f.name), ['title','priority','approved']);
   assert.equal(ticket.fieldInfo[2].erased,true);
   assert.equal(p.__leanjs.constructors.find(d => d.name === 'Corpus.Status.active').fields,2);
+});
+
+test('primitive decisions retain the Lean 4.35 Bool and proof slots across calls', () => {
+  for (const [right, expected] of [[3n, true], [4n, false]]) {
+    const value = decisions['Corpus.equalityDecision'](3n, right);
+    const encoded = ctor('Decidable.intro', [ctor(expected ? 'Bool.true' : 'Bool.false'), null]);
+    assert.deepEqual(value, encoded);
+    assert.equal(decisions['Corpus.branchDecision'](null, value), expected ? 7n : 11n);
+    assert.equal(decisions['Corpus.branchDecision'](null, encoded), expected ? 7n : 11n);
+  }
 });
 
 test('iterative List builtins do not overflow the JS stack at 12k elements', () => {

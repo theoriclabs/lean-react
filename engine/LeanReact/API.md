@@ -2,7 +2,7 @@
 
 [LeanApp documentation](../../docs/README.md) · [LeanReact guide](../../docs/LEANREACT.md)
 
-`import LeanReact` exposes buildable Lean 4.33 definitions for `Component Props`, `Hook α`, `Action α`, typed elements/events, state, context, forms, resources, and managed effects. Native reference implementations and the integrated engine/LeanJS/React adapter are tested. See [INTRINSICS.md](../runtime/INTRINSICS.md) and the [implemented scope](../../docs/IMPLEMENTED.md).
+`import LeanReact` exposes buildable Lean 4.35 definitions for `Component Props`, `Hook α`, `Action α`, typed elements/events, state, context, forms, resources, and managed effects. Native reference implementations and the integrated engine/LeanJS/React adapter are tested. See [INTRINSICS.md](../runtime/INTRINSICS.md) and the [implemented scope](../../docs/IMPLEMENTED.md).
 
 `useCell initial site` provides an immediate local `Cell α`. Its `read` action reads the current value, and `modifyGet transition` applies a pure `α → β × α` transition and returns the result. Cells persist per mount without scheduling a render. They are suitable for a local service interpreter that must process multiple calls before React commits; ordinary `useState` remains the UI state primitive.
 
