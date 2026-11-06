@@ -17,12 +17,12 @@ path = "../../adapters/native"
 [[require]]
 name = "leanhttp"
 git = "https://github.com/theoriclabs/leanhttp"
-rev = "v0.3.1"
+rev = "v0.5.0"
 
 [[require]]
 name = "leanws"
 git = "https://github.com/theoriclabs/leanws"
-rev = "40900ccb00e04186360ba0a235c560517b7ecb57"
+rev = "964c5610f3faf68f624d8ef2049576b8f127dcc2"
 
 [[lean_lib]]
 name = "NativeTickets"
