@@ -40,7 +40,8 @@ def app : App where
 * A page's path parameters are its arguments, in path order (`"/books/:book" ==> bookPage`).
 * `load` scopes its data by endpoint, given fields, signed-in actor and auth generation: a scope
   change drops the old value at once, and a late reply for an older scope never shows. A
-  successful command run from the app reloads the page's data (DDD-LR-04). -/
+  successful command run from the app reloads the page's data (DDD-LR-04), and the page keeps
+  showing its last value (and its component state) until the new one arrives. -/
 
 namespace LeanReact.Domain
 open LeanDb.Model LeanApi.Core Ontology
@@ -214,7 +215,9 @@ private def reportFailure (shell : Shell) (state : ResourceState O (Contract.Cal
 
 /-- A page's data from a read-only endpoint. Scoped by endpoint, path fields, actor and auth
 generation (and reloaded after each successful command): a scope change drops the old value
-at once, and a late reply for an older scope never shows. -/
+at once, and a late reply for an older scope never shows. A reload after a command keeps
+rendering the last value until the new one arrives; "Loading…" shows only on the first fetch
+in a scope or after a failure. -/
 def endpointLoad [HasRecord I] (endpoint : Endpoint I E O) (onError : E → Element)
     (render : O → Element) : Element :=
   let contract := endpoint.operation.contract
@@ -238,15 +241,26 @@ def endpointLoad [HasRecord I] (endpoint : Endpoint I E O) (onError : E → Elem
         | .idle => ⟨Key.string "idle", 0⟩
       let phase := match resource.state with
         | .idle => "idle" | .loading _ => "loading" | .success _ _ => "success" | .failure _ _ => "failure"
+      -- The last value shown in this scope: a reload after a command keeps rendering it
+      -- (stale-while-revalidate), so the page and the state under it stay mounted.
+      let last ← useState (none : Option (String × O)) "domain.load.last"
       useEffect #[.string key.value, .nat token.generation, .string phase] (do
         reportFailure shell resource.state
+        match resource.state with
+        | .success _ value => last.set (some (scope, value))
+        | .failure _ _ => last.set none
+        | _ => pure ()
         pure (pure ())) "domain.load.failures"
+      let view := fun value => keyed (Key.inSpace "domain-load-view" scope) (render value)
       pure <| match input, resource.state with
         | .error _, _ => DOM.p { role := some "alert" } #[LeanReact.text "Invalid address."]
-        | _, .success _ value => keyed (Key.inSpace "domain-load-view" scope) (render value)
+        | _, .success _ value => view value
         | _, .failure _ (.loader (.domain error)) => onError error
         | _, .failure _ _ => DOM.p { role := some "alert" } #[LeanReact.text "Unable to load. Try again."]
-        | _, _ => DOM.p { role := some "status", ariaLive := some "polite" } #[LeanReact.text "Loading…"]
+        | _, _ => match last.value with
+          | some (shown, value) => if shown == scope then view value
+            else DOM.p { role := some "status", ariaLive := some "polite" } #[LeanReact.text "Loading…"]
+          | none => DOM.p { role := some "status", ariaLive := some "polite" } #[LeanReact.text "Loading…"]
   element view ()
 
 /-! ## Pages and the app -/
