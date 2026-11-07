@@ -166,6 +166,31 @@ test('rsvp call: a domain error is a notice; success reloads the page data', asy
   } finally {await app.close();}
 });
 
+test('a reload after a command keeps showing the last value until the new one arrives', async () => {
+  let pages = 0; const reload = deferred();
+  const srv = server(async request => {
+    if (request.url.endsWith('/rsvp')) return ok(null);
+    pages++;
+    if (pages === 2) await reload.promise;
+    return page(visible(pages === 1 ? ['Ben'] : ['Ben', 'Cara']));
+  });
+  const app = await mountApp(srv, {location: '/parties/3', actor: some('5')});
+  try {
+    await settle();
+    const heading = app.container.querySelector('h1');
+    assert.equal(heading.textContent, 'Picnic');
+    await press(app.container, "I'm going");
+    assert.equal(pages, 2, 'the command reloads the page');
+    assert.doesNotMatch(app.container.textContent, /Loading…/, 'no placeholder while refreshing');
+    assert.match(app.container.textContent, /Ben/);
+    assert.equal(app.container.querySelector('h1'), heading, 'the rendered page (and its state) stays mounted');
+    reload.resolve();
+    await settle();
+    assert.match(app.container.textContent, /BenCara/);
+    assert.equal(app.container.querySelector('h1'), heading);
+  } finally {await app.close();}
+});
+
 test('cancel call: success navigates; a non-host gets the notice', async () => {
   let reply = domainError('notHost');
   const srv = server(async request => request.url.endsWith('/cancel') ? reply : page(hidden));

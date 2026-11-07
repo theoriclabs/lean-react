@@ -14,5 +14,6 @@ await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples
 await run('lake', ['env', 'lean', '--run', 'examples/lean/Examples/GenerateClient.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateComposability.lean'], { cwd });
 await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
+await run('node', ['tests/domain/check.mjs'], { cwd });
 await run('node', ['node_modules/typescript/bin/tsc', '--noEmit'], { cwd });
 await run('node', ['scripts/check-manifests.mjs'], { cwd });

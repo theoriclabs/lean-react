@@ -406,6 +406,7 @@ A Lean typecheck proves that a source program elaborates. It does not prove that
 | Compiler lowering or ABI | `npm run test:compiler`; this includes native/generated parity and rejection checks. |
 | The actual Tickets generator in isolation | `npm run test:compiler:integration`, after the compiler suite. |
 | Shared runtime behavior | `npm run test:runtime`. |
+| Endpoint pages (`form`, `call`, `load`, `App`) | `npm run test:domain`; also runs in `npm test`. |
 | The full regular suite | `npm test`. |
 | Browser interactions | `npm run test:browser`. |
 | README captures after visual changes | `npm run screenshots`. |
