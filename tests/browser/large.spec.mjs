@@ -16,6 +16,14 @@ test('a 100,000-row list and a wide grid render only their visible window, and a
   await list.hover();
   for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 2000);
   await expect.poll(() => list.evaluate(element => element.scrollTop)).toBeGreaterThan(5000);
+  // Let the wheel's smooth scrolling finish before jumping, or it overrides the jump.
+  let settled = -1;
+  await expect.poll(async () => {
+    const now = await list.evaluate(element => element.scrollTop);
+    const stable = now === settled;
+    settled = now;
+    return stable;
+  }, { intervals: [100] }).toBe(true);
   await list.evaluate(element => { element.scrollTop = 28 * 70000; });
   await expect(list.locator('[data-index="70000"]')).toBeVisible();
   await expect(list.locator('[data-index="70000"]')).toHaveText('Event 70000 · cycle 1120000');
