@@ -237,6 +237,14 @@ code; it has no compiler dependency.
 | `String.foldlScalars` | 4 | `(β, f, init, s)` |
 | `String.ofScalars` | 1 | `(chars : Array Char)` |
 | `Char.toNat`, `Char.ofNat` | 1 | `(c)` / `(n)`; invalid scalars map to `'\0'` |
+| `Char.isDigit`, `isAlpha`, `isUpper`, `isLower`, `isAlphanum`, `isHexDigit` | 1 | `(c)`; ASCII classes, as core (which compares `c.val : UInt32`) |
+| `Char.toUpper`, `Char.toLower` | 1 | `(c)`; ASCII letters only, others unchanged |
+| `String.map` / `String.toUpper`, `String.toLower` | 2 / 1 | `(f, s)` / `(s)` |
+| `String.splitOn` | 2 | `(s, sep)`; leftmost non-overlapping matches, `[s]` for an empty `sep` |
+| `String.toNat?`, `toInt?`, `isNat`, `isInt` | 1 | `(s)`; ASCII digits, `_` only after a digit, optional leading `-` for `Int` |
+| `String.hasPrefix`, `hasSuffix` | 2 | `(s, affix)`; `LeanJS.Portable` (core `startsWith`/`endsWith` use `String.Slice`) |
+| `String.replaceAll` | 3 | `(s, pattern, replacement)`; as core `replace` with a `String` pattern |
+| `String.trimWhitespace`, `splitLines`, `splitWords` | 1 | `(s)`; as core `trimAscii`/`lines`/whitespace `split`, returning `String`s |
 | `instDecidableEqChar`, `Char.instDecidableLt`, `Char.instDecidableLe` | 2 | `(a, b)` → tagged `Decidable` |
 | `List.take`, `List.takeTR`, `List.drop`, `List.splitAt` | 3 | `(α, n, xs)`; `splitAt` returns `Prod.mk` |
 | `List.takeTR.go` (private), `List.splitAt.go` | 5 | `(α, l, xs, n, acc)` |

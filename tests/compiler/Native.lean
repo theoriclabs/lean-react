@@ -73,6 +73,31 @@ private def random : Random := Id.run do
       arraySamples := if out.arraySamples.size < 32 then out.arraySamples.push (natArray arrayed) else out.arraySamples }
   return out
 
+/-- Text for the Char/String helpers: digits, `_`, `-`, separators, whitespace, CR/LF and a
+few non-ASCII scalars. Mirrored in `compiler.test.mjs`. -/
+private def textPalette : Array Nat := #[0x30, 0x35, 0x39, 0x5F, 0x2D, 0x61, 0x62, 0x5A, 0x66, 0x47,
+  0x20, 0x09, 0x0A, 0x0D, 0x2C, 0xE9, 0x1F600, 0x10FFFF]
+
+private def randomText : Nat × Array Json := Id.run do
+  let mut seed := 20261107
+  let mut digest := 7
+  let mut samples : Array Json := #[]
+  for _ in [:10000] do
+    let (len, s1) := next seed 16
+    seed := s1
+    let mut scalars : Array Char := #[]
+    for _ in [:len] do
+      let (i, s2) := next seed textPalette.size
+      seed := s2
+      scalars := scalars.push (Char.ofNat textPalette[i]!)
+    let (n, s3) := next seed (len + 3)
+    let (k, s4) := next s3 (len + 3)
+    seed := s4
+    let text := textOps (String.ofList scalars.toList) n k
+    digest := digestString digest text
+    if samples.size < 64 then samples := samples.push (toJson text)
+  return (digest, samples)
+
 def main : IO Unit := do
   let ns := #[0, 1, 2, 17, 9007199254740993, 123456789012345678901234567890]
   let zs : Array Int := #[-123456789012345678901234567890, -17, -1, 0, 1, 17, 123456789012345678901234567890]
@@ -125,6 +150,7 @@ def main : IO Unit := do
     ("randomLists", strNat random.lists), ("randomListSamples", Json.arr random.listSamples),
     ("randomArrays", strNat random.arrays), ("randomArraySamples", Json.arr random.arraySamples),
     ("randomLoops", strNat random.loops),
+    ("randomText", strNat randomText.1), ("randomTextSamples", Json.arr randomText.2),
     ("loops", natArray #[sumAcc (List.range 12000) 5, countLoop 12000 0, sumEven (List.range 12000) 0, sumWhere (List.range 12000)]),
     ("arrayWork", Json.arr (arrays.map fun xs => natArray (arrayWork xs 4))),
     ("arrayRead", Json.arr (arrays.map fun xs => Json.arr ((#[0, 1, 50] : Array Nat).map fun i => strNat (arrayRead xs i)))),

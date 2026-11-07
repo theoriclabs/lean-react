@@ -113,6 +113,48 @@ def scalarOps (s : String) (n k : Nat) : String :=
 
 def scalarDrop (s : String) (n : Nat) : String := s.dropScalars n
 
+private def showList (xs : List String) : String := "[" ++ ",".intercalate xs ++ "]"
+private def showOption (display : α → String) : Option α → String
+  | none => "none"
+  | some value => "some " ++ display value
+private def showBool (b : Bool) : String := if b then "t" else "f"
+
+/-- The substituted core Char/String functions, the portable String helpers and the number
+formatting, combined for parity on random inputs. -/
+def textOps (s : String) (n k : Nat) : String :=
+  let chars := s.toList
+  let classes := chars.map fun c =>
+    (if c.isDigit then 1 else 0) + (if c.isAlpha then 2 else 0) + (if c.isUpper then 4 else 0) +
+    (if c.isLower then 8 else 0) + (if c.isAlphanum then 16 else 0) + (if c.isHexDigit then 32 else 0)
+  let sep := s.extractScalars n 2
+  let tail := s.dropScalars n
+  "|".intercalate [
+    showList (classes.map toString), s.toUpper, s.toLower,
+    String.ofList (chars.map Char.toUpper), String.ofList (chars.map Char.toLower),
+    showList (s.splitOn ","), showList (s.splitOn sep),
+    showOption toString s.toNat?, showOption toString s.toInt?,
+    showOption toString tail.toNat?, showOption toString tail.toInt?,
+    showBool s.isNat, showBool tail.isInt, showBool (s.hasPrefix sep), showBool (s.hasSuffix sep),
+    s.replaceAll sep "<>", s.replaceAll "" ".", s.trimWhitespace,
+    showList s.splitLines, showList s.splitWords,
+    (n * 1000003 + k).formatGrouped, (Int.ofNat k - Int.ofNat n * 1000).formatGrouped " ",
+    Nat.formatRatio (n * 1000 + k) (k + 1) (n % 4), Nat.formatPercent n (k + 1) (k % 3),
+    showList (((chars.map Char.toNat).insertSorted (· ≤ ·) 50).map toString)]
+
+/-- Words and lines of a long text, without stack growth. -/
+def textLarge (s : String) : Nat :=
+  s.splitWords.length + s.splitLines.length * 3 + s.toUpper.length + (s.replaceAll "a" "bb").length
+    + s.trimWhitespace.length + (s.splitOn " ").length + ((s.toList.map Char.toNat).insertSorted (· ≤ ·) 64).length
+
+-- The portable helpers agree with the core Slice-based functions they stand in for.
+private def coreSamples : List String :=
+  ["", "\n", "a", "a\n", "a\r\n", "a\r", "a\r\nb\rc\n\nd", " \t x y \r\n", "😀\n😀", "\n\n", "ab", "b"]
+#guard coreSamples.all fun s => s.splitLines == s.lines.toList.map (·.toString)
+#guard coreSamples.all fun s => s.trimWhitespace == s.trimAscii.toString
+#guard coreSamples.all fun s => coreSamples.all fun p =>
+  s.hasPrefix p == s.startsWith p && s.hasSuffix p == s.endsWith p && s.replaceAll p "<>" == s.replace p "<>"
+#guard coreSamples.all fun s => s.splitWords == ((s.split Char.isWhitespace).toList.map (·.toString)).filter (!·.isEmpty)
+
 /-- Accumulator recursion: every self call is a tail call, so LeanJS emits a loop. -/
 def sumAcc : List Nat → Nat → Nat
   | [], acc => acc

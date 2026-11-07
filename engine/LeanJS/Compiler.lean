@@ -74,6 +74,23 @@ private def builtin (n : Name) : Option Builtin := do
     (`String.extractScalars, 3, "$extractScalars"), (`String.scalarLength, 1, "$scalarLength"),
     (`String.foldlScalars, 4, "(_,f,z,s)=>$foldlScalars(f,z,s)"), (`String.ofScalars, 1, "$ofScalars"),
     (`Char.toNat, 1, "$codepoint"), (`Char.ofNat, 1, "$charOfNat"),
+    -- ASCII classes and case mapping; core compares `c.val : UInt32`, which has no ABI.
+    (`Char.isUpper, 1, "c=>$bool($isUpper(c))"), (`Char.isLower, 1, "c=>$bool($isLower(c))"),
+    (`Char.isAlpha, 1, "c=>$bool($isUpper(c)||$isLower(c))"), (`Char.isDigit, 1, "c=>$bool($isDigit(c))"),
+    (`Char.isAlphanum, 1, "c=>$bool($isUpper(c)||$isLower(c)||$isDigit(c))"),
+    (`Char.isHexDigit, 1, "c=>$bool($isDigit(c)||$charIn(c,97n,102n)||$charIn(c,65n,70n))"),
+    (`Char.toUpper, 1, "$toUpper"), (`Char.toLower, 1, "$toLower"),
+    (`String.map, 2, "$stringMap"),
+    (`String.toUpper, 1, "s=>$stringMap($toUpper,s)"), (`String.toLower, 1, "s=>$stringMap($toLower,s)"),
+    -- Core string parsing and splitting go through byte positions and `String.Slice`.
+    (`String.splitOn, 2, "$splitOn"),
+    (`String.isNat, 1, "s=>$bool($parseNat(s)!==null)"), (`String.isInt, 1, "s=>$bool($parseInt(s)!==null)"),
+    (`String.toNat?, 1, "s=>$option($parseNat(s))"), (`String.toInt?, 1, "s=>$option($parseInt(s))"),
+    -- Portable helpers; the Lean reference bodies live in LeanJS.Portable.
+    (`String.hasPrefix, 2, "(s,p)=>$bool($checked(s).startsWith($checked(p)))"),
+    (`String.hasSuffix, 2, "(s,p)=>$bool($checked(s).endsWith($checked(p)))"),
+    (`String.replaceAll, 3, "$replaceAll"), (`String.trimWhitespace, 1, "$trimWhitespace"),
+    (`String.splitLines, 1, "$splitLines"), (`String.splitWords, 1, "$splitWords"),
     (`instDecidableEqChar, 2, "(a,b)=>$dec($codepoint(a)===$codepoint(b))"),
     (`Char.instDecidableLt, 2, "(a,b)=>$dec($codepoint(a)<$codepoint(b))"),
     (`Char.instDecidableLe, 2, "(a,b)=>$dec($codepoint(a)<=$codepoint(b))"),
