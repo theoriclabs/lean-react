@@ -12,4 +12,5 @@ import Examples.Sparkline
 import Examples.Routing
 import Examples.Diagram
 import Examples.Large
+import Examples.Styles
 import Examples.Tickets.Client

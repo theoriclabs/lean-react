@@ -1,5 +1,6 @@
 import LeanReact.Core
 import LeanReact.Cell
+import LeanReact.Style
 import LeanReact.DOM
 import LeanReact.SVG
 import LeanReact.Virtual

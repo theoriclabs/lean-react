@@ -360,6 +360,26 @@ def successMessage (message : String) : Element :=
 .notice-success { color: #24583e; background: #edf1e4; }
 ```
 
+Or define styles as Lean values. A style's class name is generated from its name and rules, so a style applies only where you pass it, and lengths are typed:
+
+<!-- lean-check: scoped-style -->
+```lean
+import LeanReact
+open LeanReact
+
+def accent : Token Color := ⟨"accent", .hex "#24583e"⟩
+
+def notice : Style := {
+  name := "notice"
+  base := { padding := some (.rem 1), borderRadius := some (.px 8), color := some accent.color }
+  variants := [(.hover, { background := some (.hex "#edf1e4") })] }
+
+def offsetNotice (message : String) (offset : Nat) : Element :=
+  DOM.p { styles := #[notice], inline := { left := some (.px offset) } } #[text message]
+```
+
+Write the stylesheet once, next to the generated JavaScript, from the generator: `LeanReact.Compiler.writeStylesheet "dist/app.css" #[`MyApp]` collects every `Style` and `Token` declared under `MyApp`.
+
 Put application styles in its web directory; the showcase uses `examples/web/style.css`. Class strings can be produced by ordinary Lean functions. There is no typed Lean CSS DSL, style-object conversion, CSS extraction, or configured Tailwind pipeline yet.
 
 ### Existing React components, including shadcn
