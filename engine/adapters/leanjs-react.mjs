@@ -134,6 +134,11 @@ const inputPayload = value => ctor('LeanReact.InputEvent.mk', [value.value, bool
 const pastePayload = value => ctor('LeanReact.PasteEvent.mk', [value.text,
   value.html == null ? ctor('Option.none') : ctor('Option.some', [value.html])]);
 const scrollPayload = value => ctor('LeanReact.ScrollEvent.mk', [BigInt(value.scrollTop), BigInt(value.scrollLeft)]);
+const modifierFields = value => [bool(value.alt), bool(value.ctrl), bool(value.metaKey), bool(value.shift)];
+const pointerPayload = value => ctor('LeanReact.PointerEvent.mk', [BigInt(value.x), BigInt(value.y), BigInt(value.width),
+  BigInt(value.height), BigInt(value.button), BigInt(value.pointerId), ...modifierFields(value)]);
+const wheelPayload = value => ctor('LeanReact.WheelEvent.mk', [BigInt(value.x), BigInt(value.y), BigInt(value.width),
+  BigInt(value.height), BigInt(value.deltaX), BigInt(value.deltaY), ...modifierFields(value)]);
 const keyOutcome = value => value?.tag === 'LeanReact.KeyOutcome.preventDefault' ? 'preventDefault' : 'continue';
 export function node(tag, attributes, children) {
   const props = {};
@@ -154,6 +159,10 @@ export function node(tag, attributes, children) {
       case 'LeanReact.Attribute.mouseEnter': props.onMouseEnter = runtime.onMouseEnter(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
       case 'LeanReact.Attribute.mouseLeave': props.onMouseLeave = runtime.onMouseLeave(payload => name(eventPayload('LeanReact.PressEvent.mk', payload))); break;
       case 'LeanReact.Attribute.scroll': props.onScroll = runtime.onScroll(payload => name(scrollPayload(payload))); break;
+      case 'LeanReact.Attribute.pointerDown': props.onPointerDown = runtime.onPointerDown(payload => name(pointerPayload(payload)), fromBool(value)); break;
+      case 'LeanReact.Attribute.pointerMove': props.onPointerMove = runtime.onPointerMove(payload => name(pointerPayload(payload))); break;
+      case 'LeanReact.Attribute.pointerUp': props.onPointerUp = runtime.onPointerUp(payload => name(pointerPayload(payload))); break;
+      case 'LeanReact.Attribute.wheel': props.onWheel = runtime.onWheel(payload => name(wheelPayload(payload))); props.ref = runtime.wheelRef; break;
       case 'LeanReact.Attribute.submit': props.onSubmit = runtime.onSubmit(name); break;
       case 'LeanReact.Attribute.style': props.style = Object.fromEntries(name.map(entry => [entry.fields[0], entry.fields[1]])); break;
       // LR-06 router link clicks.

@@ -208,6 +208,38 @@ structure ScrollEvent where
   scrollLeft : Int := 0
   deriving Repr, BEq
 
+/-- A pointer (mouse, pen or touch) event. `x` and `y` are CSS pixels from the target element's
+top-left corner, and `width`/`height` the target's size, so a handler can map a position to its
+own units without `Float` (all rounded down). `button` is the changed button (`0` primary,
+`-1` none on a move); `pointerId` names the pointer. -/
+structure PointerEvent where
+  x : Int := 0
+  y : Int := 0
+  width : Int := 0
+  height : Int := 0
+  button : Int := 0
+  pointerId : Int := 0
+  alt : Bool := false
+  ctrl : Bool := false
+  metaKey : Bool := false
+  shift : Bool := false
+  deriving Repr, BEq
+
+/-- A wheel event: the pointer position as in `PointerEvent`, and the scroll amounts in CSS pixels
+(line and page deltas converted; positive is down/right). -/
+structure WheelEvent where
+  x : Int := 0
+  y : Int := 0
+  width : Int := 0
+  height : Int := 0
+  deltaX : Int := 0
+  deltaY : Int := 0
+  alt : Bool := false
+  ctrl : Bool := false
+  metaKey : Bool := false
+  shift : Bool := false
+  deriving Repr, BEq
+
 inductive Attribute where
   | string (name value : String)
   | bool (name : String) (value : Bool)
@@ -222,6 +254,13 @@ inductive Attribute where
   | mouseEnter (handler : PressEvent → Action Unit)
   | mouseLeave (handler : PressEvent → Action Unit)
   | scroll (handler : ScrollEvent → Action Unit)
+  /-- With `capture`, the target captures the pointer (`setPointerCapture`) before the handler
+  runs, so moves and the release keep arriving while a drag leaves the element. -/
+  | pointerDown (handler : PointerEvent → Action Unit) (capture : Bool)
+  | pointerMove (handler : PointerEvent → Action Unit)
+  | pointerUp (handler : PointerEvent → Action Unit)
+  /-- The page does not scroll while the handler runs on this element (the default is prevented). -/
+  | wheel (handler : WheelEvent → Action Unit)
   /-- The browser default (navigation) is always prevented before the handler runs. -/
   | submit (handler : Action Unit)
   /-- Inline style entries with React's camelCase property names. -/

@@ -70,6 +70,13 @@ structure Props where
   onMouseEnter : Option (PressEvent → Action Unit) := none
   onMouseLeave : Option (PressEvent → Action Unit) := none
   onScroll : Option (ScrollEvent → Action Unit) := none
+  onPointerDown : Option (PointerEvent → Action Unit) := none
+  onPointerMove : Option (PointerEvent → Action Unit) := none
+  onPointerUp : Option (PointerEvent → Action Unit) := none
+  /-- Capture the pointer on `onPointerDown`, for drags that leave the element. -/
+  capturePointer : Bool := false
+  /-- Prevents page scrolling over this element while it handles the wheel. -/
+  onWheel : Option (WheelEvent → Action Unit) := none
 
 /-- Migration helper: an `Action Unit` key handler, made explicit, means `.continue`. -/
 def onKeyDown' (handler : KeyEvent → Action Unit) : Option (KeyEvent → Action KeyOutcome) :=
@@ -105,7 +112,10 @@ def Props.attributes (props : Props) : Array Attribute :=
   handler props.onClick .press ++ handler props.onKeyDown .keyDown ++ handler props.onKeyUp .keyUp ++
   handler props.onFocus .focus ++ handler props.onBlur .blur ++
   handler props.onMouseEnter .mouseEnter ++ handler props.onMouseLeave .mouseLeave ++
-  handler props.onScroll .scroll
+  handler props.onScroll .scroll ++
+  handler props.onPointerDown (Attribute.pointerDown · props.capturePointer) ++
+  handler props.onPointerMove .pointerMove ++ handler props.onPointerUp .pointerUp ++
+  handler props.onWheel .wheel
 
 def div (props : Props := {}) (children : Array Element := #[]) : Element := node "div" props.attributes children
 def span (props : Props := {}) (children : Array Element := #[]) : Element := node "span" props.attributes children
