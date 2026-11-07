@@ -11,8 +11,10 @@ import librariesSource from '../lean/Examples/Libraries/App.lean';
 import feedbackSource from '../lean/Examples/Feedback.lean';
 import sparklineSource from '../lean/Examples/Sparkline.lean';
 import diagramSource from '../lean/Examples/Diagram.lean';
+import largeSource from '../lean/Examples/Large.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
 import '../adapters/example-sparkline.mjs';
+import '../adapters/example-timeline.mjs';
 
 const parameters = new URLSearchParams(location.search);
 const examples = {
@@ -45,6 +47,11 @@ const examples = {
     description: 'An architecture diagram with arrows between boxes, and a timeline: drag to scrub, use the wheel to zoom around the pointer. SVG with integer coordinates, no Float.',
     file: 'Diagram.lean', source: diagramSource,
     start: 'def Timeline', end: '/-- Both, as one playground example',
+  },
+  large: {
+    description: 'Scroll 100,000 rows and a 3,000 × 200 grid: only the visible window is rendered. Then click the million-interval canvas: Lean maps the click back to an interval.',
+    file: 'Large.lean', source: largeSource,
+    start: 'def EventList', end: '/-! ## A dense timeline',
   },
 };
 const requestedExample = parameters.get('example');
@@ -105,6 +112,7 @@ const element = example === 'collections' ? mountElement(collections['Examples.C
   : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
   : example === 'forms' ? mountElement(smoke['Examples.Feedback.App'])
   : example === 'svg' ? mountElement(smoke['Examples.Diagram.Demo'])
+  : example === 'large' ? mountElement(smoke['Examples.Large.Demo'])
   : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
     ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']]))
   : mountElement(tickets['Examples.Tickets.App']);

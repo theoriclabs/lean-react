@@ -11,4 +11,5 @@ import Examples.Feedback
 import Examples.Sparkline
 import Examples.Routing
 import Examples.Diagram
+import Examples.Large
 import Examples.Tickets.Client

@@ -111,6 +111,7 @@ test('native Lean / generated Node parity across composed functions', () => {
     listSmall: str(f('listLarge')([1n,2n,3n])),
     listLarge: str(f('listLarge')(Array.from({length:12000}, (_,i) => BigInt(i)))),
     sortLarge: str(f('sortLarge')(Array.from({length:12000}, (_,i) => BigInt(11999 - i)))),
+    rangeLarge: str(f('rangeLarge')(12000n)),
     listSlices: [[], [1n,2n,3n], Array.from({length:12000}, (_,i) => BigInt(i))].flatMap(xs =>
       [0n, 1n, 6000n, 12000n, 9007199254740993n].map(n => str(f('listSlices')(xs, n)))),
     randomStrings: str(sampled.strings), randomStringSamples: sampled.stringSamples,
@@ -196,6 +197,12 @@ test('Char/String helpers run on 100,000 characters without stack growth', () =>
   const words = 25000, lines = 12501;
   const expected = words + 1 + lines * 3 + text.length + (text.length + 12500) + text.length + 12501 + text.length + 1;
   assert.equal(f('textLarge')(text), BigInt(expected));
+});
+
+test('Array.range and Array.ofFn build a million elements in one pass', () => {
+  const started = Date.now();
+  assert.equal(f('rangeLarge')(1000000n), 499999500000n * 3n);
+  assert.ok(Date.now() - started < 5000, 'linear, not one copy per element');
 });
 
 test('List.mergeSort sorts one million elements stably without stack growth', () => {

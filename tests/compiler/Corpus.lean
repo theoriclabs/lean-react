@@ -95,6 +95,10 @@ def sortLarge (xs : Array Nat) : Nat :=
   sorted.length + (sorted.head?.getD 0) * 7 + (sorted.getLast?.getD 0) * 11
     + (sorted.zipIdx.foldl (fun acc (x, i) => (acc * 31 + x * (i + 1)) % 1000000007) 0)
 
+/-- `Array.range` and `Array.ofFn` at sizes where element-by-element copying would be quadratic. -/
+def rangeLarge (n : Nat) : Nat :=
+  (Array.range n).foldl (· + ·) 0 + (Array.ofFn (n := n) fun i => i.val * 2).foldl (· + ·) 0
+
 /-- The Array counterparts, combined for parity on random inputs. -/
 def arrayOps (xs : Array Nat) (i n : Nat) : Array Nat :=
   let found := (xs.findIdx? (· > n)).getD 777
@@ -102,6 +106,7 @@ def arrayOps (xs : Array Nat) (i n : Nat) : Array Nat :=
   let erased := if h : i < xs.size then xs.eraseIdx i h else xs.eraseIdxIfInBounds n
   let inserted := xs.insertIdx! (i % (xs.size + 1)) n
   xs.extract i n ++ xs.take n ++ xs.zipWith (fun a b => a * 2 + b) (xs.drop 1)
+    ++ Array.range (n % 7) ++ Array.ofFn (n := i % 5) (fun j => j.val * 3 + n)
     ++ #[found, folded] ++ erased ++ inserted ++ (xs.zip erased).map fun (a, b) => a + b
 
 /-- Every scalar-indexed string builtin, combined for parity on random inputs. -/

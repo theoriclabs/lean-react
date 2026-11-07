@@ -111,6 +111,9 @@ private def builtin (n : Name) : Option Builtin := do
     (`Array.empty, 1, "_=>[]"), (`Array.emptyWithCapacity, 2, "(_,n)=>[]"),
     (`Array.mkEmpty, 2, "(_,n)=>[]"), (`Array.size, 2, "(_,xs)=>BigInt(xs.length)"),
     (`Array.push, 3, "(_,xs,x)=>xs.concat([x])"),
+    -- Built in one pass; core's bodies `push` one element at a time, which copies in this ABI.
+    (`Array.ofFn, 3, "(_,n,f)=>Array.from({length:Number(n)},(_,i)=>$app(f,[$ctor('Fin.mk',[BigInt(i),null])]))"),
+    (`Array.range, 1, "n=>Array.from({length:Number(n)},(_,i)=>BigInt(i))"),
     (`Array.get!Internal, 4, "(_,inh,xs,i)=>$get(xs,i)"),
     (`Array.getInternal, 4, "(_,xs,i,h)=>$get(xs,i)"),
     (`Array.getD, 4, "(_,xs,i,d)=>i<BigInt(xs.length)?xs[Number(i)]:d"),

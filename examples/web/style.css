@@ -133,6 +133,11 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px
 .diagram { display: block; width: 100%; max-width: 700px; height: auto; color: var(--ink, #1f2a1d); }
 .diagram text { font: 13px system-ui, sans-serif; fill: currentColor; }
 .timeline-chart { display: block; width: 100%; height: 80px; background: #fff; border: 1px solid var(--line); border-radius: 5px; touch-action: none; cursor: ew-resize; color: #5b7f4b; }
+.virtual-list, .virtual-grid { border: 1px solid var(--line); border-radius: 5px; background: #fff; max-width: 100%; }
+.virtual-list [role=listitem] { display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #eee; box-sizing: border-box; }
+.virtual-grid [role=gridcell] { display: flex; align-items: center; padding: 0 8px; box-sizing: border-box; border-right: 1px solid #f0f0f0; border-bottom: 1px solid #f0f0f0; background: #fff; font-variant-numeric: tabular-nums; }
+.timeline-canvas-frame { max-width: 100%; overflow: hidden; }
+.timeline-canvas { display: block; width: 100%; height: 48px; background: #fff; border: 1px solid var(--line); border-radius: 5px; cursor: pointer; }
 .sparkline { display: block; max-width: 100%; background: #fff; border: 1px solid var(--line); border-radius: 5px; }
 .counter { display: inline-flex; align-items: center; gap: 14px; margin: 2px 34px 0 0; font-size: 12px; color: #748068; }
 .counter strong { font-size: 23px; font-variant-numeric: tabular-nums; font-weight: 500; color: var(--ink); }
