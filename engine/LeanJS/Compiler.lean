@@ -25,12 +25,22 @@ structure Options where
   library : Option LibraryId := none
   /-- Shared declarations are imported by identity, without recompiling or rewrapping. -/
   libraries : Array LibraryImport := #[]
+  /-- Embed the whole manifest (declarations, constructors, hook plans) in `__leanjs`, as well
+  as writing it to `.manifest.json`. By default the module embeds only what linking needs: ABI,
+  Lean version, library identity, imports, exports and initialization roots. -/
+  fullManifest : Bool := false
   deriving Inhabited
 
 private def quote (s : String) : String := (Json.str s).compress
 private def joined (xs : Array String) : String := String.intercalate ", " xs.toList
-private def ident (n : Name) : String :=
-  "n" ++ String.join (n.toString.toList.map fun c => "_" ++ toString c.toNat)
+/-- A JavaScript identifier for a declaration: ASCII letters and digits are kept, `.` becomes
+`$`, and every other character `_<hex>_`, so distinct names stay distinct and the output stays
+small (`Examples.Card` is `nExamples$Card`). -/
+def ident (n : Name) : String :=
+  "n" ++ String.join (n.toString.toList.map fun c =>
+    if c.isAlphanum then c.toString
+    else if c == '.' then "$"
+    else "_" ++ String.ofList (Nat.toDigits 16 c.toNat) ++ "_")
 private def varName (vars : Std.HashMap FVarId String) (f : FVarId) : String := vars[f]!
 
 private structure Builtin where
@@ -662,15 +672,27 @@ def compileArtifacts (exports : Array Name) (options : Options := {}) : CoreM Ar
     out := out ++ s!"{ident n}();\n"
   for n in exports do
     out := out ++ s!"const e{ident n} = {ident n}();\nexport \{ e{ident n} as {quote n.toString} };\n"
+  -- Each visited declaration pushed one declaration and one metadata entry, in the same order.
+  let env ← getEnv
+  let metadata := (s.metadata.zip s.declarations).map fun (entry, code) =>
+    let name := (entry.getObjValAs? String "name").toOption.getD ""
+    let origin := match env.getModuleIdxFor? name.toName >>= (env.header.moduleNames[·]?) with
+      | some module => toJson module.toString
+      | none => Json.null
+    entry.mergeObj (Json.mkObj [("bytes", toJson code.utf8ByteSize), ("module", origin)])
   let manifest := Json.mkObj [("abi", toJson "leanjs-v0"), ("lean", toJson "4.35.0"),
     ("library", toJson library),
     ("imports", toJson (s.usedLibraries.map fun i => toJson options.libraries[i]!.interface)),
     ("initialized", toJson (s.initializers.map toString)),
-    ("exports", toJson (exports.map toString)), ("declarations", toJson s.metadata),
+    ("exports", toJson (exports.map toString)), ("declarations", toJson metadata),
     ("constructors", toJson s.constructors), ("hookPlans", toJson s.hookPlans)]
   out := out ++ "export { $fn as __leanjs_fn };\n"
   let declarations ← TypeScript.emit exports options.opaqueTypes
-  return ⟨out ++ s!"export const __leanjs = {manifest.compress};\n", declarations, manifest, library⟩
+  let embedded := if options.fullManifest then manifest else Json.mkObj [("abi", toJson "leanjs-v0"),
+    ("lean", toJson "4.35.0"), ("library", toJson library),
+    ("imports", toJson (s.usedLibraries.map fun i => toJson options.libraries[i]!.interface)),
+    ("initialized", toJson (s.initializers.map toString)), ("exports", toJson (exports.map toString))]
+  return ⟨out ++ s!"export const __leanjs = {embedded.compress};\n", declarations, manifest, library⟩
 
 /-- Backwards-compatible ESM-only entry point. -/
 def compile (exports : Array Name) (options : Options := {}) : CoreM String := do

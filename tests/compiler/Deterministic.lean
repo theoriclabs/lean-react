@@ -10,8 +10,12 @@ run_meta do
     throwError "Declaration/manifest generation is nondeterministic"
 
 /-- The generated symbol of a declaration, as `LeanJS.Compiler` spells it. -/
-private def symbol (n : Name) : String :=
-  "n" ++ String.join (n.toString.toList.map fun c => "_" ++ toString c.toNat)
+private def symbol (n : Name) : String := LeanJS.ident n
+
+-- Symbols are short and distinct: letters and digits kept, `.` as `$`, anything else escaped.
+#guard LeanJS.ident `Corpus.sumAcc == "nCorpus$sumAcc"
+#guard LeanJS.ident `List.MergeSort.Internal.mergeSortTR₂ == "nList$MergeSort$Internal$mergeSortTR_2082_"
+#guard LeanJS.ident `a_b != LeanJS.ident (.str .anonymous "a.b") && LeanJS.ident `a_b == "na_5f_b"
 
 private def count (haystack needle : String) : Nat := (haystack.splitOn needle).length - 1
 

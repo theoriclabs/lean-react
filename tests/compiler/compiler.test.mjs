@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as p from './generated.mjs';
+const manifestOf = file => JSON.parse(readFileSync(new URL(`./${file}.manifest.json`, import.meta.url), 'utf8'));
 import * as intrinsic from './intrinsic-generated.mjs';
 import * as iteration from './iteration.mjs';
 import * as decisions from './decisions.mjs';
@@ -153,12 +154,12 @@ test('named intrinsic overrides its native reference and retains closure capture
 
 test('export and constructor metadata describe the adapter boundary', () => {
   assert.equal(p.__leanjs.abi,'leanjs-v0');
-  assert.equal(p.__leanjs.declarations.find(d => d.name === 'Corpus.twice').arity,3);
-  const ticket = p.__leanjs.constructors.find(d => d.name === 'Corpus.Ticket.mk');
+  assert.equal(manifestOf('generated').declarations.find(d => d.name === 'Corpus.twice').arity,3);
+  const ticket = manifestOf('generated').constructors.find(d => d.name === 'Corpus.Ticket.mk');
   assert.equal(ticket.fields,3);
   assert.deepEqual(ticket.fieldInfo.map(f => f.name), ['title','priority','approved']);
   assert.equal(ticket.fieldInfo[2].erased,true);
-  assert.equal(p.__leanjs.constructors.find(d => d.name === 'Corpus.Status.active').fields,2);
+  assert.equal(manifestOf('generated').constructors.find(d => d.name === 'Corpus.Status.active').fields,2);
 });
 
 test('primitive decisions retain the Lean 4.35 Bool and proof slots across calls', () => {
@@ -274,16 +275,16 @@ test('LR-10 proof fields, subtypes, Fin, and identity casts', async () => {
   assert.equal(countMake(2n).tag, 'Option.some');
   assert.equal(textMake('').tag, 'Option.none');
   assert.equal(indent(9n).tag, 'Option.none');
-  const delta = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Delta.mk');
+  const delta = manifestOf('proof-fields').constructors.find(d => d.name === 'ProofFields.Delta.mk');
   assert.equal(delta.fieldInfo.find(f => f.name === 'normal').erased, true);
-  const text = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Text.mk');
+  const text = manifestOf('proof-fields').constructors.find(d => d.name === 'ProofFields.Text.mk');
   assert.equal(text.fieldInfo.find(f => f.name === 'nonempty').erased, true);
   assert.equal(text.fieldInfo.find(f => f.name === 'noBreak').erased, true);
-  const range = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Range.mk');
+  const range = manifestOf('proof-fields').constructors.find(d => d.name === 'ProofFields.Range.mk');
   assert.equal(range.fieldInfo.find(f => f.name === 'inBounds').erased, true);
-  const chain = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Chain.mk');
+  const chain = manifestOf('proof-fields').constructors.find(d => d.name === 'ProofFields.Chain.mk');
   assert.deepEqual(chain.fieldInfo.filter(f => f.erased).map(f => f.name), ['dense', 'first', 'linked']);
-  const doc = pf.__leanjs.constructors.find(d => d.name === 'ProofFields.Doc.mk');
+  const doc = manifestOf('proof-fields').constructors.find(d => d.name === 'ProofFields.Doc.mk');
   assert.equal(doc.fieldInfo[0].name, 'paragraphs');
   const t = textMake('ab').fields[0];
   const c = countMake(2n).fields[0];
@@ -350,5 +351,10 @@ test('generated TypeScript declarations parse and expose retained ABI slots', as
   assert.match(declarations,/LeanCtor<"Corpus.Ticket.mk", readonly \[string, bigint, null\]>/);
   assert.match(declarations,/as "Corpus.twice"/);
   const manifest = JSON.parse(readFileSync(new URL('./generated.manifest.json', import.meta.url),'utf8'));
-  assert.deepEqual(manifest,p.__leanjs);
+  // The module embeds the linking subset of its manifest; the file has the rest.
+  const linking = ['abi','lean','library','imports','initialized','exports'];
+  assert.deepEqual(Object.keys(p.__leanjs).sort(), [...linking].sort());
+  for (const key of linking) assert.deepEqual(p.__leanjs[key], manifest[key]);
+  assert.ok(manifest.declarations.every(d => Number.isInteger(d.bytes) && d.bytes > 0), 'every declaration has its emitted size');
+  assert.equal(manifest.declarations.find(d => d.name === 'Corpus.twice').module, 'tests.compiler.Corpus');
 });
