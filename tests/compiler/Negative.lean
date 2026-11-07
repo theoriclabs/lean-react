@@ -148,3 +148,14 @@ set_option leanjs.recursion.error true in
 -- is replaced by a trusted adapter and the check passes).
 #guard_msgs in
 #leanjs_check Rejected.root using { intrinsics := #[{ leanName := `Rejected.nativeOnly, module := "./gcd.mjs", exportName := "gcd", arity := 2 }] }
+
+-- `@[leanjs_stack_safe]` marks recursion bounded by the data's shape: no note, even as an error.
+namespace Rejected
+@[leanjs_stack_safe] def treeDepth : List Nat → Nat
+  | [] => 0
+  | _ :: rest => treeDepth rest + 1
+end Rejected
+
+#guard_msgs in
+set_option leanjs.recursion.error true in
+#leanjs_check Rejected.treeDepth

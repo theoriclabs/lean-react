@@ -3,6 +3,7 @@ import Lean.Compiler.LCNF.ToDecl
 import LeanJS.Hooks
 import LeanJS.Declarations
 import LeanJS.Modules
+import LeanJS.StackSafe
 
 open Lean Compiler LCNF
 
@@ -510,7 +511,7 @@ mutual
     let varName := varName vars
     let params := d.params.map (varName ·.fvarId)
     let recursion := analyzeRecursion n d.params.size code
-    unless recursion.nonTail.isEmpty do reportRecursion n path sourceType vars recursion
+    unless recursion.nonTail.isEmpty || stackSafeAttr.hasTag env n do reportRecursion n path sourceType vars recursion
     let loop ← if recursion.lower then
         pure (some { name := n, params, tail := recursion.tail, carriers := ← IO.mkRef {}, hit := ← IO.mkRef false : Loop })
       else pure none
@@ -709,6 +710,47 @@ def writeModule (path : System.FilePath) (exports : Array Name) (options : Optio
   IO.FS.writeFile (path.withExtension "d.ts") result.declarations
   IO.FS.writeFile (path.withExtension "d.mts") result.declarations
   IO.FS.writeFile (path.withExtension "manifest.json") result.manifest.compress
+
+/-- Every declaration `exports` reaches, as compilation would visit it (its messages dropped). -/
+private def closure (exports : Array Name) (options : Options) : CoreM NameSet := do
+  let messages := (← getThe Core.State).messages
+  let (_, s) ← ((exports.forM (visit · #[])).run { options, exports }).run {}
+  modifyThe Core.State fun state => { state with messages }
+  return s.visited
+
+/-- The pages of one application, compiled together. Declarations that two or more pages reach
+are compiled once into `<directory>/<sharedName>.mjs`, a library with identity `sharedId`, and
+each page (`<directory>/<page>.mjs`) imports them from it instead of carrying its own copy.
+Intrinsics, declarations already imported from `options.libraries`, constructors and custom
+hooks (functions returning `Hook`, which are checked where they are called) stay in the pages.
+Every module also gets `.d.ts`, `.d.mts` and `.manifest.json`. Returns the shared names. -/
+def writeApp (directory : System.FilePath) (pages : Array (String × Array Name)) (options : Options := {})
+    (sharedName : String := "shared") (sharedId : LibraryId := ⟨"app", "0.0.0", "shared"⟩) :
+    CoreM (Array Name) := do
+  let mut reached : Std.HashMap Name Nat := {}
+  for (_, exports) in pages do
+    for n in (← closure exports options) do
+      reached := reached.insert n (reached.getD n 0 + 1)
+  let imported := options.libraries.flatMap (·.interface.exports.map (·.name))
+  let env ← getEnv
+  let mut shared : Array Name := #[]
+  for (n, count) in reached.toArray.qsort (fun a b => a.1.toString < b.1.toString) do
+    if count < 2 || options.intrinsics.any (·.leanName == n) || imported.contains n then continue
+    let some info := env.find? n | continue
+    if info matches .ctorInfo _ then continue
+    if info.type.getForallBody.isAppOf options.hooks.hookType then continue
+    shared := shared.push n
+  IO.FS.createDirAll directory
+  let library ← compileArtifacts shared { options with library := some sharedId }
+  let sharedPath := directory / s!"{sharedName}.mjs"
+  IO.FS.writeFile sharedPath library.javascript
+  IO.FS.writeFile (sharedPath.withExtension "d.ts") library.declarations
+  IO.FS.writeFile (sharedPath.withExtension "d.mts") library.declarations
+  IO.FS.writeFile (sharedPath.withExtension "manifest.json") library.manifest.compress
+  let sharedImport ← IO.ofExcept (library.asImport s!"./{sharedName}.mjs")
+  for (page, exports) in pages do
+    writeModule (directory / s!"{page}.mjs") exports { options with libraries := options.libraries.push sharedImport }
+  return shared
 
 open Elab Command in
 elab "#lean_js " file:str " [" names:ident,* "]" : command => do

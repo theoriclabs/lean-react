@@ -13,4 +13,5 @@ import Examples.Routing
 import Examples.Diagram
 import Examples.Large
 import Examples.Styles
+import Examples.Program
 import Examples.Tickets.Client
