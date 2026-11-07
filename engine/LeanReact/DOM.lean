@@ -1,4 +1,5 @@
 import LeanReact.Core
+import LeanReact.Style
 
 namespace LeanReact.DOM
 
@@ -62,6 +63,10 @@ structure Props where
   /-- Rendered as `data-<key>="value"`. -/
   data : Array (String × String) := #[]
   style : Array (StyleProp × String) := #[]
+  /-- Styles as values; their generated class names are added to `className`. -/
+  styles : Array Style := #[]
+  /-- Typed inline declarations (`left := some (.px 12)`), applied after `style`. -/
+  inline : Inline := {}
   onClick : Option (PressEvent → Action Unit) := none
   onKeyDown : Option (KeyEvent → Action KeyOutcome) := none
   onKeyUp : Option (KeyEvent → Action Unit) := none
@@ -100,7 +105,11 @@ private def handler (value : Option α) (wrap : α → Attribute) : Array Attrib
   match value with | none => #[] | some f => #[wrap f]
 
 def Props.attributes (props : Props) : Array Attribute :=
-  optionalString "id" props.id ++ optionalString "className" props.className ++
+  optionalString "id" props.id ++
+  optionalString "className" (match props.className, props.styles.map Style.className with
+    | none, #[] => none
+    | some name, classes => some (" ".intercalate (name :: classes.toList))
+    | none, classes => some (" ".intercalate classes.toList)) ++
   optionalString "title" props.title ++ optionalString "role" props.role ++
   optionalString "aria-label" props.ariaLabel ++ optionalString "aria-describedby" props.ariaDescribedBy ++
   optionalString "aria-labelledby" props.ariaLabelledBy ++ optionalString "aria-live" props.ariaLive ++
@@ -108,7 +117,8 @@ def Props.attributes (props : Props) : Array Attribute :=
   optionalBool "aria-pressed" props.ariaPressed ++ optionalBool "aria-disabled" props.ariaDisabled ++
   optionalInt "tabIndex" props.tabIndex ++ (if props.hidden then #[.bool "hidden" true] else #[]) ++
   props.data.map (fun (key, value) => Attribute.string s!"data-{key}" value) ++
-  (if props.style.isEmpty then #[] else #[.style (props.style.map fun (prop, value) => (prop.name, value))]) ++
+  (let entries := props.style.map (fun (prop, value) => (prop.name, value)) ++ props.inline.entries
+   if entries.isEmpty then #[] else #[.style entries]) ++
   handler props.onClick .press ++ handler props.onKeyDown .keyDown ++ handler props.onKeyUp .keyUp ++
   handler props.onFocus .focus ++ handler props.onBlur .blur ++
   handler props.onMouseEnter .mouseEnter ++ handler props.onMouseLeave .mouseLeave ++

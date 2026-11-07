@@ -24,3 +24,4 @@ fi
 echo "P06 typechecks passed (generic APIs and 5 expected rejections)."
 lean tests/runtime/P06Examples.lean
 lean tests/runtime/ActorOnly.lean
+lean tests/runtime/Styles.lean
