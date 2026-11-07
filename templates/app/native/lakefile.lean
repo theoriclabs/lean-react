@@ -84,7 +84,7 @@ local source tree; never commit a manifest that records such a path. -/
   opts := {}
   src? := some <| match get_config? leanhttp with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/leanhttp" (some "v0.3.1") none
+    | none => .git "https://github.com/theoriclabs/leanhttp" (some "v0.5.0") none
 }
 
 @[package_dep] def leanws : Dependency := {
@@ -94,7 +94,7 @@ local source tree; never commit a manifest that records such a path. -/
   opts := {}
   src? := some <| match get_config? leanws with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/leanws" (some "40900ccb00e04186360ba0a235c560517b7ecb57") none
+    | none => .git "https://github.com/theoriclabs/leanws" (some "964c5610f3faf68f624d8ef2049576b8f127dcc2") none
 }
 
 @[package_dep] def leansqlite : Dependency := {

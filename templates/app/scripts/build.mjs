@@ -15,7 +15,7 @@ await mkdir(out, { recursive: true });
 await build({
   entryPoints: [resolve(root, 'web/main.mjs')], outfile: resolve(out, 'main.js'),
   bundle: true, minify: true, format: 'esm', platform: 'browser', loader: { '.mjs': 'jsx' },
-  alias: { '@leanapp/engine': engine },
+  alias: { '@leanapp/engine': engine, '#leancontract': resolve(root, '.lake/packages/leanapi/LeanContract') },
   define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'info',
 });
 for (const file of ['index.html', 'style.css']) await copyFile(resolve(root, 'web', file), resolve(out, file));

@@ -74,7 +74,7 @@ def main : IO Unit := do
       Contract.Http.ErrorStatus.ofOperation endpoint.endpoint.operation.contract (fun _ => 422))
   -- The JS runtime of the generated client is LeanAPI's (`LeanContract/{Fetch,Codecs}.mjs`).
   Contract.Generate.emitClient (operations.map Prod.fst) codecs (operations.map Prod.snd) "tests/domain/generated/post"
-    "../../../../../leanapi/LeanContract" (routes := routes)
+    "#leancontract" (routes := routes)
   IO.FS.writeFile "tests/domain/generated/matrix.json" (← visibilityMatrix).compress
   IO.FS.writeFile "tests/domain/generated/scalars.json"
     ((Codec.list Codec.string).encode DomainBrowser.results).compress

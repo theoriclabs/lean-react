@@ -8,7 +8,8 @@ sessions and a lifecycle-managed process (`native/`). The public process is the 
 
 ## Build, run, test
 
-Requirements: Lean 4.35.0 via elan, Node ≥ 22.13, a C toolchain and OpenSSL 3 development files
+Requirements: Lean 4.35.0 via elan, Node ≥ 22.13, a C toolchain, OpenSSL 3 development files,
+and libcurl headers ≥ 7.86 (including `curl/websockets.h`) plus a libcurl runtime
 (Homebrew `openssl@3` on macOS). The first native build clones LeanDB, LeanHttp, leanws, LeanSQLite
 and lean-react at their pinned revisions into `.lake/packages`.
 

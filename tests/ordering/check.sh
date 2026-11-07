@@ -28,7 +28,7 @@ for fixture in tests/ordering/negative/*.lean; do
     *Update) pattern='is marked as private' ;;
     *) echo "FAIL: no expected diagnostic for $name" >&2; exit 1 ;;
   esac
-  if ! rg -Fq "$pattern" "$log"; then
+  if ! grep -Fq "$pattern" "$log"; then
     cat "$log" >&2
     echo "FAIL: $name failed for an unexpected reason" >&2
     exit 1

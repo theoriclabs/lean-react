@@ -12,7 +12,13 @@ with a retained `Bool` and an erased proof slot. Rebuild producer and consumer a
 by the previous Lean version are rejected at the library boundary. Container
 recipes use the official 4.35.0 Linux archive and its published SHA-256 digest
 `7289597a44543246c9227b8cae501767e095ce17f6d448b95fc4a8dc97268f6d`.
-The existing immutable dependency revisions are retained.
+Native dependencies move to LeanHTTP 0.5.0 (`cb7676aab84a8017528cc13192ec6a3ec32c55c9`)
+and LeanWS 0.2.0 (`964c5610f3faf68f624d8ef2049576b8f127dcc2`) for the new
+optional URI query representation. The other dependency revisions are retained.
+Native builds require libcurl headers at least 7.86, including `curl/websockets.h`;
+Ubuntu 22.04 CI supplies checksum-verified 8.23.0 headers while retaining its system
+libcurl runtime. Browser clients resolve `#leancontract` through the workspace or
+scaffold's package imports and bundler alias to the pinned LeanAPI checkout.
 
 CI checks the build, native Lean/JavaScript compiler parity, deterministic output,
 compiler rejection cases, runtime and integration suites, scaffold generation,

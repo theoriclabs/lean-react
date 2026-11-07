@@ -25,7 +25,7 @@ for test in RejectInput RejectOutput RejectError RejectReadWrite RejectReadIO Re
     RejectAtLeast) expected='type mismatch|Type mismatch|Application type mismatch' ;;
     RejectWeakenedRole) expected='acl.matrix_failed' ;;
   esac
-  if ! rg -q "$expected" "$app_build_dir/$test.log"; then
+  if ! grep -Eq "$expected" "$app_build_dir/$test.log"; then
     cat "$app_build_dir/$test.log" >&2
     echo "FAIL: $test failed for an unexpected reason" >&2
     exit 1
