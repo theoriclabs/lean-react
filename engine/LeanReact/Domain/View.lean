@@ -8,6 +8,18 @@ import LeanReact.Domain.DateInput
 namespace LeanReact.Domain
 open LeanDb.Model Ontology
 
+/-- The input of an endpoint whose only argument is the actor (`derive_operation` gives it
+`Input := Unit`): a record with no fields, so `form`, `call` and `load` accept it. -/
+instance : HasRecord Unit where
+  record := {
+    identity := ⟨"lean", "Unit"⟩
+    Field := Empty
+    Value := Empty.elim
+    fields := []
+    fieldName := nofun
+    valueDescriptor := nofun
+    get := nofun }
+
 structure Feedback (Input : Type) [HasRecord Input] where
   fields : List ((HasRecord.record (T := Input)).Field × String) := []
   message : Option String := none
