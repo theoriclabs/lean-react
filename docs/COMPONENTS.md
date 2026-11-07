@@ -122,13 +122,13 @@ def Board : Component GameView Model Msg := { init := fun g => ({ game := g }, .
   - "a form whose fields are invalid cannot emit `submitted`"
 - `view` is a pure function, so properties like "Resign is disabled once the game is over" are theorems about data.
 
-**8. It compiles with LeanJS as is.**
+**8. Use LeanJS with the P0-tested representations.**
 - `Model`, `Msg`, `update` and `view` are ordinary Lean. Structures, inductives, closures and typeclasses all compile today.
 - The host side is small:
   - one React component per `Component`, holding one state slot;
   - `dispatch` applies `update` to the latest model synchronously (atomic in single-threaded JS), commits, then runs the commands;
   - the `Html` tree is walked in JavaScript into React elements, so React still does keyed diffing and DOM reconciliation.
-- No new compiler feature and no hook checker are needed for this path.
+- The [P0 results](#p0-compiler-spike-lean-4350) require host-erased child embedding and generated JSON codecs. No new hook checker is needed for this path.
 
 **9. It stays testable natively.**
 - `Component.simulate : List Msg → Model` and the pure `view` run in Lean with no browser.
@@ -167,3 +167,41 @@ What must keep working:
 3. **Channels and Streams.** Decided in [LR-13](https://github.com/theoriclabs/lean-react/issues/43): removed with the gateway, whose protocols were their only server (and their JS bridge was never exported). Long-lived inputs return as `Sub`, backed by LeanAPI.
 4. **JSX-like notation.** Is it worth it on top of the combinators, and when?
 5. **Migration order.** Counter and Forms examples first, then Tickets, then the leanchess UI as the real test.
+
+## P0 compiler spike: Lean 4.35.0
+
+Validated on 2026-11-06 for [LR-14](https://github.com/theoriclabs/lean-react/issues/44).
+The fixtures are probes, not the public `Program` API. Run `npm run test:compiler`;
+[Components.lean](../tests/compiler/Components.lean),
+[GenerateComponents.lean](../tests/compiler/GenerateComponents.lean) and
+[the jsdom assertions](../tests/compiler/components.test.mjs) cover all seven questions.
+The harness regenerates and compares the ESM, declarations, manifests, codecs and
+recorded rejection decisions in separate Lean processes.
+
+| Construct | Result | Decision for P1 and later |
+| --- | --- | --- |
+| Nested `Html Msg` with `List (Html Msg)` | Compiles and renders nested nodes, attributes, text and `none` in jsdom. | Keep lists; no flat or array representation is required by this probe. |
+| Structural `Html.map` | Compiles and maps handlers under nested nodes and the child bundle. | Keep the pure map. It uses the JavaScript stack; this is not a stack-safety result for arbitrary trees. |
+| Closures inside attributes | Captures survive compilation; input decoders return `some` messages or suppress dispatch with `none`. | Keep typed event decoders. |
+| Existential child embed | A bundle with hidden props/model/message types compiles; its three type witnesses are `null` at the ABI, and children with Nat and String models remain distinct. The fully recursive indexed `Html` attempt is rejected by Lean's kernel before LeanJS. | Use the planned host-erased child boundary. Do not assume that a fully typed recursive `Embed` record can simply be inserted into the List-based view. |
+| `update : Msg → Model → Model × Cmd Msg` | A `Model × Cmd Msg` result, a batch, a timer and a request continuation compile. Tests feed the continuation result through `update` again and preserve integers beyond 2^53. | Keep pure transition results and captured command continuations. Running commands and dispatch ordering remain P2/P3 work. |
+| Derived `FromJson` for a record | Native decoding works, but LeanJS rejects the derived decoder through `Lean.Name.beq`, a native extern reached by its error formatting. | Use generated codecs for P6. The same Lean record has a generated client codec tested against native wire output, large integers, missing/extra fields and malformed values. Host JSON parsing does not make the Lean decoder portable. |
+| 64-square view and deeper paths | The board renders 64 squares from 193 Html nodes at depth 4. A separate 128-wrapper path also renders (129 nodes/depth 129). | No flattening or lazy cache is forced at this scale. Keep measuring in P2; this does not establish unbounded depth or production rendering performance. |
+
+The existential attempt is preserved in
+[ComponentsEmbedRejected.lean](../tests/compiler/ComponentsEmbedRejected.lean).
+A child whose view returns its own `Html ChildMsg` motivates an indexed `Html`;
+putting that local message index under `List` produces the kernel error
+“nested inductive datatypes parameters cannot contain local variables”. Keeping
+explicit existential witnesses also raises the bundle/view universe to `Type 1`.
+The positive fallback fixtures check leaf bundles inside the tree and a full
+child bundle outside the recursive Html definition. That host boundary renders
+the child’s own `Html ChildMsg`, dispatches its messages through its own model,
+and maps reports to the parent. This is a probe host; production mounting,
+atomicity, commands and lifecycle still belong to P2/P3.
+
+The jsdom run reports walk and commit timings without enforcing a flaky speed
+threshold. One local run took about 1 ms to walk the board and 6 ms including the
+commit; these numbers are an observation, not a browser performance guarantee.
+Both rejection paths are executable gates, so a future compiler or Lean change
+must revisit the corresponding fallback instead of silently retaining it.
