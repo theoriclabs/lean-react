@@ -198,6 +198,24 @@ Open `http://localhost:4173/tutorial.html`. Save the empty field: it should show
 
 The default build only knows about its registered example generators and entry points. After editing this tutorial, rerun the Lean build/generator and esbuild commands above, then refresh. For an ongoing application, add its generator and browser entry to `scripts/build.mjs` or give it a dedicated build script. If you want `lake build Examples` to include it, add `import Examples.Tutorial.Components` to `examples/lean/Examples.lean`. Add generated integration tests when incorporating it into the main test workflow.
 
+### One command for an application
+
+For your own application, `leanreact` (in this repository `node scripts/leanreact.mjs`; from an app that requires LeanReact, `lake exe leanreact`) generates, bundles, serves and checks pages without a hand-written generator, entry module, HTML file or server route:
+
+```sh
+lake exe leanreact build MyApp.Pages --page /=MyApp.Pages.Home --page '/projects/*=MyApp.Pages.Projects' --styles MyApp --css web/base.css --out dist
+lake exe leanreact dev MyApp.Pages --page /=MyApp.Pages.Home
+lake exe leanreact test MyApp.Pages --page /=MyApp.Pages.Home
+```
+
+- Each `--page /path=Declaration` mounts a `Component Unit` (or an `Element`) at that path. A path ending in `/*` also serves every client route below it. All pages share one bundle (`dist/app.js`) and one `index.html`.
+- `--styles MyApp` extracts every `Style` and `Token` under `MyApp` to `dist/styles.css`; `--css` copies plain stylesheets.
+- The generator is written under `.lake/leanreact/`, outside your library, so `lake build` of the library writes no JavaScript.
+- `dev` rebuilds when `.lean`, `.css` or `.mjs` files change and serves with a history fallback.
+- `test` mounts every page in Chromium at 1280 px and 390 px, fails on console errors, uncaught errors, unhandled rejections and horizontal overflow, and writes screenshots to `dist/screenshots/`.
+
+The app needs `react`, `react-dom`, `esbuild` and, for `test`, `playwright` from npm.
+
 You can also call the same domain parser from JavaScript after generating the module:
 
 ```sh
@@ -430,6 +448,7 @@ A Lean typecheck proves that a source program elaborates. It does not prove that
 | Endpoint pages (`form`, `call`, `load`, `App`) | `npm run test:domain`; also runs in `npm test`. |
 | The full regular suite | `npm test`. |
 | Browser interactions | `npm run test:browser`. |
+| The `leanreact build/dev/test` command | `npm run test:cli` (needs Chromium). |
 | README captures after visual changes | `npm run screenshots`. |
 
 Playwright needs Chromium installed or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` set to an installed Chromium/Chrome executable. Follow the browser setup available on your machine.

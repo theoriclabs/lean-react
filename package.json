@@ -5,6 +5,9 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "leanreact": "scripts/leanreact.mjs"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:blog": "node scripts/build-blog.mjs",
@@ -19,6 +22,7 @@
     "test:domain": "node tests/domain/check.mjs",
     "size": "node scripts/size-report.mjs examples/generated/tickets.manifest.json examples/generated/smoke.manifest.json examples/generated/collections.manifest.json",
     "test:browser": "npm run build && playwright test",
+    "test:cli": "node --test tests/cli/*.test.mjs",
     "example:consumer": "node examples/consumer/main.mjs",
     "benchmark": "node scripts/benchmark.mjs",
     "dev": "node scripts/dev.mjs --watch",

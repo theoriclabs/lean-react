@@ -46,3 +46,9 @@ needs = ["leanJsRuntime"]
 [[lean_lib]]
 name = "Examples"
 srcDir = "examples/lean"
+
+# `lake exe leanreact build|dev|test <Module> …` (scripts/leanreact.mjs).
+[[lean_exe]]
+name = "leanreact"
+srcDir = "engine"
+root = "LeanReactCli"
