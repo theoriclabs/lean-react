@@ -1,0 +1,55 @@
+name: Lean release candidate
+
+# Builds `main` against the newest Lean release candidate, so a break in LeanJS (which reads
+# Lean's compiler IR) is known before that Lean version is released. Not a required check.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  lean-rc:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the newest Lean release candidate
+        id: rc
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current="$(sed -E 's/^leanprover\/lean4:v//' lean-toolchain)"
+          rc="$(gh api 'repos/leanprover/lean4/releases?per_page=30' --jq '[.[] | select(.prerelease) | .tag_name | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+-rc[0-9]+$"))][0] // ""')"
+          echo "current=$current rc=$rc"
+          base="${rc#v}"; base="${base%%-rc*}"
+          newest="$(printf '%s\n%s\n' "$current" "$base" | sort -V | tail -1)"
+          if [ -z "$rc" ] || [ "$base" = "$current" ] || [ "$newest" = "$current" ]; then
+            echo "No release candidate newer than Lean $current."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "leanprover/lean4:$rc" > lean-toolchain
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "## Testing against Lean $rc (main is on $current)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Install elan
+        if: steps.rc.outputs.run == 'true'
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - name: Build
+        if: steps.rc.outputs.run == 'true'
+        run: lake build
+      - uses: actions/setup-node@v4
+        if: steps.rc.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.rc.outputs.run == 'true'
+        run: npm ci
+      - name: Compiler suite
+        if: steps.rc.outputs.run == 'true'
+        run: npm run test:compiler
+      - name: Runtime suites
+        if: steps.rc.outputs.run == 'true'
+        run: |
+          bash tests/runtime/check-lean.sh
+          npm run test:runtime

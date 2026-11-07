@@ -17,3 +17,4 @@ await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
 await run('node', ['tests/domain/check.mjs'], { cwd });
 await run('node', ['node_modules/typescript/bin/tsc', '--noEmit'], { cwd });
 await run('node', ['scripts/check-manifests.mjs'], { cwd });
+await run('node', ['scripts/check-versions.mjs'], { cwd });
