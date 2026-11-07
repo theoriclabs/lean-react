@@ -95,10 +95,15 @@ import * as app from './output.mjs';
 app['MyApp.validate'](value);
 ```
 
-`__leanjs` contains the ABI/toolchain version, requested exports, declaration
-arities and original types, plus encountered constructor parameter counts, field
-counts, field names/types and erasure flags. Constructors seen only in matches or
-projections are included too. This is descriptive metadata, not a validator.
+`output.manifest.json` contains the ABI/toolchain version, requested exports, declaration
+arities, original types, emitted sizes (`bytes`) and modules of origin (`module`), plus
+encountered constructor parameter counts, field counts, field names/types and erasure flags.
+Constructors seen only in matches or projections are included too. This is descriptive
+metadata, not a validator. The module's own `__leanjs` export embeds only what linking needs
+(ABI, Lean version, library identity, imports, exports and initialization roots); set
+`Options.fullManifest` to embed the whole manifest as well. `node scripts/size-report.mjs
+out/*.manifest.json` reports what dominates generated modules and what several modules each
+carry a copy of.
 `__leanjs` and `__leanjs_fn` are reserved export names. Duplicate exports and
 intrinsic registrations are rejected. Declaration symbols and local variable
 names are deterministic; output is tested both within one environment and across

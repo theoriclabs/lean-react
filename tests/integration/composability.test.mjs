@@ -13,6 +13,7 @@ const { mountElement, ctor, provide } = await import('../../engine/adapters/lean
 const shared = await import('../../examples/generated/shared.mjs');
 const provider = await import('../../examples/generated/provider.mjs');
 const consumer = await import('../../examples/generated/consumer.mjs');
+const providerManifest = JSON.parse(await readFile(new URL('../../examples/generated/provider.manifest.json', import.meta.url), 'utf8'));
 const automatic = await import('../../examples/generated/automatic-context.mjs');
 const collection = await import('../../examples/generated/collections.mjs');
 const name = short => `Examples.Libraries.${short}`;
@@ -43,9 +44,9 @@ test('linked contexts have object identity, default isolation, nested providers,
   assert.strictEqual(provider[name('providerContext')], context);
   assert.strictEqual(consumer[name('consumerContext')], context);
   assert.notStrictEqual(shared[name('otherFormatter')], context);
-  assert.equal(provider.__leanjs.declarations.find(d => d.name === name('formatter')).importedFrom.packageName,
+  assert.equal(providerManifest.declarations.find(d => d.name === name('formatter')).importedFrom.packageName,
     'example-services');
-  assert.ok(!provider.__leanjs.declarations.some(d => d.name === 'LeanReact.createContext'));
+  assert.ok(!providerManifest.declarations.some(d => d.name === 'LeanReact.createContext'));
   const greeting = text => mountElement(consumer[name('Greeting')], text);
   const wrap = (heading, child) => mountElement(provider[name('Provider')],
     ctor(name('ProviderProps.mk'), [heading, child]));

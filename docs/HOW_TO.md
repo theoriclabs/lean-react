@@ -403,6 +403,7 @@ A Lean typecheck proves that a source program elaborates. It does not prove that
 | A Lean application module | `lake build Examples.YourModule`, then its actual generator. |
 | The built-in examples or generated declarations | `npm run build`, then the relevant mounted integration or browser test. |
 | UI layering and intrinsic exports | `npm run test:boundaries`; also runs in `npm test`. |
+| Generated module size | `npm run size` after `npm run build` (bytes per declaration, per module of origin, and copies shared between modules); also runs in `npm test`. For your own modules: `node scripts/size-report.mjs path/*.manifest.json`. |
 | Compiler lowering or ABI | `npm run test:compiler`; this includes native/generated parity and rejection checks. |
 | The actual Tickets generator in isolation | `npm run test:compiler:integration`, after the compiler suite. |
 | Shared runtime behavior | `npm run test:runtime`. |

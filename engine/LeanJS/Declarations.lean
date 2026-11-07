@@ -67,9 +67,10 @@ export interface LeanManifest {\n\
   readonly library: LeanLibraryInterface | null;\n\
   readonly imports: readonly LeanLibraryInterface[];\n\
   readonly initialized: readonly string[];\n\
-  readonly declarations: readonly { readonly name: string; readonly arity: number; readonly type: string; readonly intrinsic?: boolean; readonly builtin?: boolean; readonly constructor?: boolean; readonly parameters?: readonly string[]; readonly importedFrom?: LeanLibraryId }[];\n\
-  readonly constructors: readonly { readonly name: string; readonly type: string; readonly parameters: number; readonly fields: number; readonly fieldInfo: readonly { readonly name: string; readonly type: string; readonly erased: boolean }[] }[];\n\
-  readonly hookPlans: readonly { readonly name: string; readonly validation: 'fixed-hook-sequence-v1'; readonly sites: readonly { readonly primitive: string; readonly kind: string; readonly site: string }[] }[];\n\
+  /** Present only with `Options.fullManifest`; always in the `.manifest.json` file. */\n\
+  readonly declarations?: readonly { readonly name: string; readonly arity: number; readonly type: string; readonly intrinsic?: boolean; readonly builtin?: boolean; readonly constructor?: boolean; readonly parameters?: readonly string[]; readonly importedFrom?: LeanLibraryId }[];\n\
+  readonly constructors?: readonly { readonly name: string; readonly type: string; readonly parameters: number; readonly fields: number; readonly fieldInfo: readonly { readonly name: string; readonly type: string; readonly erased: boolean }[] }[];\n\
+  readonly hookPlans?: readonly { readonly name: string; readonly validation: 'fixed-hook-sequence-v1'; readonly sites: readonly { readonly primitive: string; readonly kind: string; readonly site: string }[] }[];\n\
 }\n\
 export declare const __leanjs: LeanManifest;\n\
 export declare function __leanjs_fn<A extends unknown[], R>(arity: A['length'], body: (...args: A) => R): LeanFunction<A, R>;\n"

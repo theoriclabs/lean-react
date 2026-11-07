@@ -17,6 +17,7 @@
     "test:compiler:integration": "lake env lean --run tests/Run.lean integration",
     "test:runtime": "node --test tests/runtime/*.test.mjs",
     "test:domain": "node tests/domain/check.mjs",
+    "size": "node scripts/size-report.mjs examples/generated/tickets.manifest.json examples/generated/smoke.manifest.json examples/generated/collections.manifest.json",
     "test:browser": "npm run build && playwright test",
     "example:consumer": "node examples/consumer/main.mjs",
     "benchmark": "node scripts/benchmark.mjs",

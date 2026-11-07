@@ -14,6 +14,7 @@ const React = await import('react');
 const {createRoot} = await import('react-dom/client');
 const {runtime, mountElement, ctor} = await import('../../engine/adapters/leanjs-react.mjs');
 const program = await import('./generated/domain.mjs');
+const manifest = JSON.parse(await readFile(new URL('./generated/domain.manifest.json', import.meta.url), 'utf8'));
 const generated = await import('./generated/post/operations.mjs');
 const {formatRfc3339} = await import('#leancontract/Codecs.mjs');
 const json = createJsonBridge(program);
@@ -25,7 +26,7 @@ const array = value => {const result=[]; while(value.tag==='List.cons'){result.p
 const deferred = () => {let resolve; const promise = new Promise(done => {resolve=done;}); return {promise, resolve};};
 const settle = () => React.act(async () => {for (let i = 0; i < 5; i++) await new Promise(r => setTimeout(r, 0));});
 const make = (name, values) => {
-  const declaration = program.__leanjs.constructors.find(value => value.name === name);
+  const declaration = manifest.constructors.find(value => value.name === name);
   assert.ok(declaration, name);
   return ctor(name, declaration.fieldInfo.map(field => {
     assert.ok(Object.hasOwn(values, field.name), `${name}.${field.name}`);
