@@ -51,7 +51,7 @@ private def compiler : IO Unit := do
   IO.FS.createDirAll (build / "LeanJS")
   IO.FS.createDirAll (build / "tests/compiler")
   lean project #["--version"]
-  for module in #["LeanJS/Portable", "LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Modules", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus", "tests/compiler/ProofFields", "tests/compiler/Components"] do
+  for module in #["LeanJS/Portable", "LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Modules", "LeanJS/StackSafe", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus", "tests/compiler/ProofFields", "tests/compiler/Components"] do
     let sourceDir := sourceRoot project module
     lean project #["-R", sourceDir.toString, "-o", (build / s!"{module}.olean").toString,
       (sourceDir / s!"{module}.lean").toString]

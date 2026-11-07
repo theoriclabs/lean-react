@@ -68,6 +68,25 @@ LR-13 (the purge) is independent and can land any time. It should land before P7
 
 ---
 
+## P1–P4 as built
+
+`LeanReact.Program` (`engine/LeanReact/Program/`) implements P1, P2, P3 and P4, with these deviations from the text below:
+
+- **Keys.** `Html.keyed key child` wraps one child; `each` builds a node of keyed children. Structural recursion does not go through `List (String × Html)`.
+- **Child embedding.** `Html.embed` carries an `Embed Msg = { key, mount : (Msg → Action Unit) → Element }`, so `Html` stays in `Type`, as the P0 kernel result requires. `Component.embed c props toParent` mounts a child program whose messages reach the parent through `toParent`. `Html.element` is the same mechanism with no messages.
+- **The host is Lean, not `program.mjs`.** One stable generic hook component (`Program.host`) holds the model in a cell (the latest value, so dispatch is atomic) mirrored into one state slot. Commands are queued and drained by an effect after the commit. Events use the existing `Attribute` handlers, so payload snapshots are shared with the hook API. Keyed siblings go through `keyedEach`, which rejects a duplicate key natively and in the browser. The native reference and the browser run the same code, and no new intrinsic is needed.
+- **Commands (P3).** `Cmd` has `none`, `batch` and `task (work : Action (Option Msg))`; everything else is built on `task`, which keeps `Cmd` in `Type`:
+  - `Cmd.perform work toMsg` (the bridge, with host exceptions as `.error`) and `Cmd.exec`;
+  - `after`, `navigate`/`replaceUrl` (through the router's history), `focus`, `store`/`load` (local storage), `random`, `now`.
+
+  Their host capabilities are intrinsics in `LeanReact.Program.Effects`, with native reference bodies. A batch starts each command without waiting for it (`Effects.spawn`), so a timer doesn't hold up the next command.
+- **Subscriptions (P3).** `Sub.source key start` is the primitive: `start emit` returns how to stop. `Sub.every ms k` and `Sub.onKey k` are sources. After each commit the host compares the keys of `subscriptions props model` with the running ones: it stops removed keys, starts new ones and keeps the rest. Unmount stops all. A kept source keeps the decoder it started with, so put what it depends on in its key (`game:{id}`). `Examples.Program.Watcher` shows leanchess's `watch` loop as a source keyed by game id, and its sign-in as `Cmd.perform`.
+- **`onInput`** maps to React's `onChange` (every edit), so controlled inputs don't warn; the `Attr.onInput` constructor is the raw `input` event.
+- **`lazy`** is keyed but not yet memoized.
+- **Props.** `Component.toElement c props (propsKey := some k)` dispatches `propsChanged` when `k` changes.
+- **Native testing (P4)** is `LeanReact.Program.Testing`: `Component.simulate`, the queries `find?`/`findAll`/`findByText`/`findByRole`/`findByLabel`, the events `click`/`clicks` (in bubbling order, nothing for a disabled element, a checkbox's toggled change), `typeInto`, `submit` and `keyDown`, and `Html.pretty` for snapshots. `Examples.Program.Behavior` tests the counter and the todo form this way.
+- **Stack notes.** `@[leanjs_stack_safe]` (`LeanJS.StackSafe`) marks recursion bounded by the data's shape (`Html.map`, the walker, the command runner), so generating a program reports no stack notes.
+
 ## P1: Core types
 
 New modules under `engine/LeanReact/Program/`. They are pure Lean, with no IO and no hooks.

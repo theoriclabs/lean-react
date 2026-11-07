@@ -3,6 +3,7 @@ import Lean.Compiler.LCNF.ToDecl
 import LeanJS.Hooks
 import LeanJS.Declarations
 import LeanJS.Modules
+import LeanJS.StackSafe
 
 open Lean Compiler LCNF
 
@@ -510,7 +511,7 @@ mutual
     let varName := varName vars
     let params := d.params.map (varName ·.fvarId)
     let recursion := analyzeRecursion n d.params.size code
-    unless recursion.nonTail.isEmpty do reportRecursion n path sourceType vars recursion
+    unless recursion.nonTail.isEmpty || stackSafeAttr.hasTag env n do reportRecursion n path sourceType vars recursion
     let loop ← if recursion.lower then
         pure (some { name := n, params, tail := recursion.tail, carriers := ← IO.mkRef {}, hit := ← IO.mkRef false : Loop })
       else pure none

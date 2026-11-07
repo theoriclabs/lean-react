@@ -49,7 +49,18 @@ def intrinsics (moduleName : String) : Array LeanJS.Intrinsic := #[
   -- `call`/`navigate` act on (one per document).
   bridge moduleName `LeanReact.Domain.instTypeNameAppContext "erased" 0,
   bridge moduleName `LeanReact.Domain.installAppRuntime "appInstall" 1,
-  bridge moduleName `LeanReact.Domain.currentAppRuntime "appCurrent" 0
+  bridge moduleName `LeanReact.Domain.currentAppRuntime "appCurrent" 0,
+  -- Declarative components: host capabilities behind `Cmd` and `Sub`.
+  bridge moduleName `LeanReact.Program.Effects.sleep "programSleep" 1,
+  bridge moduleName `LeanReact.Program.Effects.nowMs "programNow" 0,
+  bridge moduleName `LeanReact.Program.Effects.randomBelow "programRandom" 1,
+  bridge moduleName `LeanReact.Program.Effects.storageGet "programStorageGet" 1,
+  bridge moduleName `LeanReact.Program.Effects.storageSet "programStorageSet" 2,
+  bridge moduleName `LeanReact.Program.Effects.focusById "programFocus" 1,
+  bridge moduleName `LeanReact.Program.Effects.navigateTo "programNavigate" 2,
+  bridge moduleName `LeanReact.Program.Effects.every "programEvery" 2,
+  bridge moduleName `LeanReact.Program.Effects.onDocumentKeyDown "programKeys" 1,
+  bridge moduleName `LeanReact.Program.Effects.spawn "programSpawn" 1
 ]
 
 def options (moduleName : String) : LeanJS.Options := {

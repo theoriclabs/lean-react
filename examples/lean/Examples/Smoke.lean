@@ -9,6 +9,7 @@ import Examples.Routing
 import Examples.Diagram
 import Examples.Large
 import Examples.Styles
+import Examples.Program
 
 run_meta do
   IO.FS.createDirAll "examples/generated"
@@ -25,6 +26,9 @@ run_meta do
     `Examples.Diagram.Demo, `Examples.Diagram.ArchitectureDiagram, `Examples.Diagram.Timeline,
     `Examples.Large.Demo, `Examples.Large.EventList, `Examples.Large.EventGrid, `Examples.Large.TimelineDemo,
     `Examples.Styles.Demo,
+    `Examples.Program.Counter, `Examples.Program.Todos, `Examples.Program.CounterMsg.add,
+    `Examples.Program.counterElement, `Examples.Program.todosElement, `Examples.Program.logged,
+    `Examples.Program.boardElement, `Examples.Program.Interop, `Examples.Program.nestedElement, `Examples.Program.clockElement, `Examples.Program.watcherElement,
     `Examples.Routing.App, `Examples.Routing.codec, `LeanReact.Query.parse, `LeanReact.Query.encode]
     { Examples.reactOptions with intrinsics := Examples.reactIntrinsics ++ #[{
         leanName := `Examples.Composition.instTypeNameFormatter

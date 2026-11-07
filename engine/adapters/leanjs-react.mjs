@@ -235,6 +235,46 @@ export const appInstall = installed => action(() => {
 });
 export const appCurrent = action(() => mountedApp ? ctor('Option.some', [mountedApp]) : ctor('Option.none'));
 
+// Declarative components (LeanReact.Program.Effects): host capabilities behind `Cmd` and `Sub`.
+const reportSpawned = error => console.error(error);
+export const programSleep = ms => action(() => new Promise(resolve => setTimeout(() => resolve(unit), Number(ms))));
+export const programNow = action(() => BigInt(Date.now()));
+export const programRandom = bound => action(() => {
+  if (bound <= 0n) return 0n;
+  const words = new Uint32Array(2);
+  globalThis.crypto.getRandomValues(words);
+  return ((BigInt(words[0]) << 32n) | BigInt(words[1])) % bound;
+});
+export const programStorageGet = key => action(() => {
+  const value = globalThis.localStorage?.getItem(key);
+  return value == null ? ctor('Option.none') : ctor('Option.some', [value]);
+});
+export const programStorageSet = (key, value) => action(() => { globalThis.localStorage?.setItem(key, value); return unit; });
+export const programFocus = id => action(() => { globalThis.document?.getElementById(id)?.focus(); return unit; });
+export const programNavigate = (path, replace) => action(() => {
+  const history = router.history();
+  if (fromBool(replace)) history.replace(path); else if (path !== history.current()) history.push(path);
+  return unit;
+});
+export const programEvery = (ms, tick) => action(() => {
+  const timer = setInterval(() => { try { runAction(tick); } catch (error) { reportSpawned(error); } }, Number(ms));
+  return action(() => { clearInterval(timer); return unit; });
+});
+export const programKeys = handler => action(() => {
+  const listener = event => { try { runAction(handler(eventPayload('LeanReact.KeyEvent.mk', {
+    key: String(event.key), alt: event.altKey, ctrl: event.ctrlKey, metaKey: event.metaKey, shift: event.shiftKey, repeat: event.repeat }))); }
+    catch (error) { reportSpawned(error); } };
+  globalThis.document.addEventListener('keydown', listener);
+  return action(() => { globalThis.document.removeEventListener('keydown', listener); return unit; });
+});
+export const programSpawn = work => action(() => {
+  try {
+    const result = runAction(work);
+    if (result != null && typeof result.then === 'function') Promise.resolve(result).catch(reportSpawned);
+  } catch (error) { reportSpawned(error); }
+  return unit;
+});
+
 export function mountElement(descriptor, props = unit) { return element(null, descriptor, props); }
 export function asReactComponent(descriptor, decodeProps = value => value) {
   function ExportedLeanComponent(props) { return mountElement(descriptor, decodeProps(props)); }
