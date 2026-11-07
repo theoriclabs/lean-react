@@ -156,8 +156,8 @@ contracts; the compiler cannot prove they agree with the native reference.
   well-founded decreasing-Nat recursion compiled from actual Lean definitions.
 - Iterative List host builtins for `length`, `foldl`, `map`, `flatMap`, `append`,
   `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`,
-  `replicate`, `range`, `range'`, `foldr`, `getLast?`/`getLast`, `all` and `any`
-  (including the `*TR` / auxiliary names Lean's LCNF actually calls). These walk
+  `replicate`, `range`, `range'`, `foldr`, `getLast?`/`getLast`, `all`, `any` and
+  `mergeSort` (including the `*TR` / auxiliary names Lean's LCNF actually calls). These walk
   cons cells in a JavaScript loop, so a 12,000-element list does not overflow the
   JS stack; the suite also slices 100,000 elements. User-written recursion whose
   self calls are all tail calls compiles to a `while (true)` loop (see below);
@@ -251,6 +251,7 @@ code; it has no compiler dependency.
 | `List.foldr`, `List.foldrTR` | 5 | `(α, β, f, init, xs)` |
 | `List.getLast?` / `List.getLast` | 2 / 3 | `(α, xs)` / `(α, xs, proof)`; `RangeError` on `[]` |
 | `List.all`, `List.any` | 3 | `(α, xs, p)`; short-circuit, expect tagged `Bool` |
+| `List.mergeSort`, `List.MergeSort.Internal.mergeSortTR₂` | 3 | `(α, xs, le)`; Lean's splits and merges (stable, equal to native for any `le`); log₂ n recursion, iterative merges |
 | `Array.extract` | 4 | `(α, xs, start, stop)`; `Array.take`/`drop` lower via their bodies |
 | `Array.zipWith` / `Array.zip` | 6 / 4 | `(α, β, γ, f, xs, ys)` / `(α, β, xs, ys)` |
 | `Array.foldr` | 7 | `(α, β, f, init, xs, start, stop)`; visits `min(start, size) - 1` down to `stop` |
@@ -446,6 +447,23 @@ LeanJS.writeModule (path : System.FilePath) (exports : Array Lean.Name)
 `#lean_js "output.mjs" [Names...]` now uses `writeModule` too. All compilation and
 validation finishes before any output is written; the caller must honor errors
 because a failed build may leave artifacts from a prior successful build.
+
+### Build-time portability checks
+
+Generation is the only place the portable subset used to be checked, so a module could
+pass `lake build` and fail later in `writeModule`. The same check runs during elaboration:
+
+```lean
+#leanjs_check Parser.parseProgram, Summary.render     -- plain portable code
+#leanjs_check App.page using LeanReact.Compiler.options ""  -- with a library's intrinsics
+#leanreact_check App.page                              -- the same, for LeanReact UIs
+@[leanjs_portable] def parseProgram (text : String) : Program := …
+```
+
+Each compiles the declarations as `writeModule` would and writes nothing. A non-portable
+dependency is an elaboration error with the dependency path (`Dependency path: … ->
+Char.toUpper -> UInt32.decLe`), so `lake build` fails. Non-tail recursion notes are reported
+at the same place, and `set_option leanjs.recursion.error true` makes them errors.
 
 Declarations use string-literal ESM export names, exact retained argument slots
 (including `null` for type/proof arguments), readonly tagged constructor tuples,

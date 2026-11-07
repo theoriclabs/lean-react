@@ -104,7 +104,7 @@ These names compile to JavaScript loops rather than to their Lean bodies; the ex
 | --- | --- | --- |
 | `String` | `append`, `length`, `isEmpty`, equality/order, `toList`, `ofList`, `singleton`, `push`, `takeScalars`, `dropScalars`, `extractScalars`, `scalarLength`, `foldlScalars`, `ofScalars` | `intercalate` |
 | `Char` | `toNat`, `ofNat`, equality, `<`, `≤` | — |
-| `List` | `length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`, `replicate`, `range`, `range'`, `foldr`, `getLast?`, `getLast`, `all`, `any` (with the `*TR`/auxiliary names LCNF calls) | pattern matching, `Option.getD`, other List functions (JS stack) |
+| `List` | `length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`, `replicate`, `range`, `range'`, `foldr`, `getLast?`, `getLast`, `all`, `any`, `mergeSort` (with the `*TR`/auxiliary names LCNF calls) | pattern matching, `Option.getD`, other List functions (JS stack) |
 | `Array` | `mk`, `toList`, `size`, `push`, `pop`, `append`, `get`/`get!`/`getD`, `set`/`set!`, `foldl`, `filter`, `map`, `extract`, `zipWith`, `zip`, `foldr`, `findIdx?`, `insertIdx`, `insertIdx!`, `eraseIdx`, `eraseIdx!` | `take`, `drop`, `insertIdxIfInBounds`, `eraseIdxIfInBounds`, `forIn'`, `foldlM`, `find?`, `xs[i]?` |
 
 The compiler suite compares the native and generated results of every builtin on 10,000 random inputs, including strings with emoji, ZWJ sequences and astral-plane scalars, and slices 100,000-element strings and lists without stack growth.

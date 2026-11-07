@@ -87,6 +87,13 @@ def listOps (xs : List Nat) (n : Nat) : List Nat :=
     ++ List.replicate (n % 4) 7 ++ List.range (n % 6) ++ List.range' n (n % 3) 2
     ++ [xs.foldr (fun x acc => acc * 3 + x) 1, xs.getLast?.getD 999,
       if xs.all (· < 50) then 1 else 0, if xs.any (· > 90) then 1 else 0]
+    ++ xs.mergeSort ++ xs.mergeSort (fun a b => a % 10 ≤ b % 10)
+
+/-- `List.mergeSort` on a large list: stable (by tens), first, last and a positional digest. -/
+def sortLarge (xs : Array Nat) : Nat :=
+  let sorted := xs.toList.mergeSort (fun a b => a / 10 ≤ b / 10)
+  sorted.length + (sorted.head?.getD 0) * 7 + (sorted.getLast?.getD 0) * 11
+    + (sorted.zipIdx.foldl (fun acc (x, i) => (acc * 31 + x * (i + 1)) % 1000000007) 0)
 
 /-- The Array counterparts, combined for parity on random inputs. -/
 def arrayOps (xs : Array Nat) (i n : Nat) : Array Nat :=

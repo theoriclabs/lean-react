@@ -249,6 +249,25 @@ const $decision = (value, name) => {
   if (value.tag === 'Bool.false') return false;
   throw new TypeError(`LeanJS: ${name} predicate must return an ABI Bool`);
 };
+// `List.mergeSort`: the same splits ((n+1)/2 first) and merges (left first when `le x y`),
+// so the result equals the native one for any `le`. Recursion is log2 n deep; merges iterate.
+const $listMergeSort = (xs, le) => {
+  const items = $array(xs);
+  const sort = (lo, hi) => {
+    if (hi - lo < 2) return items.slice(lo, hi);
+    const mid = lo + Math.floor((hi - lo + 1) / 2);
+    const left = sort(lo, mid), right = sort(mid, hi), out = [];
+    let i = 0, j = 0;
+    while (i < left.length && j < right.length) {
+      if ($decision($app(le, [left[i], right[j]]), 'mergeSort')) out.push(left[i++]);
+      else out.push(right[j++]);
+    }
+    while (i < left.length) out.push(left[i++]);
+    while (j < right.length) out.push(right[j++]);
+    return out;
+  };
+  return $list(sort(0, items.length));
+};
 const $listAll = (xs, p) => {
   for (const x of $array(xs)) if (!$decision($app(p, [x]), 'all')) return $bool(false);
   return $bool(true);
