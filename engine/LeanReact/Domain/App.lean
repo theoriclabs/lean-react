@@ -33,6 +33,8 @@ def app : App where
   endpoint whose error type is `Empty` uses `(onError := nofun)`.
 * A form has one editor per body field. Path fields are given (`api.borrow book`) or bound by
   name from the page route; the actor is never an editor.
+* An endpoint whose only argument is the actor (`def projects (me : SignedIn) : ReadOp E α`)
+  has `Input := Unit`, a record with no fields: `load api.projects (onError := …) render` works.
 * `call` is an ordinary `Action Unit` (a button's `onPress`), and `navigate` an ordinary action:
   both act on the mounted `App` (one per document, like the browser's location).
 * A page's path parameters are its arguments, in path order (`"/books/:book" ==> bookPage`).
@@ -137,6 +139,13 @@ def endpointBindings (endpoint : Endpoint I E O) (params : List (String × Strin
     | some value => some (name, value)
     | none => (params.lookup name).map fun raw => (name, segmentJson raw))
 
+/-- An endpoint's input from its path fields. An input with no fields (`Unit`, the input of an
+endpoint whose only argument is the actor) is `()`: its codec reads `null`, not `{}`. -/
+def endpointInput (codec : Codec I) (bindings : Lean.Json) : Validation I :=
+  match codec.schema, bindings with
+  | .unit, .obj fields => if fields.isEmpty then codec.decode .null else codec.decode bindings
+  | _, _ => codec.decode bindings
+
 /-- The path fields as scope text, e.g. `book=7` (portable; no JSON printer). -/
 def bindingsText (wire : Lean.Json) : String :=
   match wire with
@@ -178,7 +187,7 @@ def endpointCall [HasRecord I] (endpoint : Endpoint I E O) (onSuccess : O → Ac
     (onError : E → Feedback I) : Action Unit := do
   let some app ← currentAppRuntime | pure ()
   let contract := endpoint.operation.contract
-  match contract.inputCodec.decode (endpointBindings endpoint []) with
+  match endpointInput contract.inputCodec (endpointBindings endpoint []) with
   | .error errors => app.shell.framework (.decode errors)
   | .ok input =>
     let result ← app.transport.interpreter.call contract input
@@ -215,7 +224,7 @@ def endpointLoad [HasRecord I] (endpoint : Endpoint I E O) (onError : E → Elem
       let app ← useContext appContext "domain.load.app"
       let shell := app.resolvedShell
       let wire := endpointBindings endpoint app.params
-      let input := contract.inputCodec.decode wire
+      let input := endpointInput contract.inputCodec wire
       let scope := identity.namespaceName ++ "/" ++ identity.name ++ "/" ++ identity.version ++ "|" ++
         bindingsText wire ++ "|" ++ (app.actor.getD "-") ++ "|" ++ toString shell.generation
       let key := Key.inSpace "domain-load" (scope ++ "|" ++ toString app.commands)
