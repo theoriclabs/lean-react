@@ -127,7 +127,7 @@ npm run dev
 
 Open **http://localhost:4173**. The first build may download the Lean compiler. The examples run in browser memory, so you can try them immediately.
 
-Start by editing the [counter component](examples/lean/Examples/Showcase.lean). The dev server rebuilds when you save; refresh the browser to see the change.
+Start by editing the [counter component](examples/lean/Examples/Showcase.lean). For your own application, [`lake exe leanreact build|dev|test`](docs/HOW_TO.md#one-command-for-an-application) generates, bundles, serves and checks its pages. The dev server rebuilds when you save; refresh the browser to see the change.
 
 ## Lean versions
 
