@@ -437,3 +437,30 @@ test('an old cancelled reply cannot release or abort a newer submission', async 
     assert.equal(model().fields[1].tag,'Bool.false'); assert.deepEqual(events,[['navigate','/parties/2']]);
   } finally {first.resolve(); second.resolve(); await view.close();}
 });
+
+test('render derives tables, description lists, references, times, enums and options', async () => {
+  const cells = container => [...container.querySelectorAll('tbody tr')].map(row => [...row.children].map(cell => cell.textContent));
+  const table = await mounted(() => program['DomainBrowser.listingsView']);
+  try {
+    assert.deepEqual([...table.container.querySelectorAll('th')].map(th => th.textContent),
+      ['Party', 'Host', 'Starts at', 'Published', 'Visibility', 'Note']);
+    assert.deepEqual(cells(table.container), [
+      ['Party 7', 'Person 1', '2026-10-17 19:00 UTC', 'Yes', 'Everyone', 'Bring snacks'],
+      ['Party 8', 'Person 2', '2026-12-31 23:30:05 UTC', 'No', 'Host only', '']]);
+    assert.equal(table.container.querySelector('a'), null, 'no reference path: plain text');
+  } finally {await table.close();}
+  const custom = await mounted(() => program['DomainBrowser.listingsCustomView']);
+  try {
+    assert.deepEqual([...custom.container.querySelectorAll('a')].map(a => [a.textContent, a.getAttribute('href')]),
+      [['Party 7', '/parties/7'], ['Party 8', '/parties/8']]);
+    assert.deepEqual([...custom.container.querySelectorAll('strong')].map(s => s.textContent), ['Public', 'Private'], 'type override');
+    assert.deepEqual([...custom.container.querySelectorAll('em')].map(e => e.textContent), ['Bring snacks', ''], 'field override');
+  } finally {await custom.close();}
+  const record = await mounted(() => program['DomainBrowser.listingView']);
+  try {
+    const dl = record.container.querySelector('dl');
+    assert.deepEqual([...dl.querySelectorAll('dt')].map(dt => dt.textContent), ['Party', 'Host', 'Starts at', 'Published', 'Visibility', 'Note']);
+    assert.equal(dl.querySelectorAll('dd')[2].textContent, '2026-10-17 19:00 UTC');
+    assert.deepEqual([...record.container.children].slice(1).map(e => e.textContent), ['—', '12']);
+  } finally {await record.close();}
+});

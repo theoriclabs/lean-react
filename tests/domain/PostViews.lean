@@ -73,13 +73,21 @@ def partyPage (party : Ref Party) : Element :=
       cancelButton party
     ]
 
+/-- `/parties/:party/summary`: the page's data with its derived view, no bespoke view. -/
+def partySummaryPage (party : Ref Party) : Element :=
+  load (api.getParty party)
+    (onError := fun
+      | .notFound => DOM.p {} #[text "This party doesn't exist."])
+    render
+
 def app : App where
   api   := api
   pages := [
     "/sign-up"        ==> signUpPage,
     "/sign-in"        ==> signInPage,
     "/parties/new"    ==> hostPartyPage,
-    "/parties/:party" ==> partyPage
+    "/parties/:party" ==> partyPage,
+    "/parties/:party/summary" ==> partySummaryPage
   ]
 
 /-- The compiled entry: the app over a host client. -/
@@ -97,9 +105,9 @@ def shellProps (generation : Nat) (currentGeneration : Action Nat)
 /-! ## What the surface checks -/
 
 -- Path parameters are page arguments, decoded with the type's wire codec.
-#guard (app.pages.map (·.path)) == ["/sign-up", "/sign-in", "/parties/new", "/parties/:party"]
-#guard ((app.pages.getLast?.map fun page => (page.build [("party", "7")]).isSome) == some true)
-#guard ((app.pages.getLast?.map fun page => (page.build [("party", "seven")]).isSome) == some false)
+#guard (app.pages.map (·.path)) == ["/sign-up", "/sign-in", "/parties/new", "/parties/:party", "/parties/:party/summary"]
+#guard ((app.pages[3]?.map fun page => (page.build [("party", "7")]).isSome) == some true)
+#guard ((app.pages[3]?.map fun page => (page.build [("party", "seven")]).isSome) == some false)
 #guard (LeanReact.Domain.matchRoute "/parties/:party" "/parties/12") == some [("party", "12")]
 #guard (LeanReact.Domain.matchRoute "/parties/:party" "/parties/12/rsvp") == none
 -- `Time.format` and checked text for display.

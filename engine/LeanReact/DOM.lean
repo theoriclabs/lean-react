@@ -135,6 +135,10 @@ def table (props : Props := {}) (children : Array Element := #[]) : Element := n
 def thead (props : Props := {}) (children : Array Element := #[]) : Element := node "thead" props.attributes children
 def tbody (props : Props := {}) (children : Array Element := #[]) : Element := node "tbody" props.attributes children
 def tr (props : Props := {}) (children : Array Element := #[]) : Element := node "tr" props.attributes children
+/-- A description list: `dt` terms and `dd` details. -/
+def dl (props : Props := {}) (children : Array Element := #[]) : Element := node "dl" props.attributes children
+def dt (props : Props := {}) (children : Array Element := #[]) : Element := node "dt" props.attributes children
+def dd (props : Props := {}) (children : Array Element := #[]) : Element := node "dd" props.attributes children
 
 structure CellProps extends Props where
   colSpan : Option Nat := none

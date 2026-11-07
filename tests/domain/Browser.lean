@@ -96,6 +96,47 @@ def settingsFormView (shell : Shell) : LeanReact.Hook LeanReact.Element := do
 def partyRef (key : String) : Validation (Ref Party) := Ref.parse key
 def personRef (key : String) : Validation (Ref Person) := Ref.parse key
 
+/-! ## Derived views (`render`, `renderWith`) -/
+
+/-- A row type with a reference, a time, a flag, an enum and a text. -/
+structure Listing where
+  party : Ref Party
+  host : Ref Person
+  startsAt : Time
+  published : Bool
+  visibility : GuestListVisibility
+  note : Text
+  deriving Domain
+
+private def listingJson (party host : Nat) (startsAt : String) (published : Bool) (visibility : String)
+    (note : String) : Lean.Json :=
+  .mkObj [("party", .num party), ("host", .num host), ("startsAt", .str startsAt), ("published", .bool published),
+    ("visibility", .str visibility), ("note", .str note)]
+
+def listings : List Listing :=
+  match (Wire.codec (α := List Listing)).decode (.arr #[
+      listingJson 7 1 "2026-10-17T19:00:00Z" true "everyone" "Bring snacks",
+      listingJson 8 2 "2026-12-31T23:30:05Z" false "hostOnly" ""]) with
+  | .ok rows => rows
+  | .error _ => []
+
+/-- The derived table of listings. -/
+def listingsView : LeanReact.Element := render listings
+
+/-- The same rows with a reference path, a field override and a type override. -/
+def listingsCustomView : LeanReact.Element :=
+  renderWith {
+    refPath := fun type id => if type.name == "Party" then some ("/parties/" ++ id) else none
+    fields := [RenderConfig.field "note" fun (note : Text) => LeanReact.DOM.em {} #[LeanReact.text note.value]]
+    types := [RenderConfig.type fun (v : GuestListVisibility) =>
+      LeanReact.DOM.strong {} #[LeanReact.text (match v with | .everyone => "Public" | .attendees => "Guests" | .hostOnly => "Private")]] }
+    listings
+
+/-- One record as a description list, then an absent and a present optional value. -/
+def listingView : LeanReact.Element :=
+  LeanReact.fragment #[match listings with | row :: _ => render row | [] => LeanReact.empty,
+    render (none : Option Nat), render (some (12 : Int))]
+
 /-! ## The mounted app with request-scoped transports -/
 
 def appWithRequests (client : Contract.Interpreter LeanReact.Action)

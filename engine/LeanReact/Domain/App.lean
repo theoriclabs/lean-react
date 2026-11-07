@@ -23,6 +23,9 @@ def bookPage (book : Ref Book) : Element :=
     (onError := fun | .notFound => DOM.p {} #[text "No such book."])
     fun page => bookView page (borrowButton book)
 
+def loansPage : Element :=
+  load api.myLoans (onError := nofun) render   -- the view derived from the output type
+
 def app : App where
   api   := api
   pages := [ "/register" ==> registerPage, "/books/:book" ==> bookPage ]

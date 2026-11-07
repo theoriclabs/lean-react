@@ -191,6 +191,22 @@ test('a reload after a command keeps showing the last value until the new one ar
   } finally {await app.close();}
 });
 
+test('a page can show its data with the derived view (render)', async () => {
+  const srv = server(async () => page(visible(['Ben', 'Cara']), 'Picnic'));
+  const app = await mountApp(srv, {location: '/parties/3/summary', actor: some('5')});
+  try {
+    await settle();
+    const dl = app.container.querySelector('dl');
+    assert.deepEqual([...dl.children].filter(e => e.tagName === 'DT').map(e => e.textContent), ['Title', 'Description', 'Date', 'Guests']);
+    const values = [...dl.children].filter(e => e.tagName === 'DD');
+    assert.equal(values[0].textContent, 'Picnic');
+    assert.equal(values[2].textContent, '2026-10-17 19:00 UTC');
+    assert.match(values[3].textContent, /^Visible/);
+    assert.deepEqual([...values[3].querySelectorAll('th')].map(th => th.textContent), ['Name']);
+    assert.deepEqual([...values[3].querySelectorAll('td')].map(td => td.textContent), ['Ben', 'Cara']);
+  } finally {await app.close();}
+});
+
 test('cancel call: success navigates; a non-host gets the notice', async () => {
   let reply = domainError('notHost');
   const srv = server(async request => request.url.endsWith('/cancel') ? reply : page(hidden));

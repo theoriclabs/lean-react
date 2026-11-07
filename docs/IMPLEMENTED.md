@@ -23,6 +23,8 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Build a form from typed controls | `DOM.form`, `textarea`, `select`, blur validation, paste snapshots, `KeyOutcome` | Generated-component integration, reference and browser tests |
 | Drive an imperative JavaScript widget | `foreign`, `Handle`, `HandleResult`, a `useCell`-held handle, `registerForeign` | Generated-component integration, reference and browser tests |
 | Route between screens | A `Route` type with a `RouteCodec`, `routerProvider`, `useRoute`, `Router.link` | Generated-component integration, reference and browser tests |
+| Pages over typed endpoints | `form`, `call`, `load`, `App` with `path ==> page`; actor-only endpoints; stale-while-revalidate reloads | `npm run test:domain` (jsdom) |
+| Show a loaded value without a bespoke view | `render` / `renderWith`: records as `dl`, lists of records as tables, references as links, UTC times, enums as labels; per-type and per-field overrides | `npm run test:domain` (jsdom) |
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |
 
