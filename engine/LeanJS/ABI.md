@@ -462,6 +462,10 @@ LeanJS.writeModule (path : System.FilePath) (exports : Array Lean.Name)
 validation finishes before any output is written; the caller must honor errors
 because a failed build may leave artifacts from a prior successful build.
 
+### Several pages of one application
+
+`LeanJS.writeApp dir #[("home", #[`App.Home]), ("admin", #[`App.Admin])] options` compiles the pages together: every declaration that two or more pages reach is compiled once into `dir/shared.mjs` (a library, as with `Options.library`), and each page imports it instead of carrying its own copy. Constructors, builtins, intrinsics and custom hooks (checked where they are called) stay in each page. `examples/lean/Examples/GenerateApp.lean` builds three example pages this way: 430 KB in four modules against 520 KB as three standalone modules.
+
 ### Build-time portability checks
 
 Generation is the only place the portable subset used to be checked, so a module could

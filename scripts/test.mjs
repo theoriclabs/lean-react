@@ -13,6 +13,7 @@ await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/Generate.lean'], { cwd });
 await run('lake', ['env', 'lean', '--run', 'examples/lean/Examples/GenerateClient.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateComposability.lean'], { cwd });
+await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateApp.lean'], { cwd, env: { ...process.env, LEAN_NUM_THREADS: '1' } });
 await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
 // What the generated example modules carry (LeanJS size report).
 await run('node', ['scripts/size-report.mjs', 'examples/generated/tickets.manifest.json', 'examples/generated/smoke.manifest.json', 'examples/generated/collections.manifest.json', '--top', '8'], { cwd });
