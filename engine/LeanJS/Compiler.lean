@@ -141,7 +141,11 @@ private def builtin (n : Name) : Option Builtin := do
     (`List.foldr, 5, "(_,__,f,z,xs)=>$listFoldr(f,z,xs)"),
     (`List.foldrTR, 5, "(_,__,f,z,xs)=>$listFoldr(f,z,xs)"),
     (`List.getLast?, 2, "(_,xs)=>$listLastOpt(xs)"), (`List.getLast, 3, "(_,xs,h)=>$listLast(xs)"),
-    (`List.all, 3, "(_,xs,p)=>$listAll(xs,p)"), (`List.any, 3, "(_,xs,p)=>$listAny(xs,p)")
+    (`List.all, 3, "(_,xs,p)=>$listAll(xs,p)"), (`List.any, 3, "(_,xs,p)=>$listAny(xs,p)"),
+    -- Core's `@[csimp]` replaces `mergeSort` with `mergeSortTR₂`, whose `run`/`run'` recurse
+    -- log₂ n deep. Both lower to one stable merge sort with the same splits and merges.
+    (`List.mergeSort, 3, "(_,xs,le)=>$listMergeSort(xs,le)"),
+    (`List.MergeSort.Internal.mergeSortTR₂, 3, "(_,xs,le)=>$listMergeSort(xs,le)")
   ] : Array (Name × Nat × String)).find? (·.1 == n)
   return ⟨n, arity, body⟩
 
@@ -668,5 +672,35 @@ open Elab Command in
 elab "#lean_js " file:str " [" names:ident,* "]" : command => do
   let names ← names.getElems.mapM fun stx => liftCoreM <| realizeGlobalConstNoOverloadWithInfo stx
   liftCoreM <| writeModule file.getString names
+
+/-- Run the portability check that generation runs, without writing anything: every
+declaration reachable from `exports` must be in the portable subset. A failure is an error
+with the same dependency path `writeModule` reports, so `lake build` fails; non-tail recursion
+notes are reported as they are during generation. -/
+def check (exports : Array Name) (options : Options := {}) : CoreM Unit := do
+  let _ ← compileArtifacts exports options
+
+open Elab Command in
+/-- `#leanjs_check f, g`: fail elaboration (and so `lake build`) when `f` or `g` reaches code
+outside the portable subset. `#leanjs_check f using opts` checks with `opts : LeanJS.Options`,
+for example a UI library's intrinsics (`LeanReact.Compiler.options ""`). -/
+syntax (name := leanjsCheck) "#leanjs_check " ident,+ (" using " term)? : command
+
+open Elab Command Term in
+@[command_elab leanjsCheck] unsafe def elabLeanjsCheck : CommandElab := fun stx => do
+  let names ← stx[1].getSepArgs.mapM fun name => liftCoreM <| realizeGlobalConstNoOverloadWithInfo name
+  let options ← if stx[2].isNone then pure {} else
+    liftTermElabM <| evalTerm Options (mkConst ``Options) stx[2][1]
+  withRef stx <| liftCoreM <| check names options
+
+/-- `@[leanjs_portable] def f …`: check `f` as `#leanjs_check f` does, when it is declared. -/
+initialize registerBuiltinAttribute {
+  name := `leanjs_portable
+  descr := "LeanJS: reject the declaration at build time when it reaches code outside the portable subset"
+  applicationTime := .afterCompilation
+  add := fun declName _ kind => do
+    unless kind == .global do throwError "leanjs_portable: only global attributes are supported"
+    check #[declName]
+}
 
 end LeanJS

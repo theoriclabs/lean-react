@@ -96,3 +96,55 @@ run_meta do
   unless (message.splitOn "Array.foldlMUnsafe").length > 1 && (message.splitOn "unsafe declaration").length > 1 do
     throwError "Wrong native fold diagnostic: {message}"
   logInfo message
+
+/-! ## Build-time checks (`#leanjs_check`, `@[leanjs_portable]`)
+
+The check generation runs, during elaboration: a module that reaches native-only code fails
+`lake build` with the dependency path `writeModule` would report. -/
+namespace Rejected
+def readsUInt (a b : UInt32) : Bool := a ≤ b
+def portableRoot (a b : UInt32) := readsUInt a b
+def sortedDesc (xs : List Nat) : List Nat := xs.mergeSort (fun a b => b ≤ a)
+end Rejected
+
+/--
+error: LeanJS: unsupported native extern operation
+Dependency path: Rejected.portableRoot -> Rejected.readsUInt -> UInt32.decLe
+Supply a named intrinsic adapter or move this dependency outside portable code.
+-/
+#guard_msgs in
+#leanjs_check Rejected.portableRoot
+
+/--
+error: LeanJS: unsupported native extern operation
+Dependency path: Rejected.shout -> Rejected.readsUInt -> UInt32.decLe
+Supply a named intrinsic adapter or move this dependency outside portable code.
+-/
+#guard_msgs in
+@[leanjs_portable] def Rejected.shout (a : UInt32) : Bool := Rejected.readsUInt a a
+
+-- Portable code passes silently, and `List.mergeSort` (log-depth recursion in core) is an
+-- iterative builtin: no stack note, even under the error option.
+#guard_msgs in
+set_option leanjs.recursion.error true in
+#leanjs_check Rejected.tailSum, Rejected.sortedDesc
+
+#guard_msgs in
+@[leanjs_portable] def Rejected.portableSum (xs : List Nat) : Nat := Rejected.tailSum xs 0
+
+-- The recursion note is reported at build time too.
+/--
+error: LeanJS: Rejected.nonTail (42:0) recurses on the JavaScript stack; 1 self call is not a tail call:
+  case List.cons > fun _f.12 > let _x.10 (generated variable v13)
+Type: List Nat → Nat
+Dependency path: Rejected.nonTail
+Prefer the iterative List/Array/String builtins (engine/LeanJS/ABI.md), or an accumulator so that every self call is a tail call and compiles to a loop; otherwise chunk the input. set_option leanjs.recursion.warn or leanjs.recursion.error escalates this note.
+-/
+#guard_msgs in
+set_option leanjs.recursion.error true in
+#leanjs_check Rejected.nonTail
+
+-- `using` supplies options, e.g. a UI library's intrinsics (here: none, so `Nat.gcd`'s extern
+-- is replaced by a trusted adapter and the check passes).
+#guard_msgs in
+#leanjs_check Rejected.root using { intrinsics := #[{ leanName := `Rejected.nativeOnly, module := "./gcd.mjs", exportName := "gcd", arity := 2 }] }

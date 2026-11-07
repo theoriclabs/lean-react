@@ -91,6 +91,7 @@ test('native Lean / generated Node parity across composed functions', () => {
     mappedList: natArray(array(f('mapCaptured')(9n,list(ns)))),
     listSmall: str(f('listLarge')([1n,2n,3n])),
     listLarge: str(f('listLarge')(Array.from({length:12000}, (_,i) => BigInt(i)))),
+    sortLarge: str(f('sortLarge')(Array.from({length:12000}, (_,i) => BigInt(11999 - i)))),
     listSlices: [[], [1n,2n,3n], Array.from({length:12000}, (_,i) => BigInt(i))].flatMap(xs =>
       [0n, 1n, 6000n, 12000n, 9007199254740993n].map(n => str(f('listSlices')(xs, n)))),
     randomStrings: str(sampled.strings), randomStringSamples: sampled.stringSamples,
@@ -167,7 +168,21 @@ test('scalar string and List builtins iterate at 100k elements without stack gro
   assert.equal(f('scalarDrop')(text, 9007199254740993n), '');
   const xs = Array.from({length: 100000}, (_, i) => BigInt(i));
   assert.doesNotThrow(() => f('listSlices')(xs, 50000n));
-  assert.equal(array(f('listOps')(list(xs.slice(0, 20)), 3n)).length, 20 + 2 + 19 + 20 + 20 + 3 + 3 + 0 + 4);
+  assert.equal(array(f('listOps')(list(xs.slice(0, 20)), 3n)).length, 20 + 2 + 19 + 20 + 20 + 3 + 3 + 0 + 4 + 20 + 20);
+});
+
+test('List.mergeSort sorts one million elements stably without stack growth', () => {
+  const million = Array.from({length: 1000000}, (_, i) => BigInt(999999 - i));
+  const expected = (() => {
+    // Stable by tens: within a group of ten the reversed input order is kept.
+    const sorted = [...million].sort((a, b) => Number(a / 10n - b / 10n));
+    let acc = 0n;
+    sorted.forEach((x, i) => { acc = (acc * 31n + x * BigInt(i + 1)) % 1000000007n; });
+    return BigInt(sorted.length) + sorted[0] * 7n + sorted[sorted.length - 1] * 11n + acc;
+  })();
+  assert.equal(f('sortLarge')(million), expected);
+  const source = readFileSync(new URL('./generated.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /mergeSortTR₂\.run/);
 });
 
 test('self tail calls compile to loops that run on one million elements', () => {

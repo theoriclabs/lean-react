@@ -396,7 +396,7 @@ A separate application can consume this checkout as a local Lake dependency and 
 
 ## Check and debug your work
 
-A Lean typecheck proves that a source program elaborates. It does not prove that every reachable declaration is in the JavaScript compiler's portable subset or that its browser interactions work.
+A Lean typecheck proves that a source program elaborates. It does not prove that every reachable declaration is in the JavaScript compiler's portable subset or that its browser interactions work. To make `lake build` check portability too, add `#leanreact_check YourPage` (or `#leanjs_check` for non-UI code, or `@[leanjs_portable]` on a definition) to the module; it fails with the same dependency path generation would report.
 
 | Changed area | Useful check |
 | --- | --- |

@@ -60,4 +60,11 @@ def options (moduleName : String) : LeanJS.Options := {
     ⟨`LeanReact.useLocation, 1, "router", 0⟩] }
 }
 
+/-- `#leanreact_check App, Page`: the build-time portability check of `#leanjs_check`, with the
+LeanReact intrinsics and hook primitives. A component that reaches native-only code fails
+`lake build` with the dependency path that generation would report. -/
+syntax "#leanreact_check " ident,+ : command
+macro_rules
+  | `(#leanreact_check $names,*) => `(#leanjs_check $names,* using LeanReact.Compiler.options "")
+
 end LeanReact.Compiler

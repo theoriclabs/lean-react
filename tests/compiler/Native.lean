@@ -118,6 +118,7 @@ def main : IO Unit := do
     ("mappedList", natArray (mapCaptured 9 ns.toList).toArray),
     ("listSmall", strNat (listLarge #[1, 2, 3])),
     ("listLarge", strNat (listLarge (Array.range 12000))),
+    ("sortLarge", strNat (sortLarge ((Array.range 12000).reverse))),
     ("listSlices", Json.arr (((#[#[], #[1,2,3], Array.range 12000] : Array (Array Nat)).flatMap fun xs =>
       (#[0, 1, 6000, 12000, 9007199254740993] : Array Nat).map fun n => strNat (listSlices xs n)))),
     ("randomStrings", strNat random.strings), ("randomStringSamples", Json.arr random.stringSamples),
