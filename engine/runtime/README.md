@@ -48,7 +48,6 @@ The Lean script compiles library modules into the owned `tests/runtime/lean-buil
 See [LeanReact/API.md](../LeanReact/API.md) for the Lean authoring surface and native-reference limits. `npm test` adds generated-component/resource integration and compiler static hook checks. `npm run test:browser` exercises real-browser rendering separately. These focused runtime tests do not establish browser compatibility, general hydration support or application performance.
 
 
-`channels.mjs` keeps one multiplexed WebSocket per origin. Reconnects use full jitter (`random(0, min(30s, 2^attempt s))`). A `1001` close or a `503` at upgrade waits `random(0, goingAwaySpreadMs)` first (default 10 s; 3× while the tab is hidden). `priority: 'background'` subscriptions resubscribe 1–3 s after live ones. `reconnectPolicy` and `runtime.reconnectPolicy` expose the knobs; `streams.mjs` uses the same policy for SSE.
 
 `router.mjs` adds the `router` hook primitive: `createRouterHooks(React, runtime, { history })` returns `useLocation(site)` (`{location, navigate, replace, back}` over `pathname + search`), with `createBrowserHistory(window)` and `createMemoryHistory(initial)` as interchangeable histories, plus the URL helpers behind the Lean `Route.*`/`Query.*` intrinsics. `runtime.onNavigate(action)` is the link-click adapter. See [the router contract](INTRINSICS.md#router).
 
