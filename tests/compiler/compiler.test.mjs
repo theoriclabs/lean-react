@@ -52,7 +52,25 @@ const random = () => {
   return out;
 };
 
+const textPalette = [0x30, 0x35, 0x39, 0x5F, 0x2D, 0x61, 0x62, 0x5A, 0x66, 0x47,
+  0x20, 0x09, 0x0A, 0x0D, 0x2C, 0xE9, 0x1F600, 0x10FFFF];
+const randomText = () => {
+  let seed = 20261107n, digest = 7n;
+  const samples = [];
+  for (let round = 0; round < 10000; round++) {
+    let len; [len, seed] = next(seed, 16n);
+    let scalars = '';
+    for (let j = 0n; j < len; j++) { let i; [i, seed] = next(seed, BigInt(textPalette.length)); scalars += String.fromCodePoint(textPalette[i]); }
+    let n, k; [n, seed] = next(seed, len + 3n); [k, seed] = next(seed, len + 3n);
+    const text = f('textOps')(scalars, n, k);
+    digest = digestString(digest, text);
+    if (samples.length < 64) samples.push(text);
+  }
+  return [digest, samples];
+};
+
 test('native Lean / generated Node parity across composed functions', () => {
+  const [textDigest, textSamples] = randomText();
   const sampled = random();
   const actual = {
     iteration: [[], [1n], [2n,3n,0n,9n], [9n,0n], [1n,2n,3n]].map(xs => {
@@ -98,6 +116,7 @@ test('native Lean / generated Node parity across composed functions', () => {
     randomLists: str(sampled.lists), randomListSamples: sampled.listSamples,
     randomArrays: str(sampled.arrays), randomArraySamples: sampled.arraySamples,
     randomLoops: str(sampled.loops),
+    randomText: str(textDigest), randomTextSamples: textSamples,
     loops: (xs => natArray([f('sumAcc')(xs, 5n), f('countLoop')(12000n, 0n), f('sumEven')(xs, 0n), f('sumWhere')(xs)]))
       (list(Array.from({length: 12000}, (_, i) => BigInt(i)))),
     arrayWork: arrays.map(xs => natArray(f('arrayWork')(xs,4n))),
@@ -169,6 +188,13 @@ test('scalar string and List builtins iterate at 100k elements without stack gro
   const xs = Array.from({length: 100000}, (_, i) => BigInt(i));
   assert.doesNotThrow(() => f('listSlices')(xs, 50000n));
   assert.equal(array(f('listOps')(list(xs.slice(0, 20)), 3n)).length, 20 + 2 + 19 + 20 + 20 + 3 + 3 + 0 + 4 + 20 + 20);
+});
+
+test('Char/String helpers run on 100,000 characters without stack growth', () => {
+  const text = 'ab cd\r\n'.repeat(12500) + 'z'.repeat(100);
+  const words = 25000, lines = 12501;
+  const expected = words + 1 + lines * 3 + text.length + (text.length + 12500) + text.length + 12501 + text.length + 1;
+  assert.equal(f('textLarge')(text), BigInt(expected));
 });
 
 test('List.mergeSort sorts one million elements stably without stack growth', () => {

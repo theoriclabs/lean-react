@@ -166,6 +166,64 @@ const $foldlScalars = (f, initial, s) => {
 };
 const $ofScalars = cs => cs.map(c => String.fromCodePoint(Number($codepoint(c)))).join('');
 const $prod = (a, b) => $ctor('Prod.mk', [a, b]);
+const $option = value => value === null ? $ctor('Option.none') : $ctor('Option.some', [value]);
+// A string whose scalars are all well formed (lone surrogates are rejected, as elsewhere).
+const $checked = s => { for (const ch of s) $scalar(ch); return s; };
+const $charIn = (c, lo, hi) => { const n = $codepoint(c); return n >= lo && n <= hi; };
+const $isUpper = c => $charIn(c, 65n, 90n);
+const $isLower = c => $charIn(c, 97n, 122n);
+const $isDigit = c => $charIn(c, 48n, 57n);
+const $toUpper = c => $isLower(c) ? $charOf($codepoint(c) - 32n) : c;
+const $toLower = c => $isUpper(c) ? $charOf($codepoint(c) + 32n) : c;
+const $stringMap = (f, s) => {
+  let out = '';
+  for (const ch of s) { $scalar(ch); out += String.fromCodePoint(Number($codepoint($app(f, [$char(ch)])))); }
+  return out;
+};
+// Leftmost non-overlapping matches, as core's `splitOnAux`; an empty separator gives `[s]`.
+const $splitOn = (s, sep) => $list($checked(sep) === '' ? [$checked(s)] : $checked(s).split(sep));
+// Core `String.isNat`: ASCII digits, with `_` allowed only directly after a digit, ending in a digit.
+const $parseNat = s => {
+  let digits = '', lastWasDigit = false;
+  for (const ch of s) {
+    $scalar(ch);
+    if (ch === '_') { if (!lastWasDigit) return null; lastWasDigit = false; }
+    else if (ch >= '0' && ch <= '9') { digits += ch; lastWasDigit = true; }
+    else return null;
+  }
+  return lastWasDigit ? BigInt(digits) : null;
+};
+const $parseInt = s => {
+  if (s.startsWith('-')) { const n = $parseNat(s.slice(1)); return n === null ? null : -n; }
+  return $parseNat(s);
+};
+const $replaceAll = (s, pattern, replacement) => $checked(pattern) === ''
+  ? $checked(replacement) + Array.from($checked(s), ch => ch + replacement).join('')
+  : $checked(s).split(pattern).join($checked(replacement));
+const $whitespace = ch => ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n';
+const $trimWhitespace = s => {
+  const cs = Array.from($checked(s));
+  let start = 0, end = cs.length;
+  while (start < end && $whitespace(cs[start])) start++;
+  while (end > start && $whitespace(cs[end - 1])) end--;
+  return cs.slice(start, end).join('');
+};
+const $splitLines = s => {
+  const parts = $checked(s).split('\n'), last = parts.pop();
+  const lines = parts.map(line => line.endsWith('\r') ? line.slice(0, -1) : line);
+  if (last !== '') lines.push(last);
+  return $list(lines);
+};
+const $splitWords = s => {
+  const words = [];
+  let current = '';
+  for (const ch of $checked(s)) {
+    if ($whitespace(ch)) { if (current !== '') words.push(current); current = ''; }
+    else current += ch;
+  }
+  if (current !== '') words.push(current);
+  return $list(words);
+};
 const $listTake = (n, xs) => {
   const out = [];
   while (n > 0n && xs.tag === 'List.cons') { out.push(xs.fields[0]); xs = xs.fields[1]; n--; }
