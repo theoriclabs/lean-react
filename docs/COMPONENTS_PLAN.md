@@ -64,7 +64,7 @@ LR-13 (the purge) is independent and can land any time. It should land before P7
 | 6 | `FromJson` decoding of a record from a `Lean.Json` value built by JS | Needed for P6 decoding; `Json.parse` is not portable (uses `String.Pos`) | The host parses JSON; decoding stays in Lean if `FromJson` compiles, otherwise codecs are generated |
 | 7 | Deep views (a chess board is 64 squares × attributes) | Render cost, and the stack depth of recursive walks | Walk in JS iteratively; `Html.lazy` for subtrees |
 
-**Exit:** a short `docs/COMPONENTS.md` addendum recording each result and any design change it forces.
+**Completed (Lean 4.35.0):** [P0 results](COMPONENTS.md#p0-compiler-spike-lean-4350). All seven questions have generated/jsdom coverage. The fully recursive indexed existential shape is rejected by Lean’s kernel, so child embedding uses the host-erased fallback; derived `FromJson` reaches a native extern, so P6 uses generated codecs. Structural `Html.map` passes, with ordinary JavaScript stack limits.
 
 ---
 
@@ -82,7 +82,7 @@ New modules under `engine/LeanReact/Program/`. They are pure Lean, with no IO an
     | lazy (key : String) (view : Unit → Html Msg)   -- skip re-walking when `key` is unchanged
     | none
   ```
-  `Html.map`, if P0 #2 passes.
+  `Html.map` passed P0. Its structural recursion uses the JavaScript stack. The child embed is a host boundary: P0 rejected the fully recursive indexed/List shape; the positive probe covers an erased child bundle, not the complete P2 host.
 - **`Attr.lean`**: `Attr Msg` has three kinds of constructors:
   - plain attributes: `attr`, `boolAttr`, `cls`, `style`;
   - an event with a payload decoder: `on (event : EventKind) (handler : EventData → Option Msg)`;
@@ -215,7 +215,7 @@ The UI calls the server through the **same types** that define the server.
   - Response decoding is derived from `Response τ`: status, then the success body or the `ToProblem` failure.
   - `CallFailure` covers transport, 401 and malformed answers.
   - Because `k` receives `Response τ`, `update` must handle every failure the endpoint declares. That's the cross-boundary guarantee.
-- **The host side:** `fetch`, `JSON.parse` into Lean `Json` values (P0 #6), abort on unmount, and the auth token source as a host capability.
+- **The host side:** `fetch`, generated response codecs (the P0 #6 fallback), abort on unmount, and the auth token source as a host capability. Derived `FromJson` is not portable on Lean 4.35.0.
 - **Proof direction** (later, optional): client encoding and server decoding round-trip for each input wrapper. That is a theorem about the shared spec, not a test.
 
 **Exit:** the private-games UI calls `gamesApi` endpoints with typed results, and an exhaustive `match` on `GameError` in `update` is enforced by the compiler.

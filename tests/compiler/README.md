@@ -4,8 +4,8 @@ Run from the repository root:
 npm run test:compiler
 ```
 
-This requires the pinned installed Lean 4.35.0, Lake and Node (tested on Node 24). No
-network or package installation is used. `tests/Run.lean` builds the compiler and
+This requires the pinned installed Lean 4.35.0, Lake and Node (tested on Node 24). The JavaScript tests require the workspace dependencies (`npm ci`), including jsdom.
+The runner builds the pinned `LeanContract.Generate` dependency for the P0 codec fallback. `tests/Run.lean` builds the compiler and
 corpus in `.build/` using the Lake environment, compiles imported declarations to
 `generated.mjs`, and compares canonical results produced by native Lean and Node.
 The generated modules and `native.json` are disposable test artifacts, never
@@ -59,3 +59,12 @@ P04/P08 additions:
 `HookInspect.lean` is an optional LCNF inspection probe for the actual Tickets
 components. `Integration.lean` is an optional smaller `writeModule` example;
 The `integration` runner mode runs the actual parent generator instead.
+
+LR-14/P0 adds `Components.lean`, `GenerateComponents.lean`,
+`ComponentsEmbedRejected.lean` and `components.test.mjs`. These test nested HTML,
+structural message mapping, captured event handlers, host-erased existential
+children, model/command pairs with continuations, generated JSON codec fallback,
+and a 64-square/deep view. Kernel rejection of the fully recursive indexed embed
+and LeanJS rejection of derived `FromJson` are explicit gates. All P0 artifacts
+are regenerated in separate processes and compared byte for byte. The
+[design addendum](../../docs/COMPONENTS.md#p0-compiler-spike-lean-4350) records the decisions and limits.

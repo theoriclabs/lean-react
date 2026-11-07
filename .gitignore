@@ -27,3 +27,8 @@ tests/compiler/decisions.d.mts
 tests/compiler/decisions.manifest.json
 tests/compiler/integration/
 .verification/
+tests/compiler/components-generated.*
+tests/compiler/components-json-generated.json
+tests/compiler/components-embed-generated.json
+tests/compiler/components-native-generated.json
+tests/compiler/components-client-generated/

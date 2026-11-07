@@ -46,19 +46,29 @@ private def compiler : IO Unit := do
   let project ← root
   let tests := project / "tests/compiler"
   let build := tests / ".build"
+  -- P0 also proves the generated-codec fallback for the non-portable FromJson path.
+  run { cmd := "lake", args := #["build", "leanapi/LeanContract.Generate"], cwd := project }
   IO.FS.createDirAll (build / "LeanJS")
   IO.FS.createDirAll (build / "tests/compiler")
   lean project #["--version"]
-  for module in #["LeanJS/Portable", "LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Modules", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus", "tests/compiler/ProofFields"] do
+  for module in #["LeanJS/Portable", "LeanJS/Declarations", "LeanJS/Hooks", "LeanJS/Modules", "LeanJS/Compiler", "LeanJS", "tests/compiler/Corpus", "tests/compiler/ProofFields", "tests/compiler/Components"] do
     let sourceDir := sourceRoot project module
     lean project #["-R", sourceDir.toString, "-o", (build / s!"{module}.olean").toString,
       (sourceDir / s!"{module}.lean").toString]
   lean project #["tests/compiler/Generate.lean"]
   lean project #["tests/compiler/GenerateProofFields.lean"]
-  let artifacts := #["generated.mjs", "generated.d.ts", "generated.d.mts", "generated.manifest.json"]
+  lean project #["tests/compiler/GenerateComponents.lean"]
+  lean project #["tests/compiler/ComponentsEmbedRejected.lean"]
+  let artifacts := #["generated.mjs", "generated.d.ts", "generated.d.mts", "generated.manifest.json",
+    "components-generated.mjs", "components-generated.d.ts", "components-generated.d.mts", "components-generated.manifest.json",
+    "components-json-generated.json", "components-embed-generated.json", "components-native-generated.json",
+    "components-client-generated/operations.mjs", "components-client-generated/operations.d.ts",
+    "components-client-generated/operations.d.mts", "components-client-generated/manifest.json"]
   let original ← artifacts.mapM fun (name : String) => IO.FS.readBinFile (tests / name)
   lean project #["tests/compiler/Deterministic.lean"]
   lean project #["tests/compiler/Generate.lean"]
+  lean project #["tests/compiler/GenerateComponents.lean"]
+  lean project #["tests/compiler/ComponentsEmbedRejected.lean"]
   for (name, bytes) in artifacts.zip original do
     check ((← IO.FS.readBinFile (tests / name)) == bytes)
       s!"Non-deterministic {name} across Lean processes"
@@ -68,7 +78,7 @@ private def compiler : IO Unit := do
   let native ← checkedOutput (← leanCommand project #["--run", "tests/compiler/Native.lean"])
   IO.FS.writeFile (tests / "native.json") native
   run { cmd := "node", args := #["--check", "tests/compiler/generated.mjs"], cwd := project }
-  run { cmd := "node", args := #["--test", "tests/compiler/compiler.test.mjs"], cwd := project }
+  run { cmd := "node", args := #["--test", "tests/compiler/compiler.test.mjs", "tests/compiler/components.test.mjs"], cwd := project }
   IO.println s!"PASS: compiler checks, native parity, intrinsic overrides, deterministic ESM ({original[0]!.size} bytes)"
 
 /-- Rebuild source imports in isolation, using Lean's own import parser. -/
