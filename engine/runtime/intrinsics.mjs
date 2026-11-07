@@ -43,6 +43,10 @@ export function createIntrinsicAdapter(runtime, abi) {
       case "mouseEnter": props.onMouseEnter = runtime.onMouseEnter(handle("LeanReact.PressEvent")); break;
       case "mouseLeave": props.onMouseLeave = runtime.onMouseLeave(handle("LeanReact.PressEvent")); break;
       case "scroll": props.onScroll = runtime.onScroll(handle("LeanReact.ScrollEvent")); break;
+      case "pointerDown": props.onPointerDown = runtime.onPointerDown(handle("LeanReact.PointerEvent"), !!attr.capture); break;
+      case "pointerMove": props.onPointerMove = runtime.onPointerMove(handle("LeanReact.PointerEvent")); break;
+      case "pointerUp": props.onPointerUp = runtime.onPointerUp(handle("LeanReact.PointerEvent")); break;
+      case "wheel": props.onWheel = runtime.onWheel(handle("LeanReact.WheelEvent")); props.ref = runtime.wheelRef; break;
       case "submit": props.onSubmit = runtime.onSubmit(attr.action); break;
       case "style": props.style = Object.fromEntries(attr.entries); break;
       case "navigate": props.onClick = runtime.onNavigate(attr.action); break;

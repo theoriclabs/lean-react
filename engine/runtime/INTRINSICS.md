@@ -31,7 +31,7 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 - `LeanReact.State`: `{value, set, modify, read}`. `value` is already a backend value; `set` and `modify` have already been wrapped with `abi.closure`; `read` is an opaque Action handle. Encode the record layout, not these values again.
 - `LeanReact.PressEvent`: `{alt, ctrl, metaKey, shift}`. These are host booleans: encode them as backend Bool values.
 - `LeanReact.ChangeEvent`: `{value, checked}` with a host string and boolean. `LeanReact.KeyEvent`: `{key, alt, ctrl, metaKey, shift, repeat}` with a host string and booleans. Encode each primitive before constructing the backend record.
-- `LeanReact.FocusEvent`: `{value}` (host string, `""` for elements without a value). `LeanReact.InputEvent`: `{value, isComposing}`. `LeanReact.PasteEvent`: `{text, html}` where `html` is a host string or `null` (encode as `Option String`). `LeanReact.ScrollEvent`: `{scrollTop, scrollLeft}` as host integers (encode as `Int`).
+- `LeanReact.FocusEvent`: `{value}` (host string, `""` for elements without a value). `LeanReact.InputEvent`: `{value, isComposing}`. `LeanReact.PasteEvent`: `{text, html}` where `html` is a host string or `null` (encode as `Option String`). `LeanReact.ScrollEvent`: `{scrollTop, scrollLeft}` as host integers (encode as `Int`). `LeanReact.PointerEvent`: `{x, y, width, height, button, pointerId, alt, ctrl, metaKey, shift}` and `LeanReact.WheelEvent`: `{x, y, width, height, deltaX, deltaY, alt, ctrl, metaKey, shift}`, with positions in CSS pixels from the target's top-left corner and integers encoded as `Int`.
 
 `attribute` produces exactly one of:
 
@@ -41,7 +41,8 @@ All methods are synchronous except work explicitly wrapped as an Action. The ada
 { kind: "press", handler: encodedLeanClosure }
 { kind: "change", handler: encodedLeanClosure }
 { kind: "keyDown", handler: encodedLeanClosure }        // handler returns Action KeyOutcome
-{ kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll", handler: encodedLeanClosure }
+{ kind: "keyUp" | "focus" | "blur" | "input" | "paste" | "mouseEnter" | "mouseLeave" | "scroll" | "pointerMove" | "pointerUp" | "wheel", handler: encodedLeanClosure }
+{ kind: "pointerDown", handler: encodedLeanClosure, capture: boolean }
 { kind: "submit", action: encodedAction }               // Action Unit; the runtime always prevents the default first
 { kind: "style", entries: [["backgroundColor", "red"], ...] }  // React camelCase names, string values
 { kind: "navigate", action: encodedAction }             // router link click; see Router below

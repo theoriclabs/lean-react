@@ -10,6 +10,7 @@ import collectionsSource from '../lean/Examples/Collections.lean';
 import librariesSource from '../lean/Examples/Libraries/App.lean';
 import feedbackSource from '../lean/Examples/Feedback.lean';
 import sparklineSource from '../lean/Examples/Sparkline.lean';
+import diagramSource from '../lean/Examples/Diagram.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
 import '../adapters/example-sparkline.mjs';
 
@@ -39,6 +40,11 @@ const examples = {
     description: 'Draw on a plain JavaScript canvas widget through a typed handle. Unmount it and draw again: the handle answers with a typed result instead of touching a dead node.',
     file: 'Sparkline.lean', source: sparklineSource,
     start: 'structure SparklineOps', end: 'def series',
+  },
+  svg: {
+    description: 'An architecture diagram with arrows between boxes, and a timeline: drag to scrub, use the wheel to zoom around the pointer. SVG with integer coordinates, no Float.',
+    file: 'Diagram.lean', source: diagramSource,
+    start: 'def Timeline', end: '/-- Both, as one playground example',
   },
 };
 const requestedExample = parameters.get('example');
@@ -98,6 +104,7 @@ document.getElementById('copy-install').addEventListener('click', async event =>
 const element = example === 'collections' ? mountElement(collections['Examples.Collections.App'])
   : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
   : example === 'forms' ? mountElement(smoke['Examples.Feedback.App'])
+  : example === 'svg' ? mountElement(smoke['Examples.Diagram.Demo'])
   : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
     ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']]))
   : mountElement(tickets['Examples.Tickets.App']);

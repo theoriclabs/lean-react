@@ -90,6 +90,14 @@ def dispatchBlur (attributes : Array Attribute) (event : FocusEvent := {}) : IO 
   for attr in attributes do if let .blur handler := attr then (handler event).runIO
 def dispatchKeyUp (attributes : Array Attribute) (event : KeyEvent) : IO Unit := do
   for attr in attributes do if let .keyUp handler := attr then (handler event).runIO
+def dispatchPointerDown (attributes : Array Attribute) (event : PointerEvent := {}) : IO Unit := do
+  for attr in attributes do if let .pointerDown handler _ := attr then (handler event).runIO
+def dispatchPointerMove (attributes : Array Attribute) (event : PointerEvent := {}) : IO Unit := do
+  for attr in attributes do if let .pointerMove handler := attr then (handler event).runIO
+def dispatchPointerUp (attributes : Array Attribute) (event : PointerEvent := {}) : IO Unit := do
+  for attr in attributes do if let .pointerUp handler := attr then (handler event).runIO
+def dispatchWheel (attributes : Array Attribute) (event : WheelEvent := {}) : IO Unit := do
+  for attr in attributes do if let .wheel handler := attr then (handler event).runIO
 def dispatchSubmit (attributes : Array Attribute) : IO Unit := do
   for attr in attributes do if let .submit handler := attr then handler.runIO
 /-- Stands for an unmodified primary click on a router link. -/

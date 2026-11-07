@@ -188,6 +188,35 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   const onScroll = callback => event(callback, e => ({
     scrollTop: Math.floor(Number(e.currentTarget.scrollTop) || 0), scrollLeft: Math.floor(Number(e.currentTarget.scrollLeft) || 0),
   }));
+  // Pointer and wheel positions are CSS pixels from the target's top-left corner, with its size.
+  const position = e => {
+    const box = e.currentTarget?.getBoundingClientRect?.() ?? { left: 0, top: 0, width: 0, height: 0 };
+    return {
+      x: Math.floor(Number(e.clientX) - box.left) || 0, y: Math.floor(Number(e.clientY) - box.top) || 0,
+      width: Math.floor(Number(box.width)) || 0, height: Math.floor(Number(box.height)) || 0,
+    };
+  };
+  const pointerPayload = e => ({ ...position(e), button: Math.trunc(Number(e.button)) || 0,
+    pointerId: Math.trunc(Number(e.pointerId)) || 0, ...modifiers(e) });
+  /** With `capture`, the target captures the pointer before the action runs (drags past its edge). */
+  const onPointerDown = (callback, capture = false) => event(callback, e => {
+    if (capture) { try { e.currentTarget?.setPointerCapture?.(e.pointerId); } catch { /* no active pointer */ } }
+    return pointerPayload(e);
+  });
+  const onPointerMove = callback => event(callback, pointerPayload);
+  const onPointerUp = callback => event(callback, pointerPayload);
+  // deltaMode 1 is lines and 2 pages; both are converted to CSS pixels.
+  const wheelScale = e => e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? (e.currentTarget?.clientHeight || 800) : 1;
+  const wheelPayload = e => ({ ...position(e), deltaX: Math.trunc(Number(e.deltaX) * wheelScale(e)) || 0,
+    deltaY: Math.trunc(Number(e.deltaY) * wheelScale(e)) || 0, ...modifiers(e) });
+  /** React attaches wheel listeners as passive, so scrolling is stopped with a native listener (see `wheelRef`). */
+  const onWheel = callback => event(callback, wheelPayload);
+  /** A ref that stops page scrolling over an element with a wheel handler (React's own listener is passive). */
+  const wheelRef = node => {
+    if (!node || node.__leanReactWheel) return;
+    node.__leanReactWheel = true;
+    node.addEventListener("wheel", e => e.preventDefault(), { passive: false });
+  };
   /** A form submit never navigates: the default is prevented before the action runs. */
   const onSubmit = work => raw => { raw.preventDefault(); event(() => work, () => ({}))(raw); };
   /** In-place navigation for a router link: an unmodified primary click on a same-origin anchor without a
@@ -277,6 +306,6 @@ export function createRuntime(React, { onActionError = error => { throw error; }
   }
   return Object.freeze({ component, nameComponent, element, foreignElement, handleElement, text, fragment, empty: null, keyed, keyedEach,
     dom, event, onPress, onClick, onChange, onKeyDown, onKeyUp, onFocus, onBlur, onInput, onPaste, onMouseEnter, onMouseLeave,
-    onScroll, onSubmit, onNavigate, useState, createContext, provide, provider, useContext, useEffect,
+    onScroll, onPointerDown, onPointerMove, onPointerUp, onWheel, wheelRef, onSubmit, onNavigate, useState, createContext, provide, provider, useContext, useEffect,
     runHook, bindHook, mapHook, namedHook, primitiveHook, configure, notifyCallFailure });
 }
