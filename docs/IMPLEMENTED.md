@@ -22,6 +22,7 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Call a foreign React component | A named intrinsic with a typed Lean reference, callback, and child element | Generated-component integration tests |
 | Build a form from typed controls | `DOM.form`, `textarea`, `select`, blur validation, paste snapshots, `KeyOutcome` | Generated-component integration, reference and browser tests |
 | Draw a diagram and an interactive timeline | `LeanReact.SVG`, `onPointerDown`/`Move`/`Up` with pointer capture, `onWheel` | Generated-component integration and browser tests |
+| Show 100,000 rows or a wide grid | `virtualList`, `virtualGrid` (fixed sizes, overscan, keyed rows, sticky leading columns); a `foreign` canvas for a million intervals with clicks mapped back in Lean | Generated-component integration and browser tests |
 | Drive an imperative JavaScript widget | `foreign`, `Handle`, `HandleResult`, a `useCell`-held handle, `registerForeign` | Generated-component integration, reference and browser tests |
 | Route between screens | A `Route` type with a `RouteCodec`, `routerProvider`, `useRoute`, `Router.link` | Generated-component integration, reference and browser tests |
 | Pages over typed endpoints | `form`, `call`, `load`, `App` with `path ==> page`; actor-only endpoints; stale-while-revalidate reloads | `npm run test:domain` (jsdom) |

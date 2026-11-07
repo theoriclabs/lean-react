@@ -265,6 +265,7 @@ code; it has no compiler dependency.
 | `List.getLast?` / `List.getLast` | 2 / 3 | `(α, xs)` / `(α, xs, proof)`; `RangeError` on `[]` |
 | `List.all`, `List.any` | 3 | `(α, xs, p)`; short-circuit, expect tagged `Bool` |
 | `List.mergeSort`, `List.MergeSort.Internal.mergeSortTR₂` | 3 | `(α, xs, le)`; Lean's splits and merges (stable, equal to native for any `le`); log₂ n recursion, iterative merges |
+| `Array.ofFn` / `Array.range` | 3 / 1 | `(α, n, f)` with `f` given `Fin.mk i` / `(n)`; built in one pass (core pushes one element at a time, which copies here) |
 | `Array.extract` | 4 | `(α, xs, start, stop)`; `Array.take`/`drop` lower via their bodies |
 | `Array.zipWith` / `Array.zip` | 6 / 4 | `(α, β, γ, f, xs, ys)` / `(α, β, xs, ys)` |
 | `Array.foldr` | 7 | `(α, β, f, init, xs, start, stop)`; visits `min(start, size) - 1` down to `stop` |
