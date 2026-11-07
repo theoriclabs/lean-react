@@ -1,6 +1,6 @@
 # Declarative components: design principles
 
-Status: design, 2026-09-23. P1 (core types), P2 (host), P3 (commands and subscriptions) and P4 (native testing) are implemented in `LeanReact.Program`; see [P1–P4 as built](COMPONENTS_PLAN.md#p1p4-as-built) and `examples/lean/Examples/Program.lean`. Implementation plan: [COMPONENTS_PLAN.md](COMPONENTS_PLAN.md). Purge: [LR-13](https://github.com/theoriclabs/lean-react/issues/43). Companion to LeanAPI's [typed endpoints](https://github.com/theoriclabs/leanapi/blob/main/docs/ENDPOINTS.md), which applies the same ideas to the server.
+Status: design, 2026-09-23. P1 (core types), P2 (host), P3 (commands and subscriptions), P4 (native testing), P5 (proofs) and P6 (typed calls) are implemented in `LeanReact.Program`; see [P1–P6 as built](COMPONENTS_PLAN.md#p1p6-as-built) and `examples/lean/Examples/Program.lean`. Implementation plan: [COMPONENTS_PLAN.md](COMPONENTS_PLAN.md). Purge: [LR-13](https://github.com/theoriclabs/lean-react/issues/43). Companion to LeanAPI's [typed endpoints](https://github.com/theoriclabs/leanapi/blob/main/docs/ENDPOINTS.md), which applies the same ideas to the server.
 
 **The goal:** read a component's definition and know three things:
 - every state it can be in;
