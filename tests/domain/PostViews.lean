@@ -3,6 +3,7 @@
    for the endpoints LeanAPI's `TestsCore.PostPart1` publishes. -/
 import TestsCore.PostPart1
 import LeanReact.Domain
+import LeanReact.Program
 open LeanDb.Model LeanApi.Core LeanReact
 
 namespace PostViews
@@ -101,6 +102,57 @@ def shellProps (generation : Nat) (currentGeneration : Action Nat)
     (framework : Contract.CallError Empty → Action Unit) (navigate : String → Action Unit)
     (authenticationChanged : Action Unit) : LeanReact.Domain.ShellProps :=
   { generation, currentGeneration, framework, navigate, refresh := pure (), authenticationChanged }
+
+/-! ## A declarative component with typed calls (Components P6) -/
+
+namespace RsvpWidget
+open LeanReact.Program
+
+structure Model where
+  party : Ref Party
+  status : String := ""
+  guests : Option Nat := none
+
+inductive Msg where
+  | go
+  | answered (result : Contract.CallResult Unit RsvpError)
+  | loaded (result : Contract.CallResult PartyPage GetPartyError)
+
+private def guestCount : GuestList → Nat
+  | .visible guests => guests.length
+  | .hidden => 0
+
+/-- Every `RsvpError` the endpoint declares has its own case: removing one is a compile error
+(`tests/domain/negative/ProgramRsvpMissingCase.lean`). -/
+def update (client : Contract.Interpreter LeanReact.Action) : Msg → Model → Model × Cmd Msg
+  | .go, m => ({ m with status := "Sending…" }, Cmd.callBound client (api.rsvp m.party) .answered)
+  | .answered (.ok ()), m => ({ m with status := "You're going." }, Cmd.callBound client (api.getParty m.party) .loaded)
+  | .answered (.error (.domain .notFound)), m => ({ m with status := "This party no longer exists." }, .none)
+  | .answered (.error (.domain .alreadyStarted)), m => ({ m with status := "This party has already started." }, .none)
+  | .answered (.error .unauthenticated), m => ({ m with status := "Sign in first." }, .none)
+  | .answered (.error _), m => ({ m with status := "Request failed. Try again." }, .none)
+  | .loaded (.ok page), m => ({ m with guests := some (guestCount page.guests) }, .none)
+  | .loaded (.error (.domain .notFound)), m => ({ m with guests := none }, .none)
+  | .loaded (.error _), m => (m, .none)
+
+def view (m : Model) : Html Msg :=
+  div [] [
+    button [onClick .go] [text "RSVP"],
+    p [role "status"] [text m.status],
+    when m.guests.isSome (p [dataAttr "testid" "guest-count"] [text s!"{m.guests.getD 0} going"])]
+
+def component (client : Contract.Interpreter LeanReact.Action) : Component (Ref Party) Model Msg where
+  init party := ({ party }, .none)
+  update _ := update client
+  view _ := view
+
+/-- The widget for the party with this key (a bare reference id). -/
+def element (client : Contract.Interpreter LeanReact.Action) (key : String) : Element :=
+  match (Ref.parse key : Ontology.Validation (Ref Party)) with
+  | .ok party => (component client).toElement party
+  | .error _ => LeanReact.text "Invalid party."
+
+end RsvpWidget
 
 /-! ## What the surface checks -/
 

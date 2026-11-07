@@ -1,5 +1,6 @@
 import LeanReact.Domain.App
 import LeanReact.Domain.Render
+import LeanReact.Domain.Program
 import Lean.Elab.Term
 
 namespace LeanReact.Domain

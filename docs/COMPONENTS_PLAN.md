@@ -68,9 +68,9 @@ LR-13 (the purge) is independent and can land any time. It should land before P7
 
 ---
 
-## P1–P4 as built
+## P1–P6 as built
 
-`LeanReact.Program` (`engine/LeanReact/Program/`) implements P1, P2, P3 and P4, with these deviations from the text below:
+`LeanReact.Program` (`engine/LeanReact/Program/`) implements P1 to P6, with these deviations from the text below:
 
 - **Keys.** `Html.keyed key child` wraps one child; `each` builds a node of keyed children. Structural recursion does not go through `List (String × Html)`.
 - **Child embedding.** `Html.embed` carries an `Embed Msg = { key, mount : (Msg → Action Unit) → Element }`, so `Html` stays in `Type`, as the P0 kernel result requires. `Component.embed c props toParent` mounts a child program whose messages reach the parent through `toParent`. `Html.element` is the same mechanism with no messages.
@@ -85,6 +85,8 @@ LR-13 (the purge) is independent and can land any time. It should land before P7
 - **`lazy`** is keyed but not yet memoized.
 - **Props.** `Component.toElement c props (propsKey := some k)` dispatches `propsChanged` when `k` changes.
 - **Native testing (P4)** is `LeanReact.Program.Testing`: `Component.simulate`, the queries `find?`/`findAll`/`findByText`/`findByRole`/`findByLabel`, the events `click`/`clicks` (in bubbling order, nothing for a disabled element, a checkbox's toggled change), `typeInto`, `submit` and `keyDown`, and `Html.pretty` for snapshots. `Examples.Program.Behavior` tests the counter and the todo form this way.
+- **Proofs (P5).** The property kernel is `LeanApi.Props.Kernel` (the `LeanProps` library, with no server import; theoriclabs/leanapi#1). It stays in the LeanAPI package rather than a separate `leanprops` repository. `Component.toSys` and `Component.invariant_of` are in `LeanReact.Program.Props`. `preserves` accepts `update`'s `Model × Cmd Msg` shape. The total queries `Html.attrsOf` and `Attr.disabledIn` can appear in view theorems. `Examples.ProgramProofs` proves seven theorems: a bounded counter, the todo list's keys and titles, an empty draft adding nothing, and Reset/Add disabled exactly when they should be. `tests/runtime/ProgramAxioms.lean` audits them.
+- **Typed calls (P6)** target LeanAPI's portable `LeanApi.Core` endpoints (`Endpoint I E O` in an `Api`), which LeanJS already compiles, instead of a separate `LeanApi.Spec` split from the handler-type server. `Cmd.call client endpoint input k` and `Cmd.callBound client endpoint k` (path fields given, as in `api.rsvp party`) deliver `Contract.CallResult O E` as a message: the endpoint's output, or `CallError E`. Its `.domain` case carries the declared error, so a `match` in `update` must cover every case, and the transport, 401/403, decoding and cancellation cases are the rest. They are in `LeanReact.Domain.Program`. `PostViews.RsvpWidget` calls the post's `api` through the generated HTTP client, and `tests/domain/negative/ProgramRsvpMissingCase.lean` checks that a missing error case fails to compile.
 - **Stack notes.** `@[leanjs_stack_safe]` (`LeanJS.StackSafe`) marks recursion bounded by the data's shape (`Html.map`, the walker, the command runner), so generating a program reports no stack notes.
 
 ## P1: Core types

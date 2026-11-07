@@ -255,3 +255,29 @@ test('framework failures stay on the shared channel', async () => {
     assert.match(app.container.textContent, /Unable to load/);
   } finally {await app.close();}
 });
+
+test('a declarative component calls typed endpoints; each declared error and a 401 arrive as messages', async () => {
+  const replies = [];
+  const srv = server(async request => replies.shift()(request));
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  await React.act(() => root.render(program['PostViews.RsvpWidget.element'](srv.interpreter, '3')));
+  const go = async () => { await React.act(() => [...container.querySelectorAll('button')].find(b => b.textContent === 'RSVP').click()); await settle(); };
+  const status = () => container.querySelector('[role=status]').textContent;
+  try {
+    replies.push(() => ok(null), () => page(visible(['Ben', 'Cara'])));
+    await go();
+    assert.deepEqual(srv.requests.map(r => [r.method, r.url]), [['POST', '/parties/3/rsvp'], ['GET', '/parties/3']]);
+    assert.equal(status(), "You're going.");
+    assert.equal(container.querySelector('[data-testid=guest-count]').textContent, '2 going', 'the typed PartyPage reached update');
+    replies.push(() => domainError('alreadyStarted'));
+    await go();
+    assert.equal(status(), 'This party has already started.');
+    replies.push(() => domainError('notFound'));
+    await go();
+    assert.equal(status(), 'This party no longer exists.');
+    replies.push(() => ({status: 401, body: {error: 'unauthorized'}}));
+    await go();
+    assert.equal(status(), 'Sign in first.');
+  } finally {await React.act(() => root.unmount()); container.remove();}
+});

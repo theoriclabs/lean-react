@@ -9,5 +9,6 @@
   "PostOnErrorOmitted": "`form` requires `(onError := …)`; use `(onError := nofun)` when the endpoint cannot fail",
   "PostEndpointWildcard": "onError requires explicit exhaustive branches",
   "PostRsvpMissingCase": "Missing cases:\nRsvpError.alreadyStarted",
-  "PostGuestListMismatch": "page.guests\nhas type\n  GuestList\nbut is expected to have type\n  List Guest"
+  "PostGuestListMismatch": "page.guests\nhas type\n  GuestList\nbut is expected to have type\n  List Guest",
+  "ProgramRsvpMissingCase": "Missing cases:\n(Msg.answered (Except.error (Contract.CallError.domain RsvpError.alreadyStarted)))"
 }
