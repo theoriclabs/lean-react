@@ -12,18 +12,6 @@ if (!process.argv.includes('--no-build')) await buildExample();
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
-    if (url.pathname.startsWith('/api/') && process.env.LEANREACT_API) {
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      const response = await fetch(new URL(url.pathname + url.search, process.env.LEANREACT_API), {
-        method: req.method,
-        headers: { 'content-type': 'application/json', ...(req.headers['x-leanreact-contract'] ? { 'x-leanreact-contract': req.headers['x-leanreact-contract'] } : {}) },
-        ...(!['GET', 'HEAD'].includes(req.method) ? { body: Buffer.concat(chunks) } : {}),
-      });
-      res.writeHead(response.status, { 'content-type': response.headers.get('content-type') ?? 'application/json' });
-      res.end(Buffer.from(await response.arrayBuffer()));
-      return;
-    }
     // History-API fallback for the routed example: every extension-less /router path serves its page.
     const pathname = url.pathname === '/' ? '/index.html'
       : /^\/router(\/|$)/.test(url.pathname) && !extname(url.pathname) ? '/router.html' : url.pathname;

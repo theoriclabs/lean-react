@@ -6,7 +6,7 @@ Write React components in Lean. They compile to JavaScript and render with React
 
 ![LeanReact playground with a live counter beside its Lean source](docs/images/showcase.png)
 
-LeanReact is experimental. The [v0.3.0 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.3.0) uses Lean 4.35.0 and includes the LeanReact UI layer, LeanJS compiler, and full-stack application support over pinned LeanOntology, LeanDB, and LeanAPI dependencies ([release evidence](docs/RELEASE.md)). APIs can change.
+LeanReact is experimental. It uses Lean 4.35.0 and provides UI libraries and the LeanJS compiler, with portable domain and client abstractions from pinned dependencies. Server routing, authentication and persistence belong in [LeanAPI](https://github.com/theoriclabs/leanapi). APIs can change.
 
 ## A counter in Lean
 
@@ -131,8 +131,8 @@ Start by editing the [counter component](examples/lean/Examples/Showcase.lean). 
 
 ## What to expect
 
-This is an experimental library for Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. Only a subset of Lean compiles to JavaScript today; routing, React Server Components, and automatic JS/TS bindings are still ahead. See [current support and limits](docs/IMPLEMENTED.md).
+This is an experimental library for Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. Only a subset of Lean compiles to JavaScript today; React Server Components and automatic JS/TS bindings are still ahead. See [current support and limits](docs/IMPLEMENTED.md).
 
 To build your own screen, follow the [how-to guide](docs/HOW_TO.md). If you’re using a coding agent, ask it to read [SKILL.md](SKILL.md) first.
 
-Application code lives in [examples/](examples/README.md); reusable framework code lives in [engine/](engine/README.md). Contributor checks and architecture details are in the [development guide](docs/HOW_TO.md#check-and-debug-your-work) and the [documentation index](docs/README.md).
+Application code lives in [examples/](examples/README.md); reusable library code lives in [engine/](engine/README.md). Contributor checks and architecture details are in the [development guide](docs/HOW_TO.md#check-and-debug-your-work).

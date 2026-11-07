@@ -27,8 +27,3 @@ tests/compiler/decisions.d.mts
 tests/compiler/decisions.manifest.json
 tests/compiler/integration/
 .verification/
-tests/app/.build/
-tests/ordering/.build/
-examples/dist-auth/
-examples/dist-cafe/
-examples/dist-notes/

@@ -11,11 +11,9 @@ import librariesSource from '../lean/Examples/Libraries/App.lean';
 import feedbackSource from '../lean/Examples/Feedback.lean';
 import sparklineSource from '../lean/Examples/Sparkline.lean';
 import { mountElement, ctor } from '../../engine/adapters/leanjs-react.mjs';
-import { createTicketsService, createTicketsLoader } from '../adapters/tickets-service.mjs';
 import '../adapters/example-sparkline.mjs';
 
 const parameters = new URLSearchParams(location.search);
-const remote = parameters.get('service') === 'native';
 const examples = {
   tickets: {
     description: 'Swap the layout, footer, or field editor. The same components and domain values carry through.',
@@ -53,14 +51,6 @@ document.getElementById('example-source-link').href = `https://github.com/theori
 for (const link of document.querySelectorAll('[data-example]')) {
   if (link.tagName !== 'A') continue;
   if (link.dataset.example === example) link.setAttribute('aria-current', 'page');
-  if (remote) {
-    const url = new URL(link.href);
-    url.searchParams.set('service', 'native');
-    link.href = url.href;
-  }
-}
-if (remote && example === 'tickets') {
-  document.getElementById('persistence-note').textContent = 'Connected to the local LeanDB / LeanHttp service. Saved changes persist across refreshes.';
 }
 
 // Display the actual Lean definitions bundled from source, with a small local lexer.
@@ -109,10 +99,7 @@ const element = example === 'collections' ? mountElement(collections['Examples.C
   : example === 'libraries' ? mountElement(libraries['Examples.Libraries.App'])
   : example === 'forms' ? mountElement(smoke['Examples.Feedback.App'])
   : example === 'canvas' ? mountElement(smoke['Examples.Sparkline.Demo'],
-    ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']])) : remote
-  ? mountElement(tickets['Examples.Tickets.Workspace'], ctor('Examples.Tickets.WorkspaceProps.mk', [
-    'native-tickets', createTicketsService(), createTicketsLoader(),
-  ]))
+    ctor('Examples.Sparkline.DemoProps.mk', [smoke['Examples.Sparkline.SparklineOps.silent']]))
   : mountElement(tickets['Examples.Tickets.App']);
 const root = createRoot(document.getElementById('root'));
 root.render(React.createElement(React.StrictMode, null, element));

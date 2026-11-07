@@ -1,6 +1,6 @@
 # LeanReact source API
 
-[LeanApp documentation](../../docs/README.md) · [LeanReact guide](../../docs/LEANREACT.md)
+[LeanReact guide](../../docs/LEANREACT.md)
 
 `import LeanReact` exposes buildable Lean 4.35 definitions for `Component Props`, `Hook α`, `Action α`, typed elements/events, state, context, forms, resources, and managed effects. Native reference implementations and the integrated engine/LeanJS/React adapter are tested. See [INTRINSICS.md](../runtime/INTRINSICS.md) and the [implemented scope](../../docs/IMPLEMENTED.md).
 

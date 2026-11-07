@@ -1,23 +1,17 @@
 // Validate local navigation and execute complete Lean examples in the developer guides.
 // No external URL crawl, native database, public listener or hosted mutation.
 import assert from 'node:assert/strict';
-import { readFile, stat, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { readFile, readdir, stat, mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { dirname, resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run, capture } from './process.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const documents = [
-  'README.md', 'engine/README.md', 'examples/README.md',
+// Discover maintained docs instead of naming deleted application guides.
+const documents = ['README.md', 'SKILL.md', 'engine/README.md', 'examples/README.md',
   'engine/LeanReact/API.md', 'engine/runtime/README.md',
-  'docs/README.md', 'docs/GETTING_STARTED.md', 'docs/DOMAIN_MODELING.md',
-  'docs/ARCHITECTURE.md', 'docs/LEANREACT.md', 'docs/HOW_TO.md',
-  'docs/FULLSTACK_INTERFACES.md', 'docs/NATIVE.md', 'docs/IMPLEMENTED.md',
-  'docs/AUTH.md', 'docs/HOSTING.md', 'docs/RELEASE.md',
-  'docs/AUTHORIZATION_DEMO.md',
-  'docs/PRIVATE_NOTES.md', 'deploy/notes/README.md',
-  'docs/whatbugs_can_we_prevent/checkout_state_explosion.md',
-];
+  ...(await readdir(resolve(root, 'docs'))).filter(name => name.endsWith('.md')).map(name => 'docs/' + name),
+  'docs/whatbugs_can_we_prevent/checkout_state_explosion.md'];
 // `<!-- lean-check: name -->` snippets must compile.
 // `<!-- lean-reject: name | needle -->` snippets must fail, and the output must contain the needle when given.
 const checkMarker = /^<!-- lean-check: ([a-z0-9-]+) -->\s*```lean\r?\n([\s\S]*?)\r?\n```/gm;
@@ -80,13 +74,13 @@ console.log(`Checked ${links} local links/anchors across ${documents.length} dev
 
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 const lock = JSON.parse(await readFile(resolve(root, 'package-lock.json'), 'utf8'));
-assert.equal(pkg.name, 'leanapp-workspace'); assert.equal(pkg.private, true);
+assert.equal(pkg.name, 'leanreact'); assert.equal(pkg.private, true);
 assert.equal(lock.name, pkg.name); assert.equal(lock.packages[''].name, pkg.name);
 assert.equal(lock.version, pkg.version); assert.equal(lock.packages[''].version, pkg.version);
 assert.equal(pkg.license, 'MIT'); assert.equal(lock.packages[''].license, pkg.license);
 assert.match(await readFile(resolve(root, 'lakefile.toml'), 'utf8'), /^name = "leanreact"$/m);
 
-await run('lake', ['build', 'LeanApp', 'LeanReact', 'Ordering', 'Cafe', 'PrivateNotes'], { cwd: root });
+await run('lake', ['build', 'LeanReact', 'LeanReact.Domain', 'Examples'], { cwd: root });
 await mkdir(resolve(root, '.lake'), { recursive: true });
 const out = await mkdtemp(resolve(root, '.lake/docs-check-'));
 for (const [name, source] of examples) {

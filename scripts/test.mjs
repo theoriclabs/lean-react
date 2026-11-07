@@ -2,7 +2,7 @@ import { run } from './process.mjs';
 import { projectRoot } from './build.mjs';
 
 const cwd = projectRoot;
-await run('lake', ['build', 'Examples'], { cwd });
+await run('node', ['scripts/check-boundaries.mjs'], { cwd });
 await run('lake', ['env', 'lean', '--run', 'tests/Run.lean', 'compiler'], { cwd });
 await run('bash', ['tests/runtime/check-lean.sh'], { cwd });
 await run('lake', ['env', 'lean', '--run', 'tests/integration/Queries.lean'], { cwd });
@@ -14,7 +14,5 @@ await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples
 await run('lake', ['env', 'lean', '--run', 'examples/lean/Examples/GenerateClient.lean'], { cwd });
 await run('lake', ['env', 'lean', '-R', 'examples/lean', 'examples/lean/Examples/GenerateComposability.lean'], { cwd });
 await run('node', ['--test', 'tests/integration/*.test.mjs'], { cwd });
-await run('node', ['--test', 'tests/gateway/*.test.mjs'], { cwd });
 await run('node', ['node_modules/typescript/bin/tsc', '--noEmit'], { cwd });
 await run('node', ['scripts/check-manifests.mjs'], { cwd });
-await run('node', ['--test', 'tests/scaffold/*.test.mjs'], { cwd });

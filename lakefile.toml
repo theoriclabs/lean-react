@@ -1,11 +1,8 @@
-# LeanReact: the UI layer (LeanReact, LeanReact.Domain, LeanJS) and full-stack serving
-# (LeanReact.Server). It builds on the layers below it, required from git at pinned revisions:
-# leanontology (wire codecs, scalars), LeanDB (`LeanDb.Model`, native storage) and LeanAPI
-# (`LeanApi.Core`, `LeanContract`, native serving). LeanAPI pins the same LeanDB and
-# leanontology revisions.
+# LeanReact UI libraries and the LeanJS compiler. Domain and client abstractions
+# come from pinned LeanOntology, LeanDB and LeanAPI packages.
 name = "leanreact"
 version = "0.3.0"
-defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer"]
+defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS"]
 
 [[require]]
 name = "leanontology"
@@ -41,13 +38,6 @@ name = "LeanReactDomain"
 srcDir = "engine"
 roots = ["LeanReact.Domain"]
 
-# Full-stack serving (native): `app% Name where app := app`, the page routes and the browser
-# bundle, on LeanAPI's native app. An API-only app never imports it.
-[[lean_lib]]
-name = "LeanReactServer"
-srcDir = "engine"
-roots = ["LeanReact.Server"]
-
 [[lean_lib]]
 name = "LeanJS"
 srcDir = "engine"
@@ -56,15 +46,3 @@ needs = ["leanJsRuntime"]
 [[lean_lib]]
 name = "Examples"
 srcDir = "examples/lean"
-
-[[lean_lib]]
-name = "Ordering"
-srcDir = "examples/ordering"
-
-[[lean_lib]]
-name = "Cafe"
-srcDir = "examples/ordering"
-
-[[lean_lib]]
-name = "PrivateNotes"
-srcDir = "examples/security"

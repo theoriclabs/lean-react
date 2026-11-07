@@ -1,8 +1,8 @@
 # LeanReact
 
-[Documentation](README.md) · [LeanReact](../README.md) · [Frontend tutorial](HOW_TO.md)
+[How-to guide](HOW_TO.md) · [LeanReact](../README.md) · [Frontend tutorial](HOW_TO.md)
 
-LeanReact is LeanApp's frontend library. Use it on its own to author React components in Lean; the native server and database adapters are optional. This page describes the frontend path, including the published v0.1 examples.
+LeanReact is a UI library for Lean-authored React components, with a Lean-to-JavaScript compiler. Server concerns live in [LeanAPI](https://github.com/theoriclabs/leanapi).
 
 Write React components in Lean, a typed functional language. Your components compile to JavaScript and run in the browser using React.
 
@@ -10,7 +10,6 @@ The appeal is familiar if you use TypeScript across the stack: your frontend and
 
 [v0.1 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.1) · [Get started](#run-locally) · [How-to guide](HOW_TO.md) · [Agent skill](../SKILL.md)
 
-For the full-stack café and native application APIs, start with [LeanApp getting started](GETTING_STARTED.md). Those additions are not part of the published v0.1 frontend release.
 
 ![LeanReact playground with a live counter beside its Lean source](images/showcase.png)
 
@@ -19,7 +18,7 @@ For the full-stack café and native application APIs, start with [LeanApp gettin
 You’ll need Git, Node 22.13 or newer, and [elan, the Lean version manager](https://github.com/leanprover/elan#installation). Think of elan like nvm: it installs the Lean version selected by this project. Follow its installation instructions for your OS, then open a new terminal.
 
 ```sh
-git clone --branch v0.1 https://github.com/theoriclabs/lean-react.git
+git clone https://github.com/theoriclabs/lean-react.git
 cd lean-react
 npm ci
 npm run dev
@@ -92,4 +91,4 @@ This is an experimental release for trying Lean-authored frontends. The examples
 
 To build your own screen, follow the [how-to guide](HOW_TO.md). If you’re using a coding agent, ask it to read [SKILL.md](../SKILL.md) first.
 
-Application code lives in [examples/](../examples/README.md); reusable framework code lives in [engine/](../engine/README.md). Contributor checks, optional backend setup, and architecture details are in the [development guide](HOW_TO.md#check-and-debug-your-work) and [backend guide](NATIVE.md).
+Application code lives in [examples/](../examples/README.md); reusable framework code lives in [engine/](../engine/README.md). Contributor checks are in the [development guide](HOW_TO.md#check-and-debug-your-work).

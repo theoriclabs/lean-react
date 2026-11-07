@@ -1,8 +1,8 @@
 # LeanReact implementation and limits
 
-[Documentation](README.md) · [LeanReact](LEANREACT.md)
+[LeanReact](LEANREACT.md)
 
-This page covers the frontend library, compiler/runtime integrations and local Tickets fixture. Authentication and the hosted café are separate LeanApp integrations; their qualification is recorded in [release evidence](RELEASE.md).
+This page covers the UI libraries, compiler/runtime integrations and local Tickets fixture. Server routing, authentication and persistence live in [LeanAPI](https://github.com/theoriclabs/leanapi).
 
 The implementation compiles real Lean declarations to JavaScript and runs them through React. The public source API uses `Component Props`, `Hook α`, and `Action α`. This document describes the current boundary.
 
@@ -14,7 +14,7 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Replace a card footer | A `TicketSummary → Element` prop | Browser tests |
 | Use editor behavior in a page and an inline panel | `useTicketEditor`, `useForm`, `editorBody` | Browser tests |
 | Replace an input with a textarea while keeping the draft | `FieldBinding String`, an editor component prop | Browser tests |
-| Replace local storage with a remote service | The same compiled `Workspace`, an ordinary `TicketService Action` record | Native browser tests |
+| Replace local storage with a remote service | The same compiled `Workspace`, an ordinary `TicketService Action` record | Generated-component integration tests |
 | Reorder stateful children | `keyedEach`, stable component definitions, scoped keys | Generated-component integration tests |
 | Supply a function-bearing provider | `Context Formatter`, a nested component | Generated-component integration tests |
 | Share a context across compiled libraries | One shared ESM dependency, independently compiled provider and consumer | Mounted/SSR integration and browser tests |
@@ -26,13 +26,13 @@ The implementation compiles real Lean declarations to JavaScript and runs them t
 | Extend a saved query | `openTickets`, `inboxTitles`, `Query.filter/map/take/cross` | Lean and generated-domain tests |
 | Consume domain behavior outside React | `examples/generated/domain.mjs` | Independent Node consumer and TypeScript checks |
 
-These changes use existing functions and values. Domain modules import neither SQLite nor React. The browser and native service use the same `Title.parse` and `applySave` definitions.
+These changes use existing functions and values. Domain modules import neither SQLite nor React. The browser and injected services can use the same `Title.parse` and `applySave` definitions.
 
 ## Source and host boundaries
 
 `engine/` contains the reusable Lean libraries, JavaScript runtime, and React bridge. Its default Lake build excludes examples. `LeanReact.Compiler` supplies reusable intrinsic registration and hook configuration; applications provide the JavaScript module path for their output location.
 
-`examples/lean/Examples/Tickets/Domain.lean` contains the example's values and behavior. `Contracts.lean` defines its public codecs and operations. `Components.lean` contains its components, hooks, and local service interpreter. `Queries.lean` extends neutral query descriptions. The web entry point, independent consumer, application adapters, and native server also live under `examples/`. The `examples/lean` source root preserves `Examples.*` imports without a filesystem case collision. Generated modules and browser assets live in `examples/generated/` and `examples/dist/`.
+`examples/lean/Examples/Tickets/Domain.lean` contains the example's values and behavior. `Contracts.lean` defines its public codecs and operations. `Components.lean` contains its components, hooks, and local service interpreter. `Queries.lean` extends neutral query descriptions. The web entry point, independent consumer, application adapters also live under `examples/`. The `examples/lean` source root preserves `Examples.*` imports without a filesystem case collision. Generated modules and browser assets live in `examples/generated/` and `examples/dist/`.
 
 `LeanJS` lowers Lean's pure LCNF representation to ESM. Its intrinsic registry replaces native reference implementations at named boundaries. The compiler keeps exact integers as `bigint`, ordinary constructor values as tagged records, and closures as callable JavaScript functions. Generated `.d.ts`, `.d.mts`, and manifest files describe that ABI. They do not pretend encoded Lean records are plain JavaScript objects.
 
@@ -84,15 +84,11 @@ The collection example exercises adding, editing, reversing, and removing rows, 
 
 Top-level values initialize automatically before rendering. `LeanJS.Options.libraries` imports public declarations from compiled libraries using their manifests; contexts and components keep their object identity across those imports. See [collections and library linking](COMPOSABILITY.md) for the build API, runnable examples, and dependency constraints.
 
-`Ontology.Query` is a typed description of local stages with a reference interpreter. It supports reusable filters, projections, limits, concatenation, and products. It preserves their written order. Its function fields are local executable values; this is not a serializable SQL language, and there is no SQL pushdown optimizer. The native adapter uses existing LeanDB persistence APIs. [Native adapter notes](NATIVE.md) propose upstream changes based on that integration.
+`Ontology.Query` is a typed description of local stages with a reference interpreter. It supports reusable filters, projections, limits, concatenation, and products. It preserves their written order. Its function fields are local executable values; this is not a serializable SQL language, and there is no SQL pushdown optimizer.
 
-## Wire and native integration
+## Browser clients
 
-The SQLite adapter separates public IDs from row IDs and stores revisions as text. Writes use a mutex, a transaction, and the shared revision rule. A stale save returns the current persisted ticket. The browser preserves the draft, can load the current revision, and can retry explicitly.
-
-The server exposes only the two declared operations and a manifest. It validates operation identity, version, kind, and input. Both browser and LeanHttp adapters decode non-success response bodies, including conflicts. Version negotiation is explicit equality, not automatic structural compatibility or semantic-digest inference.
-
-Browser wire codecs, TypeScript types and the embedded manifest are generated from the public manifest by `LeanContract.Generate` ([generated client](FULLSTACK_INTERFACES.md#generated-client)); the Tickets and café examples use the generated modules, and a small hand-written bridge converts wire values to LeanJS constructors with the compiled domain parsers. The generated codecs check schema shape only; validation beyond a schema stays on the server. The alternative of running the Lean `Codec` values in the browser by making a `Lean.Json` subset portable in LeanJS was rejected for now: a larger compiler change and larger bundles for the same wire checks. Lean's JSON parser also collapses duplicate textual object keys before codec validation.
+The Tickets fixture generates browser wire codecs, TypeScript types and its embedded manifest with the pinned LeanAPI package’s `LeanContract.Generate`. A small adapter converts wire values into LeanJS constructors. Tests exercise typed conflicts, transport failures, cancellation and large integer round trips without a bundled server. Generated codecs check schema shape; application validation remains the backend’s responsibility.
 
 ## Current limits
 
@@ -120,4 +116,4 @@ The compiler suite compares the native and generated results of every builtin on
 - LeanJS also compiles structures with proof fields, `Count`/`Fin` subtypes, proof arguments and identity casts (`tests/compiler/ProofFields.lean`).
 - The native server is a local fixture adapter. Authentication, authorization, deployment, and package publication are separate work. It binds loopback by default.
 
-The [compiler ABI](../engine/LeanJS/ABI.md), [ontology API](../../leanontology/LeanOntology/API.md), [React API](../engine/LeanReact/API.md), and [native guide](NATIVE.md) contain the detailed contracts and focused commands.
+The [compiler ABI](../engine/LeanJS/ABI.md), [ontology API](https://github.com/theoriclabs/leanontology/blob/main/LeanOntology/API.md), [React API](../engine/LeanReact/API.md) contain the detailed contracts and focused commands.

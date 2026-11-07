@@ -10,28 +10,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Ubuntu 22.04, as in LeanAPI: leancrypto's static libcrypto must link against Lean's
-        # bundled glibc.
         os: [ubuntu-22.04, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install native dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev libcurl4-openssl-dev
-      - name: Install OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: brew install openssl@3 || true
-      # LeanHTTP loads libcurl dynamically and tolerates runtimes without WebSockets,
-      # but its C bindings need headers that declare the optional WebSocket API.
-      - name: Install current libcurl headers (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          curl -fL --retry 3 https://github.com/curl/curl/releases/download/curl-8_23_0/curl-8.23.0.tar.xz -o "$RUNNER_TEMP/curl.tar.xz"
-          echo '8dadd7d2536a314f982ad05a651b713f426bf7d02cc2c76cffb9796f2218e6c5'"  $RUNNER_TEMP/curl.tar.xz" | sha256sum -c -
-          mkdir -p "$RUNNER_TEMP/curl-headers"
-          tar -xJf "$RUNNER_TEMP/curl.tar.xz" -C "$RUNNER_TEMP/curl-headers" --strip-components=2 curl-8.23.0/include
-          echo "CPATH=$RUNNER_TEMP/curl-headers" >> "$GITHUB_ENV"
       - name: Install elan
         run: |
           curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y --default-toolchain none
@@ -55,18 +37,14 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Compiler parity, runtime, integration, and scaffold checks
+      - name: Compiler parity, runtime, integration, and boundary checks
         run: npm test
-      - name: Portable framework checks
-        run: |
-          bash tests/app/check.sh
-          bash tests/ordering/check.sh
+      - name: Documentation examples and links
+        run: npm run test:docs
+      - name: Compiler integration
+        run: npm run test:compiler:integration
       - name: Browser checks
         if: runner.os == 'Linux'
         run: |
           npx playwright install --with-deps chromium
           npm run test:browser
-      - name: Build native adapter
-        if: ${{ !cancelled() }}
-        working-directory: adapters/native
-        run: lake build

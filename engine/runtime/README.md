@@ -1,8 +1,8 @@
 # LeanReact runtime
 
-[LeanApp documentation](../../docs/README.md) · [LeanReact guide](../../docs/LEANREACT.md)
+[LeanReact guide](../../docs/LEANREACT.md)
 
-This is an ESM library bridge within LeanApp. It does not start a server, render a static website, or depend on a generated compiler module. The host supplies React; the compiler adapter integrates the separate [intrinsic contract](INTRINSICS.md).
+This is an ESM library bridge for LeanReact. It does not start a server, render a static website, or depend on a generated compiler module. The host supplies React; the compiler adapter integrates the separate [intrinsic contract](INTRINSICS.md).
 
 Required host packages: matching `react` and `react-dom` versions (tested with 19.2.8). Tests additionally use `jsdom` (tested with 29.1.1) and Node's built-in test runner (tested with Node 24.11.1). The runtime itself needs no bundler or TypeScript transpiler; this repository's root workspace supplies its development dependencies. The .mjs bridge is usable from JavaScript or TypeScript; standalone TypeScript declaration files are not supplied yet.
 
