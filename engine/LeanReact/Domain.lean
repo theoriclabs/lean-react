@@ -1,4 +1,5 @@
 import LeanReact.Domain.App
+import LeanReact.Domain.Render
 import Lean.Elab.Term
 
 namespace LeanReact.Domain
@@ -112,5 +113,5 @@ end LeanReact.Domain
 
 namespace LeanReact
 -- The endpoint surface under `open LeanReact`.
-export LeanReact.Domain (App PageRoute Feedback notice navigate)
+export LeanReact.Domain (App PageRoute Feedback notice navigate Render RenderConfig render renderWith)
 end LeanReact

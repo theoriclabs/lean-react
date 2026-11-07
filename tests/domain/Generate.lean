@@ -15,7 +15,7 @@ run_meta do
       `DomainBrowser.guestView, `DomainBrowser.hostParser, `DomainBrowser.hostRaw, `DomainBrowser.parseHost,
       `DomainBrowser.hostForm, `DomainBrowser.hostFormView, `DomainBrowser.signUpView, `DomainBrowser.signInView,
       `DomainBrowser.scalarEditors, `DomainBrowser.settingsFormView, `DomainBrowser.partyRef, `DomainBrowser.personRef,
-      `DomainBrowser.appWithRequests, `PostViews.appComponent, `PostViews.appProps, `PostViews.shellProps,
+      `DomainBrowser.appWithRequests, `DomainBrowser.listingsView, `DomainBrowser.listingsCustomView, `DomainBrowser.listingView, `PostViews.appComponent, `PostViews.appProps, `PostViews.shellProps,
       `Contract.Browser.jsonObject, `Contract.Browser.jsonEntries, `Contract.Browser.jsonNumber,
       `Contract.Browser.frameworkError, `Contract.Browser.decodeErrors]
     (LeanReact.Compiler.options "../../../engine/adapters/leanjs-react.mjs")
