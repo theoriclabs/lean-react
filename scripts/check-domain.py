@@ -35,7 +35,8 @@ def run(command, label, expected=None, timeout=300):
     print('PASS', label, flush=True)
     return output
 
-run(['lake', 'build', 'LeanReact', 'LeanReact.Domain', 'LeanJS', 'leanapi/TestsCore'], 'build', timeout=1800)
+run(['lake', 'build', 'LeanReact', 'LeanReact.Domain', 'LeanJS',
+     'leanapi/TestsCore', 'leanapi/LeanContract.Browser'], 'build', timeout=1800)
 base = subprocess.check_output(['lake', 'env', 'printenv', 'LEAN_PATH'], env=ENV, text=True).strip()
 BUILD = ROOT / 'tests/domain/.build'
 ENV['LEAN_PATH'] = str(BUILD) + ':' + base

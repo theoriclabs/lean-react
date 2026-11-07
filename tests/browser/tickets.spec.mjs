@@ -1,5 +1,22 @@
 import { test, expect } from '@playwright/test';
 
+test('the retired native-service URL uses the local UI example', async ({ page }) => {
+  const errors = [];
+  const apiRequests = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('request', request => {
+    if (new URL(request.url()).pathname.startsWith('/api/')) apiRequests.push(request.url());
+  });
+  await page.goto('/?service=native');
+  await expect(page.locator('.board .card')).toHaveCount(3);
+  await page.getByRole('button', { name: 'Edit ticket', exact: true }).first().click();
+  await page.getByLabel('Ticket title', { exact: true }).fill('Local example');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('.card h3').first()).toHaveText('Local example');
+  expect(apiRequests).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
 test('Lean-authored composition, events, validation, and shared editing behavior', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

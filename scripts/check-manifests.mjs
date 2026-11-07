@@ -2,12 +2,23 @@
 // revisions, or to path dependencies inside this repository. A manifest that records a path
 // outside the checkout (a sibling clone, an absolute developer path) only builds on the machine
 // that wrote it, which LA-12 rules out.
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, relative, isAbsolute, dirname } from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const manifests = ['adapters/native/lake-manifest.json', 'examples/native/lake-manifest.json', 'lake-manifest.json'];
+async function discover(directory = '') {
+  const result = [];
+  for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || ['node_modules', 'generated', 'dist'].includes(entry.name)) continue;
+    const path = directory ? directory + '/' + entry.name : entry.name;
+    if (entry.isDirectory()) result.push(...await discover(path));
+    else if (/^lake(?:-manifest\.json|file\.(?:lean|toml))$/.test(entry.name)) result.push(path);
+  }
+  return result;
+}
+const files = await discover();
+const manifests = files.filter(file => file.endsWith('lake-manifest.json'));
 let problems = 0;
 let checked = 0;
 for (const file of manifests) {
@@ -29,9 +40,8 @@ for (const file of manifests) {
     problems += 1;
   }
 }
-// The same pins are written in three lakefiles, and examples/native shares the adapter's
-// packages directory, so every copy (and each manifest's resolved commit) must agree.
-const lakefiles = ['adapters/native/lakefile.lean', 'examples/native/lakefile.toml', 'templates/app/native/lakefile.lean'];
+// Compare declared pins with every discovered manifest.
+const lakefiles = files.filter(file => /lakefile\.(?:lean|toml)$/.test(file));
 const pins = new Map();
 const record = (url, rev, where) => {
   if (!pins.has(url)) pins.set(url, new Map());

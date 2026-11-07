@@ -18,7 +18,7 @@ Resolve the links in this skill relative to the LeanReact checkout. Confirm the 
 | `engine/LeanJS/` | Portable Lean-to-ESM compiler and ABI |
 | `engine/runtime/`, `engine/adapters/` | JavaScript host runtime and LeanJS/React bridge |
 | `examples/lean/Examples/` | Application modules and generation programs |
-| `examples/web/`, `examples/adapters/`, `examples/native/` | Showcase, example host bindings, and optional native server |
+| `examples/web/`, `examples/adapters/` | Showcase and example host bindings |
 | `scripts/build.mjs`, `scripts/test.mjs`, `tests/Run.lean` | Actual build and verification entry points |
 
 Keep reusable engine code and application code in their separate directories. Shared application ontologies can live in their own application/library module; they need not move into the engine. The project's tooling languages are Lean and JavaScript/TypeScript. Do not introduce Python or another toolchain for application code or test orchestration.
@@ -30,10 +30,9 @@ Read only the example and reference relevant to the task:
 - Components, callback props, generic lists, interchangeable fields/layouts, service injection: [Tickets components](examples/lean/Examples/Tickets/Components.lean).
 - Raw drafts, focused fields, keyed collection rows and accumulated errors: [Collections](examples/lean/Examples/Collections.lean), [Forms API source](engine/LeanReact/Forms.lean).
 - Shared contexts and separate compiled libraries: [library generator](examples/lean/Examples/GenerateComposability.lean), [linking guide](docs/COMPOSABILITY.md).
-- Shared domain rules, IDs, and operations: [Tickets domain](examples/lean/Examples/Tickets/Domain.lean), [contracts](examples/lean/Examples/Tickets/Contracts.lean), [ontology source](../leanontology/LeanOntology.lean).
+- Shared domain rules, IDs, and operations: [Tickets domain](examples/lean/Examples/Tickets/Domain.lean), [contracts](examples/lean/Examples/Tickets/Contracts.lean), [ontology source](https://github.com/theoriclabs/leanontology/blob/main/LeanOntology.lean).
 - A foreign React component or a TS consumer: [Lean binding](examples/lean/Examples/Foreign.lean), [host adapter](examples/adapters/example-foreign.mjs), [TS consumer](examples/consumer/typescript.tsx). An imperative widget with a typed handle: [Sparkline.lean](examples/lean/Examples/Sparkline.lean), [example-sparkline.mjs](examples/adapters/example-sparkline.mjs).
 - Runtime/ABI or unsupported compiler dependencies: [compiler](engine/LeanJS/Compiler.lean), [ABI](engine/LeanJS/ABI.md), [implemented scope](docs/IMPLEMENTED.md).
-- Optional LeanDB/LeanHttp integration: [native guide](docs/NATIVE.md). Lake fetches these dependencies from pinned Git revisions on the first build; no sibling checkouts are needed.
 
 ## Implement through the existing boundaries
 
@@ -81,11 +80,11 @@ Choose checks that exercise the requested behavior; do not treat successful elab
 | Tickets generator integration | `npm run test:compiler:integration` after the compiler suite. |
 | Host runtime | `npm run test:runtime` and relevant generated integration tests. |
 | Existing application browser flows | `npm run test:browser`; Chromium or a configured Chrome executable is needed. |
-| Full regular checks | `npm test`. Native server checks remain optional unless that path changed. |
+| Full regular checks | `npm test`. |
 | Website appearance | Inspect desktop/mobile rendering; `npm run screenshots` regenerates README captures. |
 
 For unsupported native declarations, inspect the full dependency path. `Array.forIn'` and `Array.foldlM` safe reference bodies are supported, but arbitrary IO/FFI is not portable. Keep the compiler's rejection behavior intact when adding a narrowly defined capability.
 
-`List.length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`, `replicate`, `range`, `foldr`, `getLast?`, `all` and `any` (including the `*TR` names Lean's LCNF actually calls) are iterative host builtins, as are `Array.extract`, `zipWith`, `foldr`, `findIdx?`, `insertIdx` and `eraseIdx`; the table is in `docs/IMPLEMENTED.md`. Strings are sliced by scalar with `LeanJS.Portable` (`String.takeScalars`, `dropScalars`, `extractScalars`, `foldlScalars`, `ofScalars`); core `String.take`/`drop` return byte-position slices and are not portable. User-written recursion compiles to a loop when every self call is a tail call (accumulator form, `where` locals); other self-recursion uses the JavaScript stack and gets a compile-time note (`set_option leanjs.recursion.error true` rejects it). `Repr`/`reprStr` hit native Format/`String.Internal` externs. `toString` on `Nat` is portable (`Nat.repr`). For errors and enums, write an explicit `code`/`label : α → String` as `Cafe.Model` does.
+`List.length`, `foldl`, `map`, `flatMap`, `append`, `filter`, `reverse`, `take`, `drop`, `splitAt`, `zip`, `zipWith`, `zipIdx`, `replicate`, `range`, `foldr`, `getLast?`, `all` and `any` (including the `*TR` names Lean's LCNF actually calls) are iterative host builtins, as are `Array.extract`, `zipWith`, `foldr`, `findIdx?`, `insertIdx` and `eraseIdx`; the table is in `docs/IMPLEMENTED.md`. Strings are sliced by scalar with `LeanJS.Portable` (`String.takeScalars`, `dropScalars`, `extractScalars`, `foldlScalars`, `ofScalars`); core `String.take`/`drop` return byte-position slices and are not portable. User-written recursion compiles to a loop when every self call is a tail call (accumulator form, `where` locals); other self-recursion uses the JavaScript stack and gets a compile-time note (`set_option leanjs.recursion.error true` rejects it). `Repr`/`reprStr` hit native Format/`String.Internal` externs. `toString` on `Nat` is portable (`Nat.repr`). For errors and enums, write an explicit `code`/`label : α → String` using a pattern match.
 
 Report what changed, which generated/runtime behavior was verified, and material remaining limitations. Preserve the user's requested scope and existing authorization.
