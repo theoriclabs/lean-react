@@ -129,6 +129,24 @@ Open **http://localhost:4173**. The first build may download the Lean compiler. 
 
 Start by editing the [counter component](examples/lean/Examples/Showcase.lean). The dev server rebuilds when you save; refresh the browser to see the change.
 
+## Lean versions
+
+LeanJS reads Lean's compiler IR, so each LeanReact release supports one Lean minor version. Pin LeanReact by the tag for your Lean version:
+
+| Lean | LeanReact | Notes |
+| --- | --- | --- |
+| 4.35 | v0.3.0 | Current `main` |
+| 4.33 | v0.2.0-rc.1, v0.1 | |
+
+```toml
+[[require]]
+name = "leanreact"
+git = "https://github.com/theoriclabs/lean-react"
+rev = "v0.3.0"
+```
+
+A scheduled CI job builds and tests `main` against the newest Lean release candidate, so a break shows up before that Lean version is released. [Releasing](docs/RELEASING.md) describes how a release is cut.
+
 ## What to expect
 
 This is an experimental library for Lean-authored frontends. The examples demonstrate working components, forms, asynchronous data loading, and shared domain rules. Only a subset of Lean compiles to JavaScript today; React Server Components and automatic JS/TS bindings are still ahead. See [current support and limits](docs/IMPLEMENTED.md).
