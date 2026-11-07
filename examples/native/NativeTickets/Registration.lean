@@ -2,7 +2,7 @@ import Examples.Tickets.Contracts
 import LeanAppNative.Server
 
 namespace NativeTickets
-open LeanApp Contract Ontology Examples.Tickets Examples.Tickets.Contracts
+open LeanApi.Publication Contract Ontology Examples.Tickets Examples.Tickets.Contracts
 
 inductive TicketRead : Type → Type where
   | list : TicketRead (Array TicketSummary)

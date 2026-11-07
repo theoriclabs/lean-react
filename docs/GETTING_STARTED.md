@@ -14,7 +14,7 @@ To try the result without installing anything, open the [hosted café](https://p
 | LeanReact frontend playground | None | `npm run dev` | `http://localhost:4173` |
 | Full-stack café | Reviewed LeanDB/LeanHttp sources, SQLite source, OpenSSL 3 development files and a C toolchain | Build below, then `npm run dev:cafe` | `http://127.0.0.1:4180` |
 
-Use Node 22.13 or newer and the exact Lean version in [lean-toolchain](../lean-toolchain), currently 4.33.0. [elan](https://github.com/leanprover/elan#installation) selects that toolchain when you run `lake` in this repository. LeanJS uses Lean compiler internals; substituting another Lean version is not a supported shortcut.
+Use Node 22.13 or newer and the exact Lean version in [lean-toolchain](../lean-toolchain), currently 4.35.0. [elan](https://github.com/leanprover/elan#installation) selects that toolchain when you run `lake` in this repository. LeanJS uses Lean compiler internals; substituting another Lean version is not a supported shortcut.
 
 From the repository root:
 
@@ -27,7 +27,7 @@ No LeanDB or LeanHttp dependency is needed for that build. If you only want Lean
 
 ## Prepare the native dependencies
 
-The native package fetches LeanDB, LeanHttp, leanws and LeanSQLite from their pinned Git revisions on the first build; no sibling checkouts are needed. The [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities) lists the pins and `npm run test:manifest` keeps the committed manifests honest. OpenSSL 3 development headers/libraries and a C toolchain must be installed. The default macOS OpenSSL prefix is `/opt/homebrew/opt/openssl@3`; the Linux container uses Debian's system package.
+The native package fetches LeanDB, LeanHttp, leanws and LeanSQLite from their pinned Git revisions on the first build; no sibling checkouts are needed. The [dependency contract](FULLSTACK_INTERFACES.md#source-and-dependency-identities) lists the pins and `npm run test:manifest` keeps the committed manifests honest. Install a C toolchain, OpenSSL 3 development headers/libraries, libcurl headers ≥ 7.86 (including `curl/websockets.h`), and a libcurl runtime. The default macOS OpenSSL prefix is `/opt/homebrew/opt/openssl@3`; the Linux container uses Debian's system package.
 
 To develop against a modified dependency, pass its local source with `-Kleandb=PATH` (likewise `-Kleanhttp`, `-Kleanws`, `-Kleansqlite`) as shown below, and do not commit a manifest that records that path.
 

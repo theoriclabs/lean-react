@@ -2,10 +2,10 @@
 FROM node:24-bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl zstd git build-essential libssl-dev libgmp-dev libcurl4-openssl-dev
 WORKDIR /opt
-RUN curl -fL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.33.0/lean-4.33.0-linux.tar.zst -o lean.tar.zst \
-    && echo '4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c  lean.tar.zst' | sha256sum -c - \
+RUN curl -fL --retry 3 https://github.com/leanprover/lean4/releases/download/v4.35.0/lean-4.35.0-linux.tar.zst -o lean.tar.zst \
+    && echo '7289597a44543246c9227b8cae501767e095ce17f6d448b95fc4a8dc97268f6d  lean.tar.zst' | sha256sum -c - \
     && tar --zstd -xf lean.tar.zst
-ENV PATH="/opt/lean-4.33.0-linux/bin:${PATH}"
+ENV PATH="/opt/lean-4.35.0-linux/bin:${PATH}"
 COPY leandb /src/leandb
 COPY leanhttp /src/leanhttp
 COPY leanws /src/leanws

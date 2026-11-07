@@ -10,7 +10,7 @@ This is the implementation contract for application assembly. Passing a local fi
 
 ## Source and dependency identities
 
-The reviewed baseline uses Lean 4.33.0, compiler commit `d8b18978322de05a8f3dba51ef03cf5461676c17`. Keep the root and native `lean-toolchain` files in sync. LeanJS uses internal compiler APIs, so a toolchain upgrade requires its parity and rejection tests.
+The reviewed baseline uses Lean 4.35.0, compiler commit `eb6cafb7290e8bd5f2937522d8d804f58f02bafc`. Keep the root and native `lean-toolchain` files in sync. LeanJS uses internal compiler APIs, so a toolchain upgrade requires its parity and rejection tests.
 
 | Dependency | Pinned source | Override |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ The native runtime the adapter consumes is LeanDB 0.4.0's `Runtime.Service` (LDB
 
 ## Portable sources and publication
 
-`engine/LeanOntology` contains identity, validation, descriptors and wire codecs. `engine/LeanContract` contains typed operations and checked router erasure. `engine/LeanApp` assembles explicitly approved exports and validates their bindings. Domain examples live under `examples/lean` and `examples/ordering`; native mappings live under `adapters/native`.
+Since milestone 3 these are packages LeanReact requires: leanontology's `LeanOntology` contains identity, validation, descriptors and wire codecs; LeanAPI's `LeanContract` contains typed operations and checked router erasure; LeanAPI's `LeanApi.Publication` (formerly `engine/LeanApp`) assembles explicitly approved exports and validates their bindings. Domain examples live under `examples/lean` and `examples/ordering`; native mappings live under `adapters/native`.
 
 An operation retains its input, output, error and execution kind until `Contract.Route.ofHandler`. A public manifest lists approved operations and their public codecs. Importing a module or describing a field does not publish a table or grant mutation rights. A trusted context constructor is an adapter boundary; it is not an authentication provider or a sandbox for arbitrary Lean code.
 

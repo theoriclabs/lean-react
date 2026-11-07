@@ -1,9 +1,9 @@
-import LeanApp.Application
+import LeanApi.Publication.Application
 import LeanAppNative.Runtime
 import LeanAppNative.Server
 
 namespace LeanAppNative
-open LeanApp Ontology
+open LeanApi.Publication Ontology
 
 /-- Connection-per-call lanes (LA-07). A policy or handler never sees a bare `Conn` except
 inside one of these closures, so no application can retain a connection past the call.

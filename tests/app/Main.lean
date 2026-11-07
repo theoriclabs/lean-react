@@ -1,7 +1,7 @@
-import LeanApp
+import LeanApi.Publication
 import AclFixture
 
-open LeanApp Contract Ontology
+open LeanApi.Publication Contract Ontology
 
 instance [BEq α] [BEq ε] : BEq (Except ε α) where
   beq a b := match a, b with
@@ -80,10 +80,10 @@ def main : IO Unit := do
   let _privateBinding := queryBinding privateOp
   let exported := (queryBinding query).approve (fun _ => reads)
   let writable := (commandBinding command).approve (fun _ => commands)
-  let base : LeanApp.Module Fixture := {
+  let base : LeanApi.Publication.Module Fixture := {
     name := "values", exports := [exported, writable]
     storage := [⟨"main.values", "fixture.values.v1"⟩] }
-  let dependent : LeanApp.Module Fixture := {
+  let dependent : LeanApi.Publication.Module Fixture := {
     name := "views", dependencies := ["values"]
     storage := [⟨"main.values", "fixture.values.v1"⟩] }
   let app ← require (Application.create "fixture" [dependent, base])
@@ -153,7 +153,7 @@ def main : IO Unit := do
   let capped := ({ queryBinding v2 with http := { path := "/value", maxBodyBytes := some 4096 } }).approve (fun _ => reads)
   reject "same path with a different cap is still ambiguous" "http.ambiguous_path"
     (Application.create "bad" [{ base with exports := [exported, capped] }])
-  let published : LeanApp.Module Fixture := { name := "live", exports := [({ commandBinding command with
+  let published : LeanApi.Publication.Module Fixture := { name := "live", exports := [({ commandBinding command with
     http := { path := "/set", maxBodyBytes := some 262144 }
     metadata := { publish := some { topicField := "doc", topicPrefix := "doc", eventName := "ops" } } }).approve (fun _ => commands)] }
   let live ← require (Application.create "live" [published])

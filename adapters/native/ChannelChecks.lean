@@ -2,12 +2,12 @@ import LeanAppNative.Channels
 import LeanAppNative.ChannelHost
 import LeanAppNative.Auth.Store
 import LeanAppNative.Auth.Demo
-import LeanApp.Channel
-import LeanApp.Policy
+import LeanApi.Publication.Channel
+import LeanApi.Publication.Policy
 import LeanWs
 import LeanDb.Runtime
 
-open LeanApp Contract
+open LeanApi.Publication Contract
 open LeanAppNative.Channels
 open LeanAppNative.Auth
 open Std.Http

@@ -1,6 +1,6 @@
 import {{Name}}Native.Application
 
-open LeanAppNative LeanApp {{Name}}
+open LeanAppNative LeanApi.Publication {{Name}}
 
 private def check (label : String) (ok : Bool) : IO Unit := do
   unless ok do throw (IO.userError s!"FAIL: {label}")

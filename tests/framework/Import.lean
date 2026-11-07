@@ -1,7 +1,7 @@
-import LeanApp
+import LeanApi.Publication
 
-def emptyApplication : Ontology.Validation (LeanApp.Application Id) :=
-  LeanApp.Application.create "empty" []
+def emptyApplication : Ontology.Validation (LeanApi.Publication.Application Id) :=
+  LeanApi.Publication.Application.create "empty" []
 
 def main : IO Unit :=
   match emptyApplication with

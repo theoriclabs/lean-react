@@ -14,17 +14,16 @@ def authCryptoLinkArgs : Array String :=
     | none => #[]) ++ #["-lcrypto"]
 
 package leanapp_native where
-  version := v!"0.2.0-rc.1"
+  version := v!"0.3.0"
   moreLinkArgs := authCryptoLinkArgs
 
 /-- The portable workspace this adapter belongs to. -/
 require leanreact from (get_config? leanreact).getD "../.."
 
-/-! Published pins (LA-12). Every native dependency is fetched from its immutable
-Git revision by default, so a fresh clone builds with no sibling checkouts.
-`-Kleandb=PATH`, `-Kleanhttp=PATH`, `-Kleanws=PATH` and `-Kleansqlite=PATH`
-override a pin with a local source tree for development; the committed manifest
-must never record such a path (`npm run test:manifest`). -/
+/-! The layers below LeanReact, at the revisions LeanReact itself pins: LeanDB, LeanAPI (its
+`LeanApi.Publication` is the application assembly this adapter hosts), leanontology, and
+LeanDB's `leansqlite`. `-K<name>=PATH` overrides one with a local source tree; never commit a
+manifest that records such a path. -/
 
 @[package_dep] def leandb : Dependency := {
   name := `leandb
@@ -33,7 +32,27 @@ must never record such a path (`npm run test:manifest`). -/
   opts := {}
   src? := some <| match get_config? leandb with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/LeanDB" (some "v0.4.0") none
+    | none => .git "https://github.com/theoriclabs/LeanDB" (some "d5253e5b0d83fc528927f340d1e50baab3e94999") none
+}
+
+@[package_dep] def leanapi : Dependency := {
+  name := `leanapi
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanapi with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanapi" (some "b66c2991fae8fbe55b5c77d14b0216016855c6c0") none
+}
+
+@[package_dep] def leanontology : Dependency := {
+  name := `leanontology
+  scope := ""
+  version := .none
+  opts := {}
+  src? := some <| match get_config? leanontology with
+    | some path => .path path
+    | none => .git "https://github.com/theoriclabs/leanontology" (some "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b") none
 }
 
 @[package_dep] def leanhttp : Dependency := {
@@ -43,7 +62,7 @@ must never record such a path (`npm run test:manifest`). -/
   opts := {}
   src? := some <| match get_config? leanhttp with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/leanhttp" (some "v0.3.1") none
+    | none => .git "https://github.com/theoriclabs/leanhttp" (some "v0.5.0") none
 }
 
 /-- `Handshake.Reject.unauthorized` (401 at upgrade, LA-17) landed after v0.1.0. -/
@@ -54,7 +73,7 @@ must never record such a path (`npm run test:manifest`). -/
   opts := {}
   src? := some <| match get_config? leanws with
     | some path => .path path
-    | none => .git "https://github.com/theoriclabs/leanws" (some "40900ccb00e04186360ba0a235c560517b7ecb57") none
+    | none => .git "https://github.com/theoriclabs/leanws" (some "964c5610f3faf68f624d8ef2049576b8f127dcc2") none
 }
 
 @[package_dep] def leansqlite : Dependency := {

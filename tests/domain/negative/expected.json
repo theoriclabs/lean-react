@@ -1,0 +1,13 @@
+{
+  "WildcardHandler": "wildcard",
+  "CatchAllHandler": "explicit",
+  "NamedMatchCatchAll": "catch-all",
+  "IgnoresError": "match its error argument",
+  "FieldTypo": "NamedField",
+  "PostSignUpNofun": "Missing cases:\nSignUpError.emailTaken",
+  "PostHostNofun": "Missing cases:\nHostError.dateInPast",
+  "PostOnErrorOmitted": "`form` requires `(onError := …)`; use `(onError := nofun)` when the endpoint cannot fail",
+  "PostEndpointWildcard": "onError requires explicit exhaustive branches",
+  "PostRsvpMissingCase": "Missing cases:\nRsvpError.alreadyStarted",
+  "PostGuestListMismatch": "page.guests\nhas type\n  GuestList\nbut is expected to have type\n  List Guest"
+}

@@ -3,7 +3,7 @@ import LeanAppNative.Server
 import LeanAppNative.Capabilities
 
 namespace LeanAppNative.Auth
-open LeanApp Contract Ontology
+open LeanApi.Publication Contract Ontology
 
 structure Request where
   method : String

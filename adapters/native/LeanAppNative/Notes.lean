@@ -2,7 +2,7 @@ import LeanAppNative.Auth.Http
 import PrivateNotes
 
 namespace LeanAppNative.Notes
-open LeanApp LeanDb Contract Ontology
+open LeanApi.Publication LeanDb Contract Ontology
 abbrev Subject := _root_.PrivateNotes.Principal
 abbrev Facts := _root_.PrivateNotes.SessionFacts
 abbrev Criteria := _root_.PrivateNotes.Criteria
@@ -146,7 +146,7 @@ private def assemble (user : Auth.User) (now expiresAt : Nat)
       let some (conn, alive) := storage | throw (IO.userError "inert notes template")
       setup conn alive p }
   let policy := fun (ctx : RequestContext) =>
-    ctx.principal == some (LeanApp.Principal.mk p.actor p.tenant p.generation)
+    ctx.principal == some (LeanApi.Publication.Principal.mk p.actor p.tenant p.generation)
   let mut exports := []
   for (name, action) in [("list", _root_.PrivateNotes.Operation.list), ("lookup", .lookup),
       ("search", .search), ("count", .count), ("export", .export)] do

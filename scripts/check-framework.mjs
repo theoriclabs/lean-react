@@ -13,7 +13,7 @@ const nativeOverrides = () => ['leanreact', 'leandb', 'leanhttp', 'leanws', 'lea
 });
 
 if (profile === 'portable') {
-  await run('lake', ['build', 'LeanApp', 'Ordering'], { cwd });
+  await run('lake', ['build', 'leanapi/LeanApiCore', 'Ordering'], { cwd });
   await run('lake', ['env', 'lean', '--run', 'tests/framework/Import.lean'], { cwd });
   await run('node', ['scripts/test.mjs'], { cwd });
   await run('bash', ['tests/app/check.sh'], { cwd });

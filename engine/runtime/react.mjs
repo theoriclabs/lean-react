@@ -14,7 +14,7 @@ export function validateHookTrace(expected, actual, name = "component") {
   }
 }
 
-/** A transport failure raised by `engine/LeanContract/Fetch.mjs`, recognised structurally so the runtime
+/** A transport failure raised by LeanAPI's `LeanContract/Fetch.mjs`, recognised structurally so the runtime
  * does not import the contract layer. */
 export const isCallFailure = error => error != null && typeof error === "object" && error.name === "CallFailure" && typeof error.kind === "string";
 

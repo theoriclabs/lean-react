@@ -4,7 +4,7 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$project_dir"
 if [[ "${1:-}" != "--no-build" ]]; then bash examples/native/build-cached.sh; fi
-binary_dir="$project_dir/examples/native/.lake/cached/bin"
+binary_dir="$project_dir/examples/native/.lake/build/bin"
 test_dir="$(mktemp -d "${TMPDIR:-/tmp}/tickets-http-check.XXXXXX")"
 "$binary_dir/tickets_checks" --init "$test_dir/tickets.sqlite"
 "$binary_dir/tickets_server" 0 "$test_dir/tickets.sqlite" > "$test_dir/server.stdout" 2> "$test_dir/server.log" &

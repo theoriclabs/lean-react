@@ -6,7 +6,7 @@ LeanReact is the frontend library within LeanApp. This tutorial needs no native 
 
 This guide takes you from the working showcase to a small form written in Lean, then shows how to compose editors, share domain definitions, and connect compiled libraries. It describes the implementation in this repository. LeanReact is experimental; nested routing, React Server Components, and automatic JS/TS bindings are still ahead.
 
-All commands run from the repository root unless stated otherwise. You need the toolchain in `lean-toolchain` (currently Lean 4.33.0), Node 22.13 or newer, and npm. Install Lean through [elan](https://github.com/leanprover/elan). React and the JavaScript build tools are already declared in `package.json`.
+All commands run from the repository root unless stated otherwise. You need the toolchain in `lean-toolchain` (currently Lean 4.35.0), Node 22.13 or newer, and npm. Install Lean through [elan](https://github.com/leanprover/elan). React and the JavaScript build tools are already declared in `package.json`.
 
 - [Run the showcase](#run-the-showcase)
 - [Build your first form](#build-your-first-form)
@@ -306,7 +306,7 @@ The [Tickets domain](../examples/lean/Examples/Tickets/Domain.lean) contains the
 | Refresh a resource | Execute `resource.refresh` in an event action. |
 | Register effect cleanup | `useEffect` setup returns an `Action Unit` cleanup. Cleanup itself remains deferred. |
 
-Use literal, stable hook site labels. Dependencies are typed `Dependency` values; keep the dependency array's shape fixed. Resource generations suppress obsolete responses after refresh, key changes, or unmount. A host loader must explicitly forward the request's abort signal to its I/O if it should also cancel that work: build it with `resourceLoader(client, identity, encodeArgs)` from `engine/LeanContract/Service.mjs`, which passes the resource's `AbortSignal` to `createHttpClient.call`, so leaving the screen or refreshing aborts the `fetch`. The Tickets browser adapter does this for its list query (`createTicketsLoader` behind `WorkspaceProps.load`).
+Use literal, stable hook site labels. Dependencies are typed `Dependency` values; keep the dependency array's shape fixed. Resource generations suppress obsolete responses after refresh, key changes, or unmount. A host loader must explicitly forward the request's abort signal to its I/O if it should also cancel that work: build it with `resourceLoader(client, identity, encodeArgs)` from `engine/adapters/contract-service.mjs`, which passes the resource's `AbortSignal` to `createHttpClient.call`, so leaving the screen or refreshing aborts the `fetch`. The Tickets browser adapter does this for its list query (`createTicketsLoader` behind `WorkspaceProps.load`).
 
 Keep domain failures as typed `Except` values. Transport failures arrive as `ResourceFailure.call` carrying the portable `Contract.CallFailure` (`unauthenticated`, `forbidden`, `incompatible`, `decode`, `protocol`, `transport`, `cancelled`); `Resource.failureAs` collapses a failure into `Except CallFailure ε`, so a component matches on a closed type instead of strings (see `loadFailureMessage` in the Tickets components). Register `configureRuntime({ onCallFailure })` once to react to `unauthenticated` globally, for example by redirecting to a login route. `Action.catchError` is for host exceptions; its current bridge supplies `IO.Error.userError`. Raw file, socket, and browser operations do not become portable merely because a function returns `Action`: give native operations explicit host adapters.
 
@@ -361,6 +361,41 @@ def successMessage (message : String) : Element :=
 ```
 
 Put application styles in its web directory; the showcase uses `examples/web/style.css`. Class strings can be produced by ordinary Lean functions. There is no typed Lean CSS DSL, style-object conversion, CSS extraction, or configured Tailwind pipeline yet.
+
+### Shell
+
+The HTML served by `app%` is configurable without changing the declaration.
+`AppConfig` is owned by LeanAPI, so pass an optional named `shell` argument
+of type `LeanReact.Server.Shell` to the app's `main`:
+
+```lean
+-- After declaring app% shop where app := app:
+def main (args : List String) : IO UInt32 :=
+  shop.main args { origin := some "http://localhost:8080", development := true }
+    (shell := {
+      title := some "My shop"
+      style := some "body{font:16px system-ui;margin:0;max-width:none}"
+      stylesheets := ["/assets/site.css"]
+      navigation := some [] })
+```
+
+This full-width app drops the navigation and uses its own stylesheet. Copy
+`site.css` into the browser bundle directory alongside `app.mjs` as part
+of your build; the server serves it at `/assets/site.css` with `text/css`.
+Nested paths such as `/assets/css/site.css` map to `css/site.css` in that
+directory. Only configured CSS paths are served; traversal paths are rejected.
+
+All fields have defaults. `title := none` keeps the App's root module name;
+`style := none` keeps the existing inline CSS. `some ""` replaces it with
+empty CSS. `stylesheets` defaults to `[]` and emits stylesheet links after
+the inline style. `navigation := none` keeps static page paths as both labels
+and links (excluding parameterized paths); `some [("Home", "/")]` supplies
+custom label/path pairs, and `some []` emits no `<nav>` at all.
+`head` defaults to `""` and appends raw HTML inside `<head>`, after stylesheets.
+Titles, navigation labels/paths, and stylesheet URLs are escaped. **Raw `head`
+HTML and `style` CSS are the application's responsibility**: use trusted
+content, not untrusted user input. An omitted shell preserves the existing HTML
+byte for byte.
 
 ### Existing React components, including shadcn
 

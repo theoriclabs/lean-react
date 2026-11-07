@@ -3,7 +3,7 @@
 // the ABI the compiled components consume. See engine/LeanJS/ABI.md for the representations.
 import { action, mapAction } from '../../engine/runtime/actions.mjs';
 import { ctor } from '../../engine/adapters/leanjs-react.mjs';
-import { resourceLoader } from '../../engine/LeanContract/Service.mjs';
+import { resourceLoader } from '../../engine/adapters/contract-service.mjs';
 import * as domain from '../generated/domain.mjs';
 import { CallFailure, createClient, operations } from './tickets-client/operations.mjs';
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 app_build_dir="$(mktemp -d "$PWD/.lake/app-check.XXXXXX")"
-lake build LeanApp
+lake build leanapi/LeanApiCore
 lake env lean -R tests/app -o "$app_build_dir/AclFixture.olean" tests/app/AclFixture.lean
 export LEAN_PATH="$app_build_dir:$(lake env printenv LEAN_PATH)"
 lean --run tests/app/Main.lean
@@ -25,7 +25,7 @@ for test in RejectInput RejectOutput RejectError RejectReadWrite RejectReadIO Re
     RejectAtLeast) expected='type mismatch|Type mismatch|Application type mismatch' ;;
     RejectWeakenedRole) expected='acl.matrix_failed' ;;
   esac
-  if ! rg -q "$expected" "$app_build_dir/$test.log"; then
+  if ! grep -Eq "$expected" "$app_build_dir/$test.log"; then
     cat "$app_build_dir/$test.log" >&2
     echo "FAIL: $test failed for an unexpected reason" >&2
     exit 1

@@ -2,7 +2,7 @@
 // Credentials, the title rule and persistence are owned by Lean.
 import React, { useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createAuthClient } from '@leanapp/engine/LeanApp/AuthClient.mjs';
+import { createAuthClient } from '@leanapp/engine/runtime/AuthClient.mjs';
 import { action } from '@leanapp/engine/runtime/actions.mjs';
 import { ctor, mountElement } from '@leanapp/engine/adapters/leanjs-react.mjs';
 import * as app from './generated/app.mjs';

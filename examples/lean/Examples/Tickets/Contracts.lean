@@ -1,7 +1,7 @@
 import Examples.Tickets.Domain
 import LeanContract
 import LeanContract.Http
-import LeanContract.Public
+import LeanApi.Publication.Binding
 
 namespace Examples.Tickets.Contracts
 open Ontology Contract
@@ -71,10 +71,12 @@ def publicCodecs : Validation PublicCodecs := do
   let saveError : Codec SaveError := {
     schema := .named ⟨packageId, "SaveError"⟩ "1"
       (.variant [("notFound", .unit), ("conflict", summary.schema)])
+    -- Decision 15: a payload-free case is the bare string; the tagged form still decodes.
     encode := fun error => match error with
-      | .notFound => JsonWire.tagged "notFound" .null
+      | .notFound => .str "notFound"
       | .conflict current => JsonWire.tagged "conflict" (summary.encode current)
     decode := fun value => do
+      if let .str "notFound" := value then return .notFound
       JsonWire.object ["tag", "value"] value
       let tag ← JsonWire.stringField "tag" value
       match tag with
@@ -94,22 +96,35 @@ def publicOperations : Validation PublicOperations := do
   let save ← Operation.create .command saveIdentity codecs.saveInput codecs.summary codecs.saveError
   pure ⟨codecs, list, save⟩
 
-/-- Public HTTP metadata embedded in the generated browser client. A server publishing these
-operations must serve the same manifest, or the client refuses it as `incompatible`. -/
-def PublicOperations.approved (ops : PublicOperations) : List Contract.PublicOperation :=
+/-- Public HTTP metadata shared by the native registration and the generated browser client.
+The native bindings must publish the same rules; `tickets_checks` compares the served manifest. -/
+def PublicOperations.approved (ops : PublicOperations) : List LeanApi.Publication.PublicOperation :=
   [⟨ops.list.describe, { path := listPath }, { describePolicy := "role ≥ viewer" }⟩,
    ⟨ops.save.describe, { path := savePath }, { describePolicy := "role ≥ editor" }⟩]
 
 /-- The `/api/manifest` body: schemas, HTTP bindings and public metadata per operation. -/
 def PublicOperations.manifest (ops : PublicOperations) : Lean.Json :=
-  Contract.PublicOperation.manifest ops.approved
+  LeanApi.Publication.PublicOperation.manifest ops.approved
 
 def PublicOperations.httpCodecs (ops : PublicOperations) : Contract.Http.Codecs :=
   ⟨ops.codecs.operationId, ops.codecs.errors⟩
 
+/-- `ErrorStatus.ofTags`, reading a payload-free error's tag from its decision-15 bare string
+(`"notFound"`) as well as from the tagged form (`{"tag": "conflict", …}`). LeanContract's
+`ofTags` reads only the tagged form. -/
+def statusByTag (operation : Contract.Operation kind Input Output Error) (table : List (String × Nat)) :
+    Contract.Http.ErrorStatus :=
+  ⟨operation.identity, fun value => do
+    let tag ← match value with
+      | .str tag => pure tag
+      | _ => JsonWire.stringField "tag" value
+    match table.lookup tag with
+    | some status => pure status
+    | none => Validation.fail "response.unknown_domain_error" [.key "tag"] [("actual", tag)]⟩
+
 /-- Tag-determined, so the generated client carries the same table. -/
 def PublicOperations.errorStatuses (ops : PublicOperations) : List Contract.Http.ErrorStatus :=
-  [Contract.Http.ErrorStatus.ofTags ops.save [("notFound", 404), ("conflict", 409)]]
+  [statusByTag ops.save [("notFound", 404), ("conflict", 409)]]
 
 def encodeRequest (ops : PublicOperations) := Contract.Http.encodeRequest ops.httpCodecs
 

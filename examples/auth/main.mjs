@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createAuthClient } from '../../engine/LeanApp/AuthClient.mjs';
+import { createAuthClient } from '../../engine/runtime/AuthClient.mjs';
 
 const client = createAuthClient();
 const messages = {

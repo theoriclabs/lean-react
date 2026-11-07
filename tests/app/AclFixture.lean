@@ -1,8 +1,8 @@
-import LeanApp
+import LeanApi.Publication
 
 /-! In-memory document with owner/editor/viewer roles, shared by the ACL matrix and its negative test. -/
 namespace AclFixture
-open LeanApp LeanApp.Policy LeanApp.Testing Contract Ontology
+open LeanApi.Publication LeanApi.Publication.Policy LeanApi.Publication.Testing Contract Ontology
 
 inductive Role where
   | viewer | editor | owner

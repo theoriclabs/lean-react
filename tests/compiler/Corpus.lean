@@ -23,6 +23,9 @@ def twice (f : α → α) (x : α) : α := f (f x)
 def capture (base : Nat) : Nat → Nat := fun x => base + x * 2
 def useCapture (base x : Nat) : Nat := twice (capture base) x
 
+def equalityDecision (left right : Nat) : Decidable (left = right) := inferInstance
+def branchDecision {p : Prop} [Decidable p] : Nat := if p then 7 else 11
+
 def runService (service : Service α) (key : Nat) : Nat :=
   service.adjust (service.score (service.fetch key))
 

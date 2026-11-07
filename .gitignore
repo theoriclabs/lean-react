@@ -21,6 +21,10 @@ tests/compiler/native.json
 tests/compiler/generated.d.ts
 tests/compiler/generated.d.mts
 tests/compiler/generated.manifest.json
+tests/compiler/decisions.mjs
+tests/compiler/decisions.d.ts
+tests/compiler/decisions.d.mts
+tests/compiler/decisions.manifest.json
 tests/compiler/integration/
 .verification/
 tests/app/.build/

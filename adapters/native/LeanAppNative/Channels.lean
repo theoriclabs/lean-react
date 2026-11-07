@@ -1,10 +1,10 @@
-import LeanApp.Channel
+import LeanApi.Publication.Channel
 import LeanContract.Channel
 import Std.Data.HashMap
 import Std.Sync.Mutex
 
 namespace LeanAppNative.Channels
-open LeanApp Contract
+open LeanApi.Publication Contract
 
 /-- Per-socket caps. Overflow of events or bytes closes that **subscription**,
     never the socket (LA-14 / LA-17). -/

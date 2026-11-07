@@ -16,12 +16,12 @@ npm run package:cafe
 
 It prints a directory under `.lake/releases/` containing the application, selected LeanDB/LeanHttp/SQLite sources and their licenses, and a Dockerfile. The runtime image retains the application's MIT license and native dependency notices. Caches, repository metadata, credentials, and databases are excluded. Each invocation gets a new directory; older snapshots remain untouched.
 
-Dependency sources are copied from `adapters/native/.lake/packages/{leandb,leanhttp,leanws,leansqlite}`; `LEANAPP_LEANDB_SOURCE`, `LEANAPP_LEANHTTP_SOURCE`, `LEANAPP_LEANWS_SOURCE` and `LEANAPP_LEANSQLITE_SOURCE` override them. The Dockerfile passes the matching `-K` overrides to Lake, so the container compiles every native dependency from the snapshot without reaching the network, and verifies the exact Lean 4.33.0 Linux archive's published SHA-256 digest. Node's Debian base image and apt repositories are not yet immutable release pins.
+Dependency sources are copied from `adapters/native/.lake/packages/{leandb,leanhttp,leanws,leansqlite}`; `LEANAPP_LEANDB_SOURCE`, `LEANAPP_LEANHTTP_SOURCE`, `LEANAPP_LEANWS_SOURCE` and `LEANAPP_LEANSQLITE_SOURCE` override them. The Dockerfile passes the matching `-K` overrides to Lake, so the container compiles every native dependency from the snapshot without reaching the network, and verifies the exact Lean 4.35.0 Linux archive's published SHA-256 digest. Node's Debian base image and apt repositories are not yet immutable release pins.
 
 Build from the printed directory:
 
 ```sh
-docker build -t proof-and-pour:0.2.0-rc.1 .
+docker build -t proof-and-pour:0.3.0 .
 ```
 
 For a server behind your own HTTPS reverse proxy, attach a named volume and publish only the proxy-facing loopback port:
@@ -29,7 +29,7 @@ For a server behind your own HTTPS reverse proxy, attach a named volume and publ
 ```sh
 docker run --rm -p 127.0.0.1:8080:8080 -v proof-and-pour-data:/data \
   -e LEANAPP_ORIGIN=https://cafe.example.com \
-  -e LEANAPP_DB_PATH=/data/cafe.sqlite proof-and-pour:0.2.0-rc.1
+  -e LEANAPP_DB_PATH=/data/cafe.sqlite proof-and-pour:0.3.0
 ```
 
 Replace the example origin with your actual HTTPS origin and configure its proxy separately. The container starts as root only to give the database directory to the unprivileged `node` user, then runs the gateway and the Lean backend as `node`; a root-owned volume from an earlier release is taken over on the first start. For local browser development, use `npm run dev:cafe`. Development mode intentionally binds to loopback and omits Secure cookies; never use it on a public service.

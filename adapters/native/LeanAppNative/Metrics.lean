@@ -4,7 +4,7 @@ import Std.Data.HashMap
 /-! In-memory counters, reset on restart, rendered in Prometheus text format for a loopback-only
 `GET /internal/metrics`. Hosts add live gauges (writer queue, session cache) at scrape time. -/
 namespace LeanAppNative.Metrics
-open LeanApp Contract
+open LeanApi.Publication Contract
 
 /-- Cumulative `le` buckets in milliseconds. -/
 def bounds : Array Nat := #[1, 2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]

@@ -3,7 +3,7 @@ import LeanAppNative.State
 import LeanAppNative.Capabilities
 
 namespace LeanAppNative
-open LeanApp Contract Ontology
+open LeanApi.Publication Contract Ontology
 
 /-- A validated server supplies frozen public metadata, codecs and HTTP policy. Its application
 and handlers are not retained, so a template closure cannot keep an old database handle alive.

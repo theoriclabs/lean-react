@@ -59,7 +59,7 @@ Query handlers receive `ReadCapability`; command handlers receive `CommandCapabi
 
 Importing a module does not publish its tables. The public manifest describes approved operations and codecs, not private storage/admin APIs. HTTP dispatch checks that both the literal path and the wire operation identity select the same approved operation.
 
-See [Binding.lean](../engine/LeanApp/Binding.lean), [Application.lean](../engine/LeanApp/Application.lean) and the [in-memory fixture](../tests/app/Main.lean). The native café uses the approved registry and auth host; it does not claim every future application-host feature is integrated.
+See [Binding.lean](../../leanapi/LeanApi/Publication/Binding.lean), [Application.lean](../../leanapi/LeanApi/Publication/Application.lean) and the [in-memory fixture](../tests/app/Main.lean). The native café uses the approved registry and auth host; it does not claim every future application-host feature is integrated.
 
 ## A request through the café
 

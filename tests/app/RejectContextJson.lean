@@ -1,3 +1,3 @@
-import LeanApp
-def forge (json : Lean.Json) : Except String LeanApp.RequestContext :=
+import LeanApi.Publication
+def forge (json : Lean.Json) : Except String LeanApi.Publication.RequestContext :=
   Lean.fromJson? json

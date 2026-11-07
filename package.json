@@ -1,7 +1,7 @@
 {
   "name": "leanapp-workspace",
   "description": "LeanApp monorepo: domain-first full-stack applications, LeanReact and the LeanJS compiler",
-  "version": "0.2.0-rc.1",
+  "version": "0.3.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -61,5 +61,8 @@
     "esbuild": "0.28.2",
     "jsdom": "29.1.1",
     "typescript": "7.0.2"
+  },
+  "imports": {
+    "#leancontract/*": "./.lake/packages/leanapi/LeanContract/*"
   }
 }

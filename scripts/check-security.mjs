@@ -78,7 +78,7 @@ assert.notEqual(hash(editedSpec), hash(spec));
 examples.push({ id: 'spec-edit', title: 'An agent changes the policy itself', stage: 'Protected-input digest check',
   expected: 'rejected', actual: 'rejected', code: '- owner = caller.actor ∧ tenant = caller.tenant\n+ tenant = caller.tenant',
   diagnostic: `REJECTED: candidate policy differs from the reviewed specification.\nTrusted: ${hash(spec)}\nCandidate: ${hash(editedSpec)}\nThis gate must be owned outside the agent-editable patch. Lean alone does not protect file permissions or CI settings.` });
-const receipt = { format: 'leanapp-security-evidence-v1', lean: '4.33.0', generatedAt: new Date().toISOString(),
+const receipt = { format: 'leanapp-security-evidence-v1', lean: '4.35.0', generatedAt: new Date().toISOString(),
   sources: { [specPath]: hash(spec), [modelPath]: hash(model), 'scripts/check-security.mjs': hash(await readFile(fileURLToPath(import.meta.url))) },
   theoremCount: 9, examples, limits: 'Model proofs and reproducible local patch checks. Native authentication, SQLite/FFI, compilation and deployment configuration remain trusted. No adversarial-agent sandbox or protected CI configuration is claimed.' };
 await writeFile(resolve(out, 'evidence.json'), JSON.stringify(receipt, null, 2) + '\n');

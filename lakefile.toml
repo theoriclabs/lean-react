@@ -1,28 +1,52 @@
-# LeanApp portable workspace. Preserve the Lake package name for existing consumers.
+# LeanReact: the UI layer (LeanReact, LeanReact.Domain, LeanJS) and full-stack serving
+# (LeanReact.Server). It builds on the layers below it, required from git at pinned revisions:
+# leanontology (wire codecs, scalars), LeanDB (`LeanDb.Model`, native storage) and LeanAPI
+# (`LeanApi.Core`, `LeanContract`, native serving). LeanAPI pins the same LeanDB and
+# leanontology revisions.
 name = "leanreact"
-version = "0.2.0-rc.1"
-defaultTargets = ["LeanOntology", "LeanContract", "LeanApp", "LeanReact", "LeanJS", "LeanReact.Compiler"]
+version = "0.3.0"
+defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS", "LeanReactServer"]
+
+[[require]]
+name = "leanontology"
+git = "https://github.com/theoriclabs/leanontology"
+rev = "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b"
+
+[[require]]
+name = "leandb"
+git = "https://github.com/theoriclabs/LeanDB"
+rev = "d5253e5b0d83fc528927f340d1e50baab3e94999"
+
+[[require]]
+name = "leanapi"
+git = "https://github.com/theoriclabs/leanapi"
+rev = "b66c2991fae8fbe55b5c77d14b0216016855c6c0"
 
 [[input_file]]
 name = "leanJsRuntime"
 path = "engine/LeanJS/Runtime.js"
 text = true
 
-[[lean_lib]]
-name = "LeanOntology"
-srcDir = "engine"
-
-[[lean_lib]]
-name = "LeanContract"
-srcDir = "engine"
-
-[[lean_lib]]
-name = "LeanApp"
-srcDir = "engine"
-
+# The UI core: components, hooks, DOM, forms, resources, router (portable, LeanJS-compiled).
 [[lean_lib]]
 name = "LeanReact"
 srcDir = "engine"
+roots = ["LeanReact", "LeanReact.Compiler"]
+
+# Pages over typed endpoints: `form`, `call`, `load`, `App`, `path ==> page` (portable).
+# Its imports below LeanReact are `LeanDb.Model`, `LeanApi.Core`, `LeanContract` and
+# `LeanOntology` only.
+[[lean_lib]]
+name = "LeanReactDomain"
+srcDir = "engine"
+roots = ["LeanReact.Domain"]
+
+# Full-stack serving (native): `app% Name where app := app`, the page routes and the browser
+# bundle, on LeanAPI's native app. An API-only app never imports it.
+[[lean_lib]]
+name = "LeanReactServer"
+srcDir = "engine"
+roots = ["LeanReact.Server"]
 
 [[lean_lib]]
 name = "LeanJS"

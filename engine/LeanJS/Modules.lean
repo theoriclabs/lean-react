@@ -21,7 +21,7 @@ structure ExportSignature where
 structure LibraryInterface where
   id : LibraryId
   abi : String := "leanjs-v0"
-  lean : String := "4.33.0"
+  lean : String := "4.35.0"
   exports : Array ExportSignature
   deriving BEq, Inhabited, ToJson, FromJson
 
