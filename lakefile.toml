@@ -1,7 +1,7 @@
 # LeanReact UI libraries and the LeanJS compiler. Domain and client abstractions
 # come from pinned LeanOntology, LeanDB and LeanAPI packages.
 name = "leanreact"
-version = "0.4.0"
+version = "0.4.1"
 defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS"]
 
 [[require]]
@@ -52,3 +52,8 @@ srcDir = "examples/lean"
 name = "leanreact"
 srcDir = "engine"
 root = "LeanReactCli"
+
+# The optional server adapter joins LeanAPI routes and compiled LeanReact pages.
+[[lean_lib]]
+name = "LeanReactServer"
+srcDir = "adapters/server"
