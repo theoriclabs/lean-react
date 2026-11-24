@@ -11,5 +11,5 @@ run_meta do
     ("collections", #[`Examples.Collections.App]),
     ("feedback", #[`Examples.Feedback.App])]
     (LeanReact.Compiler.options "../../../engine/adapters/leanjs-react.mjs")
-    (sharedId := ⟨"leanreact-examples", "0.3.0", "shared"⟩)
+    (sharedId := ⟨"leanreact-examples", "0.4.0", "shared"⟩)
   IO.println s!"writeApp: {shared.size} declarations shared by two or more pages"

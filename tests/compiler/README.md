@@ -4,7 +4,7 @@ Run from the repository root:
 npm run test:compiler
 ```
 
-This requires the pinned installed Lean 4.35.0, Lake and Node (tested on Node 24). The JavaScript tests require the workspace dependencies (`npm ci`), including jsdom.
+This requires the pinned installed Lean 4.36.0, Lake and Node (tested on Node 24). The JavaScript tests require the workspace dependencies (`npm ci`), including jsdom.
 The runner builds the pinned `LeanContract.Generate` dependency for the P0 codec fallback. `tests/Run.lean` builds the compiler and
 corpus in `.build/` using the Lake environment, compiles imported declarations to
 `generated.mjs`, and compares canonical results produced by native Lean and Node.

@@ -2,11 +2,11 @@
 
 Write React components in Lean. They compile to JavaScript and render with React. Props, state, hooks, and components you pass into other components stay the familiar building blocks.
 
-[v0.3.0 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.3.0) · [How-to guide](docs/HOW_TO.md) · [Frontend docs](docs/LEANREACT.md) · [MIT license](LICENSE)
+[v0.4.0 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.4.0) · [How-to guide](docs/HOW_TO.md) · [Frontend docs](docs/LEANREACT.md) · [MIT license](LICENSE)
 
 ![LeanReact playground with a live counter beside its Lean source](docs/images/showcase.png)
 
-LeanReact is experimental. It uses Lean 4.35.0 and provides UI libraries and the LeanJS compiler, with portable domain and client abstractions from pinned dependencies. Server routing, authentication and persistence belong in [LeanAPI](https://github.com/theoriclabs/leanapi). APIs can change.
+LeanReact is experimental. It uses Lean 4.36.0 and provides UI libraries and the LeanJS compiler, with portable domain and client abstractions from pinned dependencies. Server routing, authentication and persistence belong in [LeanAPI](https://github.com/theoriclabs/leanapi). APIs can change.
 
 ## A counter in Lean
 
@@ -135,14 +135,15 @@ LeanJS reads Lean's compiler IR, so each LeanReact release supports one Lean min
 
 | Lean | LeanReact | Notes |
 | --- | --- | --- |
-| 4.35 | v0.3.0 | Current `main` |
+| 4.36 | v0.4.0 | Current `main` |
+| 4.35 | `6b81e8b` | Development revision |
 | 4.33 | v0.2.0-rc.1, v0.1 | |
 
 ```toml
 [[require]]
 name = "leanreact"
 git = "https://github.com/theoriclabs/lean-react"
-rev = "v0.3.0"
+rev = "v0.4.0"
 ```
 
 A scheduled CI job builds and tests `main` against the newest Lean release candidate, so a break shows up before that Lean version is released. [Releasing](docs/RELEASING.md) describes how a release is cut.

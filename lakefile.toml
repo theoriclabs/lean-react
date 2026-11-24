@@ -1,23 +1,23 @@
 # LeanReact UI libraries and the LeanJS compiler. Domain and client abstractions
 # come from pinned LeanOntology, LeanDB and LeanAPI packages.
 name = "leanreact"
-version = "0.3.0"
+version = "0.4.0"
 defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS"]
 
 [[require]]
 name = "leanontology"
 git = "https://github.com/theoriclabs/leanontology"
-rev = "322a4c12631dd8ece6ae9841a5e6b630d08d1e3b"
+rev = "v0.1.1"
 
 [[require]]
 name = "leandb"
 git = "https://github.com/theoriclabs/LeanDB"
-rev = "d5253e5b0d83fc528927f340d1e50baab3e94999"
+rev = "v0.7.1"
 
 [[require]]
 name = "leanapi"
 git = "https://github.com/theoriclabs/leanapi"
-rev = "cd9a9d97b7709a251d42d015a4a039f1dc8a46bf"
+rev = "v0.6.0"
 
 [[input_file]]
 name = "leanJsRuntime"
