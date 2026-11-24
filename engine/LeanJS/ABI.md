@@ -1,4 +1,4 @@
-# LeanJS ABI v0 — Lean 4.35.0
+# LeanJS ABI v0 — Lean 4.36.0
 
 ## Compiler boundary
 
@@ -369,7 +369,9 @@ corpus compares 75 combinations of arrays and bounds, including bounds beyond
 2^53. The compiler also lowers the safe reference bodies of `Array.forIn'` and
 `Array.foldlM`, retaining generic Monad dictionaries, early exits, and failure
 semantics. It does not lower their unsafe native replacements. Other unregistered
-native/implemented_by dependencies still require contracts.
+native/implemented_by dependencies still require contracts. Lean-generated
+constructor indices lower through their reference case splits, and the string
+character-list builtin also handles Lean’s compiler-simplified version.
 
 `Options.hooks : HookConfig` enables a conservative abstract evaluation of the
 pure-LCNF Hook program, before emission. No React module is imported by LeanJS.
