@@ -1,7 +1,7 @@
 # LeanReact UI libraries and the LeanJS compiler. Domain and client abstractions
 # come from pinned LeanOntology, LeanDB and LeanAPI packages.
 name = "leanreact"
-version = "0.4.1"
+version = "0.4.2"
 defaultTargets = ["LeanReact", "LeanReactDomain", "LeanJS"]
 
 [[require]]

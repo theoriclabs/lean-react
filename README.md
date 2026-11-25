@@ -2,7 +2,7 @@
 
 Write React components in Lean. They compile to JavaScript and render with React. Props, state, hooks, and components you pass into other components stay the familiar building blocks.
 
-[v0.4.1 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.4.1) · [How-to guide](docs/HOW_TO.md) · [Frontend docs](docs/LEANREACT.md) · [MIT license](LICENSE)
+[v0.4.2 release](https://github.com/theoriclabs/lean-react/releases/tag/v0.4.2) · [How-to guide](docs/HOW_TO.md) · [Frontend docs](docs/LEANREACT.md) · [MIT license](LICENSE)
 
 ![LeanReact playground with a live counter beside its Lean source](docs/images/showcase.png)
 
@@ -137,7 +137,7 @@ LeanJS reads Lean's compiler IR, so each LeanReact release supports one Lean min
 
 | Lean | LeanReact | Notes |
 | --- | --- | --- |
-| 4.36 | v0.4.1, v0.4.0 | Current `main` |
+| 4.36 | v0.4.2, v0.4.1, v0.4.0 | Current `main` |
 | 4.35 | `6b81e8b` | Development revision |
 | 4.33 | v0.2.0-rc.1, v0.1 | |
 
@@ -145,7 +145,7 @@ LeanJS reads Lean's compiler IR, so each LeanReact release supports one Lean min
 [[require]]
 name = "leanreact"
 git = "https://github.com/theoriclabs/lean-react"
-rev = "v0.4.1"
+rev = "v0.4.2"
 ```
 
 A scheduled CI job builds and tests `main` against the newest Lean release candidate, so a break shows up before that Lean version is released. [Releasing](docs/RELEASING.md) describes how a release is cut.
