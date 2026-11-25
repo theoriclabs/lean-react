@@ -92,4 +92,45 @@ theorem add_disabled_iff_empty (m : TodoModel) :
   simp [todoView, Html.attrsOf, Html.attrsOfList, directText, Attr.disabledIn, section_, form, input,
     button, text, ariaLabel, value, onInput, onKeyDown, type_, disabled, onSubmit]
 
+/-! ## KeyedTable: flat relational UI state with built-in uniqueness -/
+
+structure TableTodoModel where
+  todos : KeyedTable Nat Todo
+  draft : String := ""
+  nextId : Nat := 1
+
+def tableTodoUpdate : TodoMsg → TableTodoModel → TableTodoModel × Cmd TodoMsg
+  | .typed text, m => ({ m with draft := text }, .none)
+  | .add, m =>
+    if m.draft.isEmpty then (m, .none)
+    else
+      let row : Todo := { id := m.nextId, title := m.draft }
+      ({ m with todos := m.todos.upsert m.nextId row, draft := "", nextId := m.nextId + 1 }, .none)
+  | .toggle id, m =>
+    ({ m with todos := m.todos.modify id fun t => { t with done := !t.done } }, .none)
+  | .reverse, m => (m, .none)
+
+def TableTodos : Component Unit TableTodoModel TodoMsg where
+  init _ := ({ todos := KeyedTable.ofList [(1, { id := 1, title := "Write the plan" }), (2, { id := 2, title := "Ship P1" })], nextId := 3 }, .none)
+  update _ := tableTodoUpdate
+  view _ m := m.todos.view toString (tag := "ul") fun _ t => li [dataAttr "id" (toString t.id)] [text t.title]
+
+/-- KeyedTable preserves key uniqueness automatically across `ofList`, `upsert`, `modify`,
+`erase` and `reconcile`, without custom `Nodup` induction per model. -/
+theorem table_todos_unique_keys : Invariant (TableTodos.toSys ()) (fun m => m.todos.UniqueKeys) := by
+  refine TableTodos.invariant_of () (KeyedTable.ofList_uniqueKeys _) fun msg m h => ?_
+  cases msg with
+  | typed _ => exact h
+  | add =>
+    dsimp [TableTodos, tableTodoUpdate]
+    split
+    · exact h
+    · exact KeyedTable.upsert_uniqueKeys h _ _
+  | toggle id => exact KeyedTable.modify_uniqueKeys h id _
+  | reverse => exact h
+
+theorem table_todos_reconcile_unique (server optimistic : List (Nat × Todo)) :
+    (KeyedTable.reconcile server optimistic).UniqueKeys :=
+  KeyedTable.reconcile_uniqueKeys server optimistic
+
 end Examples.ProgramProofs

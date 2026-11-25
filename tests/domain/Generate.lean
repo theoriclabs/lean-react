@@ -15,7 +15,7 @@ run_meta do
       `DomainBrowser.guestView, `DomainBrowser.hostParser, `DomainBrowser.hostRaw, `DomainBrowser.parseHost,
       `DomainBrowser.hostForm, `DomainBrowser.hostFormView, `DomainBrowser.signUpView, `DomainBrowser.signInView,
       `DomainBrowser.scalarEditors, `DomainBrowser.settingsFormView, `DomainBrowser.partyRef, `DomainBrowser.personRef,
-      `DomainBrowser.appWithRequests, `DomainBrowser.listingsView, `DomainBrowser.listingsCustomView, `DomainBrowser.listingView, `PostViews.appComponent, `PostViews.RsvpWidget.element, `PostViews.appProps, `PostViews.shellProps,
+      `DomainBrowser.appWithRequests, `DomainBrowser.listingsView, `DomainBrowser.listingsCustomView, `DomainBrowser.listingView, `PostViews.appComponent, `PostViews.Scoped.appComponent, `PostViews.RsvpWidget.element, `PostViews.appProps, `PostViews.shellProps,
       `Contract.Browser.jsonObject, `Contract.Browser.jsonEntries, `Contract.Browser.jsonNumber,
       `Contract.Browser.frameworkError, `Contract.Browser.decodeErrors]
     (LeanReact.Compiler.options "../../../engine/adapters/leanjs-react.mjs")
@@ -75,6 +75,14 @@ def main : IO Unit := do
   -- The JS runtime of the generated client is LeanAPI's (`LeanContract/{Fetch,Codecs}.mjs`).
   Contract.Generate.emitClient (operations.map Prod.fst) codecs (operations.map Prod.snd) "tests/domain/generated/post"
     "#leancontract" (routes := routes)
+  let scopedRoutes : List Contract.Generate.ClientRoute := PostViews.Scoped.scopedApi.map fun endpoint =>
+    { identity := endpoint.identity, method := endpoint.method.name, path := endpoint.path,
+      params := endpoint.endpoint.pathParams }
+  let scopedOps := PostViews.Scoped.scopedApi.map fun endpoint =>
+    (({ operation := endpoint.describe, http := { path := endpoint.path }, metadata := {} } : LeanApi.Publication.PublicOperation),
+      Contract.Http.ErrorStatus.ofOperation endpoint.endpoint.operation.contract (fun _ => 422))
+  Contract.Generate.emitClient (scopedOps.map Prod.fst) codecs (scopedOps.map Prod.snd) "tests/domain/generated/scoped"
+    "#leancontract" (routes := scopedRoutes)
   IO.FS.writeFile "tests/domain/generated/matrix.json" (← visibilityMatrix).compress
   IO.FS.writeFile "tests/domain/generated/scalars.json"
     ((Codec.list Codec.string).encode DomainBrowser.results).compress

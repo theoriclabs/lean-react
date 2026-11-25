@@ -87,8 +87,9 @@ structure AppRuntime where
   transport : Contract.Transport Action
   /-- Show a message that is not about one form field. -/
   notify : String → Action Unit
-  /-- After a successful command: reload the page's data. -/
+  /-- After a successful command: reload the page's data (all loads, or scoped to entities). -/
   invalidate : Action Unit
+  invalidateEntities : List String → Action Unit := fun _ => invalidate
 
 initialize appRuntimeCell : IO.Ref (Option AppRuntime) ← IO.mkRef none
 
@@ -97,6 +98,36 @@ def installAppRuntime (runtime : Option AppRuntime) : Action Unit := ⟨appRunti
 
 /-- The mounted app, if any. Browser: an intrinsic. -/
 def currentAppRuntime : Action (Option AppRuntime) := ⟨appRuntimeCell.get⟩
+
+private def dedupStrings (xs : List String) : List String :=
+  xs.foldl (fun acc x => if acc.contains x then acc else acc ++ [x]) []
+
+/-- Entities written by a published operation's metadata (`command`-effect nodes with an entity). -/
+def operationWriteEntities (metadata : FlowMetadata) : List String :=
+  dedupStrings <| metadata.nodes.filterMap fun node =>
+    if node.effect == .command && !node.detail.isEmpty then some node.detail else none
+
+/-- Entities read (or touched) by a published operation's metadata. -/
+def operationReadEntities (metadata : FlowMetadata) : List String :=
+  dedupStrings <| metadata.nodes.filterMap fun node =>
+    if !node.detail.isEmpty then some node.detail else none
+
+private def entityVersion (versions : List (String × Nat)) (entity : String) : Nat :=
+  match versions.find? (·.1 == entity) with
+  | some (_, v) => v
+  | none => 0
+
+private def bumpEntityVersions (versions : List (String × Nat)) (entities : List String) :
+    List (String × Nat) :=
+  entities.foldl (fun acc entity =>
+    if acc.any (·.1 == entity) then
+      acc.map fun (name, v) => if name == entity then (name, v + 1) else (name, v)
+    else acc ++ [(entity, 1)]) versions
+
+private def scopeVersions (commands : Nat) (versions : List (String × Nat)) (entities : List String) :
+    String :=
+  let tail := String.intercalate "," (entities.map fun e => e ++ "=" ++ toString (entityVersion versions e))
+  toString commands ++ (if tail.isEmpty then "" else "|" ++ tail)
 
 /-- What `App` provides to its pages while rendering. -/
 structure AppContext where
@@ -107,9 +138,15 @@ structure AppContext where
   actor : Option String := none
   /-- `:name` parameters of the matched page route, raw. -/
   params : List (String × String) := []
-  /-- Successful commands so far; loads reload when it moves. -/
+  /-- Successful un-scoped commands so far; loads reload when a relevant version moves. -/
   commands : Nat := 0
+  /-- Per-entity mutation counters derived from endpoint metadata. -/
+  entityVersions : List (String × Nat) := []
+  invalidateEntities : List String → Action Unit := fun _ => pure ()
   deriving TypeName
+
+def AppContext.invalidateFor (app : AppContext) (entities : List String) : Action Unit :=
+  app.invalidateEntities entities
 
 def appContext : Context AppContext := createContext "LeanReact.Domain.AppContext" {}
 
@@ -176,16 +213,18 @@ def endpointForm [HasRecord I] (endpoint : Endpoint I E O) (onSuccess : O → Ac
       establishesSession := endpoint.operation.metadata.establishesSession }
   let identity := endpoint.operation.contract.identity
   -- `stable:` keeps one component type per endpoint across renders (drafts survive a re-render).
+  let targets := operationWriteEntities endpoint.operation.metadata
   let view : Component Unit := Component.named ("stable:LeanReact.Domain.Form/" ++ identity.namespaceName ++ "/" ++ identity.name) <|
     LeanReact.component fun _ => do
       let app ← useContext appContext "domain.form.app"
-      let model ← useDomainForm spec app.resolvedShell (endpointBindings endpoint app.params)
+      let formShell := { app.resolvedShell with refresh := app.invalidateFor targets }
+      let model ← useDomainForm spec formShell (endpointBindings endpoint app.params)
       pure (spec.render model)
   element view ()
 
 /-- Run a typed endpoint from an event (`onPress`). Only path fields are sent, so this is for
 endpoints whose other inputs are the actor. A domain error's message goes to the app's notice
-region; a success runs `onSuccess`, then reloads the page's data. A reply for an older auth
+region; a success runs `onSuccess`, then reloads the affected page data. A reply for an older auth
 generation is ignored. -/
 def endpointCall [HasRecord I] (endpoint : Endpoint I E O) (onSuccess : O → Action Unit)
     (onError : E → Feedback I) : Action Unit := do
@@ -200,7 +239,7 @@ def endpointCall [HasRecord I] (endpoint : Endpoint I E O) (onSuccess : O → Ac
     | .ok output =>
       if endpoint.operation.metadata.establishesSession then app.shell.authenticationChanged
       onSuccess output
-      app.invalidate
+      app.invalidateEntities (operationWriteEntities endpoint.operation.metadata)
     | .error (.domain error) =>
       let feedback := onError error
       app.notify (feedbackText feedback)
@@ -225,6 +264,7 @@ def endpointLoad [HasRecord I] (endpoint : Endpoint I E O) (onError : E → Elem
     (render : O → Element) : Element :=
   let contract := endpoint.operation.contract
   let identity := contract.identity
+  let reads := operationReadEntities endpoint.operation.metadata
   let view : Component Unit := Component.named ("stable:LeanReact.Domain.Load/" ++ identity.namespaceName ++ "/" ++ identity.name) <|
     LeanReact.component fun _ => do
       let app ← useContext appContext "domain.load.app"
@@ -233,7 +273,8 @@ def endpointLoad [HasRecord I] (endpoint : Endpoint I E O) (onError : E → Elem
       let input := endpointInput contract.inputCodec wire
       let scope := identity.namespaceName ++ "/" ++ identity.name ++ "/" ++ identity.version ++ "|" ++
         bindingsText wire ++ "|" ++ (app.actor.getD "-") ++ "|" ++ toString shell.generation
-      let key := Key.inSpace "domain-load" (scope ++ "|" ++ toString app.commands)
+      let versionStamp := scopeVersions app.commands app.entityVersions reads
+      let key := Key.inSpace "domain-load" (scope ++ "|" ++ versionStamp)
       let resource ← useResource key (fun request =>
         match input with
         | .error errors => pure (.error (.decode errors))
@@ -335,10 +376,14 @@ def App.component (app : App) (client : Contract.Interpreter Action)
     let pageKey := path ++ "|" ++ (props.actor.getD "-") ++ "|" ++ toString props.shell.generation
     let notice ← useState (none : Option (String × String)) "domain.app.notice"
     let commands ← useState (0 : Nat) "domain.app.commands"
-    let invalidate := commands.modify (· + 1)
+    let entityVersions ← useState ([] : List (String × Nat)) "domain.app.entities"
+    let invalidateEntities : List String → Action Unit := fun entities =>
+      if entities.isEmpty then commands.modify (· + 1)
+      else entityVersions.modify fun versions => bumpEntityVersions versions entities
+    let invalidate := invalidateEntities []
     let shell : ShellProps := { props.shell with refresh := invalidate }
     let notify : String → Action Unit := fun text => notice.set (some (pageKey, text))
-    let runtime : AppRuntime := ⟨shell, transport, notify, invalidate⟩
+    let runtime : AppRuntime := ⟨shell, transport, notify, invalidate, invalidateEntities⟩
     useEffect #[.string pageKey, .nat commands.value] (do
       installAppRuntime (some runtime)
       pure (installAppRuntime none)) "domain.app.install"
@@ -351,7 +396,8 @@ def App.component (app : App) (client : Contract.Interpreter Action)
       | some (template, params, element) =>
         fragment #[
           provide appContext { shell := some shell, transport := some transport, requestTransport,
-                               actor := props.actor, params, commands := commands.value }
+                               actor := props.actor, params, commands := commands.value,
+                               entityVersions := entityVersions.value, invalidateEntities }
             (keyed (Key.inSpace "domain-page" (template ++ "|" ++ pageKey)) element),
           DOM.p { role := some "status", ariaLive := some "polite" } #[LeanReact.text status]]
       | none => DOM.p { role := some "alert" } #[LeanReact.text "Page not found."]

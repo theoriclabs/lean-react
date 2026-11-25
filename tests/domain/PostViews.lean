@@ -103,6 +103,53 @@ def shellProps (generation : Nat) (currentGeneration : Action Nat)
     (authenticationChanged : Action Unit) : LeanReact.Domain.ShellProps :=
   { generation, currentGeneration, framework, navigate, refresh := pure (), authenticationChanged }
 
+/-! ## Entity-scoped invalidation fixture -/
+
+namespace Scoped
+
+structure Bulletin where
+  note : Name
+  deriving Entity
+
+def readBulletin : ReadOp Empty (List Name) := do
+  return (← Bulletin.select).map (·.note)
+def postBulletin (note : Name) : Op Empty (Ref Bulletin) := Bulletin.insert { note }
+
+derive_operation readBulletin
+derive_operation postBulletin
+
+def scopedApi : Api := [
+  get "/parties/:party" getParty,
+  post "/parties/:party/rsvp" rsvp,
+  get "/bulletin" readBulletin,
+  post "/bulletin" postBulletin
+]
+
+def scopedPage (party : Ref Party) : Element :=
+  DOM.div {} #[
+    load (scopedApi.getParty party)
+      (onError := fun | .notFound => DOM.p {} #[text "Missing party"])
+      fun page => DOM.div {} #[
+        partyView page (call (scopedApi.rsvp party)
+          (onSuccess := fun _ => pure ())
+          (onError := fun
+            | .notFound => notice "This party no longer exists."
+            | .alreadyStarted => notice "This party has already started."))],
+    load scopedApi.readBulletin
+      (onError := nofun)
+      fun rows => DOM.div { data := #[("testid", "bulletin-box")] } #[
+        DOM.p { data := #[("testid", "bulletin-count")] } #[text s!"Bulletins: {rows.length}"],
+        form scopedApi.postBulletin (onError := nofun) (label := "Post note")]]
+
+def scopedApp : App where
+  api := scopedApi
+  pages := [ "/scoped/:party" ==> scopedPage ]
+
+def appComponent (client : Contract.Interpreter Action) : Component LeanReact.Domain.AppProps :=
+  scopedApp.component client
+
+end Scoped
+
 /-! ## A declarative component with typed calls (Components P6) -/
 
 namespace RsvpWidget

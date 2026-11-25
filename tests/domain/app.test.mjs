@@ -281,3 +281,54 @@ test('a declarative component calls typed endpoints; each declared error and a 4
     assert.equal(status(), 'Sign in first.');
   } finally {await React.act(() => root.unmount()); container.remove();}
 });
+
+test('scoped invalidation: rsvp reloads Party/Rsvp without refetching unrelated Bulletin load; postBulletin reloads Bulletin only', async () => {
+  const scopedGenerated = await import('./generated/scoped/operations.mjs');
+  const counts = {getParty: 0, readBulletin: 0, rsvp: 0, postBulletin: 0};
+  const bulletins = [];
+  const client = scopedGenerated.createClient({fetch: async (url, init) => {
+    const body = init.body ? JSON.parse(init.body) : null;
+    if (init.method === 'GET' && url === '/parties/3') {
+      counts.getParty++;
+      return {status: 200, text: async () => JSON.stringify(page(visible(counts.rsvp === 0 ? ['Ben'] : ['Ben', 'Cara'])).body)};
+    }
+    if (init.method === 'POST' && url === '/parties/3/rsvp') {
+      counts.rsvp++;
+      return {status: 200, text: async () => JSON.stringify(ok(null).body)};
+    }
+    if (init.method === 'GET' && url === '/bulletin') {
+      counts.readBulletin++;
+      return {status: 200, text: async () => JSON.stringify(ok(bulletins).body)};
+    }
+    if (init.method === 'POST' && url === '/bulletin') {
+      counts.postBulletin++;
+      bulletins.push(body.note);
+      return {status: 200, text: async () => JSON.stringify(ok(bulletins.length).body)};
+    }
+    throw new Error(`unexpected request: ${init.method} ${url}`);
+  }});
+  const events = [];
+  const srv = {interpreter: createContractInterpreter({program, client})};
+  const descriptor = program['PostViews.Scoped.appComponent'](srv.interpreter);
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  const render = () => React.act(() => root.render(mountElement(descriptor,
+    program['PostViews.appProps'](shell(events), '/scoped/3', some('5')))));
+  try {
+    await render(); await settle();
+    assert.deepEqual(counts, {getParty: 1, readBulletin: 1, rsvp: 0, postBulletin: 0});
+    assert.deepEqual(events, [], `unexpected events: ${JSON.stringify(events)}`);
+    const countNode = container.querySelector('[data-testid="bulletin-count"]');
+    assert.ok(countNode, `bulletin-count missing; innerHTML=${container.innerHTML}`);
+    assert.equal(countNode.textContent, 'Bulletins: 0');
+    await press(container, "I'm going");
+    assert.deepEqual(counts, {getParty: 2, readBulletin: 1, rsvp: 1, postBulletin: 0},
+      'rsvp touches Rsvp, reloading getParty without refetching unrelated Bulletin load');
+    assert.match(container.textContent, /BenCara/);
+    await setInput(container, 'note', 'Bring chairs');
+    await submit(container);
+    assert.deepEqual(counts, {getParty: 2, readBulletin: 2, rsvp: 1, postBulletin: 1},
+      'postBulletin form touches Bulletin, reloading readBulletin without refetching getParty');
+    assert.equal(container.querySelector('[data-testid="bulletin-count"]').textContent, 'Bulletins: 1');
+  } finally {await React.act(() => root.unmount()); container.remove();}
+});

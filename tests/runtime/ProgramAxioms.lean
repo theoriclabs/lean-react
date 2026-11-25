@@ -7,7 +7,8 @@ run_meta do
   let theorems := [`Examples.ProgramProofs.bounded_counter_capped, `Examples.ProgramProofs.Capped.preserved_cappedUpdate,
     `Examples.ProgramProofs.todos_ok, `Examples.ProgramProofs.TodoOk.preserved_todoUpdate,
     `Examples.ProgramProofs.empty_draft_adds_nothing, `Examples.ProgramProofs.reset_disabled_iff_zero,
-    `Examples.ProgramProofs.add_disabled_iff_empty]
+    `Examples.ProgramProofs.add_disabled_iff_empty, `Examples.ProgramProofs.table_todos_unique_keys,
+    `Examples.ProgramProofs.table_todos_reconcile_unique]
   for name in theorems do
     let axioms ← collectAxioms name
     let extra := axioms.filter fun a => ![``propext, ``Classical.choice, ``Quot.sound].contains a
